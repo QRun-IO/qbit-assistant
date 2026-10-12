@@ -19,6 +19,7 @@ package com.kingsrook.qbits.assistant;
 
 import java.time.Clock;
 import java.util.Map;
+import java.util.regex.Pattern;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -74,11 +75,37 @@ public class AssistantRuntime
       this.store = new AssistantStore();
       this.policyService = new PolicyService(config, store, clock);
       this.rateLimiter = new RateLimiter(clock);
-      this.kernel = new AiToolKernel(qInstance, new AiToolKernelSettings()
+      this.kernel = new AiToolKernel(qInstance, kernelSettings(config));
+      this.contextBuilder = new ContextBuilder(config, kernel);
+   }
+
+
+
+   /*******************************************************************************
+    ** The kernel settings from the QBit config: caps, default exposure, the
+    ** widgets the assistant may render (default: none - the kernel denies
+    ** widgets unless allowed), widgets it may never render, and extra
+    ** redaction patterns.
+    *******************************************************************************/
+   public static AiToolKernelSettings kernelSettings(AssistantQBitConfig config)
+   {
+      AiToolKernelSettings settings = new AiToolKernelSettings()
          .withMaxRowsToModel(config.getMaxRowsToModel())
          .withMaxCellChars(config.getMaxCellChars())
-         .withDefaultExposure(config.getDefaultExposure()));
-      this.contextBuilder = new ContextBuilder(config, kernel);
+         .withDefaultExposure(config.getDefaultExposure());
+      if(config.getAllowedWidgetNames() != null)
+      {
+         config.getAllowedWidgetNames().forEach(settings::withAllowedWidgetName);
+      }
+      if(config.getHiddenWidgetNames() != null)
+      {
+         config.getHiddenWidgetNames().forEach(settings::withHiddenWidgetName);
+      }
+      if(config.getCustomRedactionPatterns() != null)
+      {
+         config.getCustomRedactionPatterns().forEach(p -> settings.withCustomRedactionPattern(Pattern.compile(p)));
+      }
+      return (settings);
    }
 
 
@@ -131,6 +158,16 @@ public class AssistantRuntime
    public RunningTurn getRunningTurn(Integer turnId)
    {
       return (turnId == null ? null : runningTurns.get(turnId));
+   }
+
+
+
+   /*******************************************************************************
+    ** Cancel every turn running here (e.g. the kill switch flipped).
+    *******************************************************************************/
+   public void cancelAll(String reason)
+   {
+      runningTurns.values().forEach(t -> t.cancel(reason));
    }
 
 

@@ -82,6 +82,18 @@ class AssistantRetentionStepTest extends BaseAssistantTest
          assertThat(calls.get(0).getResultJson()).isNull();
          assertThat(calls.get(0).getResultSummary()).isNotBlank();
 
+         assertThat(results.turnEventsDeleted()).isGreaterThan(0);
+         assertThat(store.query(AssistantTurnEvent.TABLE_NAME, new QQueryFilter(), AssistantTurnEvent.class)).isEmpty();
+         assertThat(results.messagesStripped()).isEqualTo(1);
+         List<AssistantMessage> messages = store.query(AssistantMessage.TABLE_NAME, new QQueryFilter(), AssistantMessage.class);
+         assertThat(messages).hasSize(4);
+         for(AssistantMessage message : messages)
+         {
+            assertThat(message.getPartsJson()).doesNotContain("\"render\"").doesNotContain("record_refs");
+         }
+         assertThat(messages).anyMatch(m -> m.getPartsJson().contains("count_records") && m.getPartsJson().contains("12 pages"));
+         assertThat(AssistantRetentionStep.purge(config, store, Instant.now().plus(Duration.ofDays(31))).messagesStripped()).as("idempotent").isZero();
+
          AssistantRetentionStep.Result old = AssistantRetentionStep.purge(config, store, Instant.now().plus(Duration.ofDays(91)));
          assertThat(old.conversationsDeleted()).isEqualTo(2);
          for(Class<? extends com.kingsrook.qqq.backend.core.model.data.QRecordEntity> entity : List.of(AssistantConversation.class, AssistantMessage.class, AssistantToolCall.class, AssistantTurnEvent.class))
@@ -111,7 +123,7 @@ class AssistantRetentionStepTest extends BaseAssistantTest
          input.setProcessName(AssistantMetaDataBuilder.RETENTION_PROCESS_NAME);
          input.setFrontendStepBehavior(RunProcessInput.FrontendStepBehavior.SKIP);
          RunProcessOutput output = new RunProcessAction().execute(input);
-         assertThat(output.getValues()).containsEntry("conversationsDeleted", (Serializable) 0).containsEntry("toolResultsCleared", (Serializable) 0);
+         assertThat(output.getValues()).containsEntry("conversationsDeleted", (Serializable) 0).containsEntry("toolResultsCleared", (Serializable) 0).containsEntry("turnEventsDeleted", (Serializable) 0);
       }
       finally
       {

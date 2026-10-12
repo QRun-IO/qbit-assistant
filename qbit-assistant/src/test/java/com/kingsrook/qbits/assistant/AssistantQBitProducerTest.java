@@ -80,6 +80,9 @@ class AssistantQBitProducerTest extends BaseAssistantTest
       assertThat(qInstance.getPossibleValueSource(AssistantConversation.TABLE_NAME)).isNotNull();
       assertThat(qInstance.getQBits().values()).anyMatch(q -> "assistant".equals(q.getArtifactId()));
 
+      assertThat(com.kingsrook.qbits.assistant.metadata.AssistantInstanceMetaData.of(qInstance)).isNotNull();
+      assertThat(com.kingsrook.qbits.assistant.metadata.AssistantInstanceMetaData.of(qInstance).getVersion()).isEqualTo(1);
+      assertThat(com.kingsrook.qbits.assistant.metadata.AssistantInstanceMetaData.of(qInstance).getBasePath()).isEqualTo("/qqq/v1/assistant");
       assertThat(config.getRuntime()).isNotNull();
       assertThat(AssistantRuntime.of(qInstance)).isSameAs(config.getRuntime());
       assertThat(AssistantQBitProducer.getVersion()).isNotBlank();
@@ -202,7 +205,9 @@ class AssistantQBitProducerTest extends BaseAssistantTest
       instance.addSecurityKeyType(new QSecurityKeyType().withName("userKey").withAllAccessKeyName("userKeyAll"));
 
       AssistantQBitConfig hostConfig = new AssistantQBitConfig().withBackendName("memory").withOwnerSecurityKeyType("userKey").withRetentionSchedulerName("quartz").withRegisterRoutes(false);
+      hostConfig.setEnabled(false);
       new AssistantQBitProducer().withQBitConfig(hostConfig).produce(instance);
+      assertThat(com.kingsrook.qbits.assistant.metadata.AssistantInstanceMetaData.of(instance)).as("not advertised when disabled").isNull();
       assertThat(instance.getSecurityKeyType("userKey").getAllAccessKeyName()).isEqualTo("userKeyAll");
       assertThat(instance.getProcess(AssistantMetaDataBuilder.RETENTION_PROCESS_NAME).getSchedule().getSchedulerName()).isEqualTo("quartz");
       hostConfig.getRuntime().close();

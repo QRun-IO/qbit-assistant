@@ -224,9 +224,10 @@ public class AssistantRouteProvider implements QJavalinRouteProviderInterface
       ///////////////////////////////////////////////////////////////////////
       try
       {
-         OutputStream out  = startStream(context);
-         int          last = after;
+         OutputStream out       = startStream(context);
+         int          last      = after;
          long         lastWrite = System.currentTimeMillis();
+         long         giveUpAt  = System.currentTimeMillis() + (api.maxTurnSeconds() + 60L) * 1000L;
          AssistantApi.TurnEvents current = events;
          while(true)
          {
@@ -238,11 +239,14 @@ public class AssistantRouteProvider implements QJavalinRouteProviderInterface
                lastWrite = System.currentTimeMillis();
                ended |= event.isTerminal();
             }
-            if(ended || current.finished())
+            if(ended || (current.finished() && !current.more()) || System.currentTimeMillis() > giveUpAt)
             {
                return;
             }
-            Thread.sleep(REMOTE_POLL_MS);
+            if(!current.more())
+            {
+               Thread.sleep(REMOTE_POLL_MS);
+            }
             if(System.currentTimeMillis() - lastWrite >= pingMillis)
             {
                write(out, ping());

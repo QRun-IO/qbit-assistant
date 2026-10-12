@@ -14,7 +14,7 @@ The data access itself is done by the AI tool kernel in QQQ core (`com.kingsrook
 ## Requirements
 
 - Java 21.
-- **QQQ 4.1 with the AI tool kernel.** `qqq-backend-core` must include `actions.ai`, and `qqq-middleware-javalin` is needed for the routes. Phase 1 builds against a local kernel build: `-Dqqq.snapshot.version=4.1.0-AIKERNEL-SNAPSHOT`. See [Build](#build).
+- **QQQ 4.1 with the AI tool kernel (QRun-IO/qqq#1078) and the developer-panel contract (QRun-IO/qqq#1076).** The first QQQ 4.1 RC that contains both is the minimum. `qqq-middleware-javalin` is needed for the routes. Until that RC exists, build against a local QQQ build. See [Build](#build).
 - A backend for the assistant's tables, e.g. the app's RDBMS backend.
 - For Claude: an Anthropic API key held in the application's secret store.
 
@@ -78,8 +78,18 @@ The provider's `toString` never contains the key. Its errors carry only the HTTP
 | `retentionSchedulerName` | none | Runs `assistantRetention` daily on that scheduler. |
 | `ownerSecurityKeyType` | `assistantUserId` | Key type of the owner record locks. |
 | `pricing` | Anthropic list prices, 2026-10 | USD per million tokens per model, used for cost and budgets. |
+| `allowedWidgetNames` | none | Dashboard widgets `render_widget` may render. The kernel denies every widget not on this list. |
+| `hiddenWidgetNames` | none | Widgets that are never rendered, even when allowed. |
+| `customRedactionPatterns` | none | Extra regular expressions the kernel redacts from tool results. |
+| `killSwitchPollMillis` | 2000 | How often a running turn re-checks the kill switch while it waits on the model. |
 
-At runtime, an admin can override the kill switch, the main model and effort, and the budgets in the single **`assistantPolicy`** row. A turn re-reads the kill switch before every model call and tool step. Flipping it stops running turns within one step.
+At runtime, an admin can override the kill switch, the main model and effort, and the budgets in the single **`assistantPolicy`** row.
+
+A running turn notices the kill switch in two ways:
+- It re-reads the switch before every model call and tool step.
+- A watcher polls it every `killSwitchPollMillis` while the turn waits on the model.
+
+When a turn sees the switch on, it cancels every turn running on that replica. If the policy row cannot be read, the switch counts as **on**: it fails closed.
 
 ## Permissions
 
@@ -89,6 +99,8 @@ At runtime, an admin can override the kill switch, the main model and effort, an
 | `assistant.admin` | The Assistant Admin app, its tables and the retention process. |
 
 There is no assistant-specific data permission. Everything the kernel reads is checked against the user's normal table permissions and record locks. The QBit never uses a system session (an ArchUnit test enforces this).
+
+When the QBit is enabled, it registers the supplemental instance meta-data `assistant` (`{version, basePath}`). The Next UI only probes `/config` when `/metaData` carries it.
 
 ### Record locks on the assistant's own tables
 
@@ -122,7 +134,7 @@ Old tool results are cleared from the context of later turns; only one-line summ
 
 Stored in your database:
 - every message
-- every tool call: sanitized input, outcome, permission check, row count, duration, redactions, and the model-visible result, which is kept for `toolResultRetentionDays`
+- every tool call: sanitized input, outcome, permission check, row count, duration, redactions, and the model-visible result. After `toolResultRetentionDays`, the result is cleared, stream events are deleted, and render payloads and record references are removed from stored messages. Summaries and answer text stay until `conversationRetentionDays`.
 - turn accounting: tokens, cache reads and writes, and cost
 - streamed events, kept for replay
 - feedback
@@ -181,7 +193,7 @@ Field names are camelCase. Map them to your schema with a table customizer. `doc
 
 ```bash
 ./mvnw verify                                                    # against the committed QQQ version
-./mvnw verify -Dqqq.snapshot.version=4.1.0-AIKERNEL-SNAPSHOT      # against a locally installed kernel build
+./mvnw verify -Dqqq.snapshot.version=4.1.0-ASSISTDEV-SNAPSHOT     # against a local QQQ build with #1078 + #1076
 ```
 
 Two test groups run in every build and fail it on any error:

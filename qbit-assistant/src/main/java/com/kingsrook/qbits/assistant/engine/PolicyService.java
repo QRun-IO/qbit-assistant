@@ -114,8 +114,8 @@ public class PolicyService
 
 
    /*******************************************************************************
-    ** Whether the kill switch is on right now (fresh read; errors count as
-    ** "off" only if the policy table is unreadable - logged).
+    ** Whether the kill switch is on right now (fresh read). Fails CLOSED: if
+    ** the policy cannot be read, the switch counts as on (logged).
     *******************************************************************************/
    public boolean isKillSwitchOn()
    {
@@ -123,10 +123,10 @@ public class PolicyService
       {
          return (current(true).killSwitch());
       }
-      catch(QException e)
+      catch(Exception e)
       {
-         LOG.warn("Could not read the assistant policy; treating the kill switch as off", e);
-         return (false);
+         LOG.warn("Could not read the assistant policy; treating the kill switch as ON (fail closed)", e);
+         return (true);
       }
    }
 

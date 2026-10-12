@@ -51,7 +51,9 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
  *******************************************************************************/
 public class ContextBuilder
 {
-   public static final Set<AiToolKind> PHASE1_KINDS = Set.of(AiToolKind.READ, AiToolKind.NAVIGATION);
+   public static final Set<AiToolKind> PHASE1_KINDS      = Set.of(AiToolKind.READ, AiToolKind.NAVIGATION);
+   public static final int             MAX_CONTEXT_CHARS = 512;
+   public static final int             MAX_SELECTED_IDS  = 100;
 
    private final AssistantQBitConfig config;
    private final AiToolKernel        kernel;
@@ -228,7 +230,11 @@ public class ContextBuilder
 
 
    /*******************************************************************************
-    ** Page context as sent by the client, trimmed to the known keys.
+    ** Page context as sent by the client - a hint, so it is trimmed hard:
+    ** route / tableName / recordId as strings (or a number for recordId) of at
+    ** most MAX_CONTEXT_CHARS, selectedIds as at most MAX_SELECTED_IDS such
+    ** scalars, filter as an object - dropped (with selectedIds) when the whole
+    ** context JSON exceeds 4000 characters. Anything else is dropped.
     *******************************************************************************/
    public static Map<String, Object> sanitizePageContext(Map<String, Object> raw)
    {
@@ -237,21 +243,60 @@ public class ContextBuilder
       {
          return (clean);
       }
-      for(String key : List.of("route", "tableName", "recordId", "filter", "selectedIds"))
+      for(String key : List.of("route", "tableName", "recordId"))
       {
-         Object value = raw.get(key);
+         Object value = scalar(raw.get(key));
          if(value != null)
          {
             clean.put(key, value);
          }
       }
-      String json = JsonUtils.toJson(clean);
-      if(json.length() > 4000)
+      if(raw.get("filter") instanceof Map<?, ?> filter)
+      {
+         clean.put("filter", filter);
+      }
+      if(raw.get("selectedIds") instanceof List<?> ids)
+      {
+         List<Object> kept = new ArrayList<>();
+         for(Object id : ids)
+         {
+            Object value = scalar(id);
+            if(value != null && kept.size() < MAX_SELECTED_IDS)
+            {
+               kept.add(value);
+            }
+         }
+         if(!kept.isEmpty())
+         {
+            clean.put("selectedIds", kept);
+         }
+      }
+
+      if(JsonUtils.toJson(clean).length() > 4000)
       {
          clean.remove("filter");
          clean.remove("selectedIds");
       }
       return (clean);
+   }
+
+
+
+   /*******************************************************************************
+    ** A string (trimmed, at most MAX_CONTEXT_CHARS) or a number; else null.
+    *******************************************************************************/
+   private static Object scalar(Object value)
+   {
+      if(value instanceof Number number)
+      {
+         return (number);
+      }
+      if(value instanceof String string && StringUtils.hasContent(string))
+      {
+         String trimmed = string.trim();
+         return (trimmed.length() > MAX_CONTEXT_CHARS ? trimmed.substring(0, MAX_CONTEXT_CHARS) : trimmed);
+      }
+      return (null);
    }
 
 }

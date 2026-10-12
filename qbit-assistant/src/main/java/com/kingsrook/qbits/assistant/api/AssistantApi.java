@@ -236,7 +236,7 @@ public class AssistantApi
       requireConversation(id);
       for(AssistantTurn turn : store.listRunningTurns(userId))
       {
-         if(id.equals(turn.getConversationId()))
+         if(id.equals(turn.getConversationId()) && isRunning(reapIfOrphaned(turn)))
          {
             throw (new AssistantApiException(409, "This conversation has an answer in progress. Stop it first."));
          }
@@ -284,8 +284,14 @@ public class AssistantApi
          throw (new AssistantApiException(429, "BUDGET", budget.message()));
       }
 
-      Instant stale = runtime.getClock().instant().minusSeconds(config.getMaxTurnSeconds() + 60L);
-      long running = store.listRunningTurns(userId).stream().filter(t -> t.getStartedAt() != null && t.getStartedAt().isAfter(stale)).count();
+      long running = 0;
+      for(AssistantTurn other : store.listRunningTurns(userId))
+      {
+         if(isRunning(reapIfOrphaned(other)))
+         {
+            running++;
+         }
+      }
       if(running >= config.getMaxConcurrentTurnsPerUser())
       {
          throw (new AssistantApiException(429, "RATE_LIMIT", "You already have an assistant answer in progress. Wait for it to finish or stop it."));
@@ -358,7 +364,7 @@ public class AssistantApi
     ** Where to read a turn's events from: the live log (this replica) or, for
     ** finished / remote turns, the persisted events.
     *******************************************************************************/
-   public record TurnEvents(RunningTurn live, List<TurnEvent> persisted, boolean finished)
+   public record TurnEvents(RunningTurn live, List<TurnEvent> persisted, boolean finished, boolean more)
    {
    }
 
@@ -375,16 +381,17 @@ public class AssistantApi
       RunningTurn live = runtime.getRunningTurn(turnId);
       if(live != null && userId.equals(live.getUserId()))
       {
-         return (new TurnEvents(live, null, false));
+         return (new TurnEvents(live, null, false, false));
       }
+      turn = reapIfOrphaned(turn);
 
       List<TurnEvent> events = new ArrayList<>();
-      for(AssistantTurnEvent event : store.listEvents(userId, turnId, after))
+      List<AssistantTurnEvent> page = store.listEvents(userId, turnId, after, AssistantStore.EVENT_PAGE_SIZE);
+      for(AssistantTurnEvent event : page)
       {
          events.add(TurnEvent.fromJson(event.getSeq(), event.getEventType(), event.getDataJson()));
       }
-      boolean finished = !"RUNNING".equals(turn.getStatus()) && !"CANCELLING".equals(turn.getStatus());
-      return (new TurnEvents(null, events, finished));
+      return (new TurnEvents(null, events, !isRunning(turn), page.size() >= AssistantStore.EVENT_PAGE_SIZE));
    }
 
 
@@ -396,7 +403,11 @@ public class AssistantApi
    {
       requireAccess();
       AssistantTurn turn = requireTurn(turnId);
-      if(!"RUNNING".equals(turn.getStatus()) && !"CANCELLING".equals(turn.getStatus()))
+      if(runtime.getRunningTurn(turnId) == null)
+      {
+         turn = reapIfOrphaned(turn);
+      }
+      if(!isRunning(turn))
       {
          throw (new AssistantApiException(409, "This answer has already finished."));
       }
@@ -408,6 +419,75 @@ public class AssistantApi
          live.cancel("USER");
       }
       return (Map.of("status", "CANCELLING"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether a turn row still says it runs.
+    *******************************************************************************/
+   static boolean isRunning(AssistantTurn turn)
+   {
+      return (turn != null && ("RUNNING".equals(turn.getStatus()) || "CANCELLING".equals(turn.getStatus())));
+   }
+
+
+
+   /*******************************************************************************
+    ** A turn whose replica died: it still says RUNNING / CANCELLING, no turn
+    ** of this runtime owns it, and it started longer ago than maxTurnSeconds
+    ** + 60 s (a live engine always ends itself by then). On first sight it is
+    ** finished as ERROR: the assistant message gets status ERROR and a
+    ** notice, and synthetic error (INTERNAL) + message.end events are
+    ** persisted, so replays end. Returns the (possibly updated) turn.
+    *******************************************************************************/
+   AssistantTurn reapIfOrphaned(AssistantTurn turn) throws QException
+   {
+      if(!isRunning(turn) || runtime.getRunningTurn(turn.getId()) != null || turn.getStartedAt() == null)
+      {
+         return (turn);
+      }
+      Instant stale = runtime.getClock().instant().minusSeconds(config.getMaxTurnSeconds() + 60L);
+      if(!turn.getStartedAt().isBefore(stale))
+      {
+         return (turn);
+      }
+
+      String text = "This answer was interrupted (the server restarted). Ask again.";
+      if(turn.getAssistantMessageId() != null)
+      {
+         AssistantMessage message = store.getMessage(userId, turn.getAssistantMessageId());
+         if(message != null)
+         {
+            store.updateFields(AssistantMessage.TABLE_NAME, new QRecord()
+               .withValue("id", message.getId())
+               .withValue("status", "ERROR")
+               .withValue("partsJson", MessageParts.fromJson(message.getPartsJson()).addNotice("error", text).toJson()));
+         }
+      }
+
+      int seq = store.lastEventSeq(userId, turn.getId());
+      store.insertEvent(turn.getId(), userId, seq + 1, TurnEvent.ERROR, new TurnEvent(seq + 1, TurnEvent.ERROR, Map.of("code", "INTERNAL", "message", text)).toJson());
+      Map<String, Object> end = new java.util.LinkedHashMap<>();
+      if(turn.getAssistantMessageId() != null)
+      {
+         end.put("messageId", turn.getAssistantMessageId());
+      }
+      end.put("status", "ERROR");
+      end.put("stopReason", "interrupted");
+      store.insertEvent(turn.getId(), userId, seq + 2, TurnEvent.MESSAGE_END, new TurnEvent(seq + 2, TurnEvent.MESSAGE_END, end).toJson());
+
+      Instant now = runtime.getClock().instant();
+      store.updateFields(AssistantTurn.TABLE_NAME, new QRecord()
+         .withValue("id", turn.getId())
+         .withValue("status", "ERROR")
+         .withValue("errorCode", "INTERNAL")
+         .withValue("stopReason", "interrupted")
+         .withValue("endedAt", now));
+      turn.setStatus("ERROR");
+      turn.setErrorCode("INTERNAL");
+      turn.setEndedAt(now);
+      return (turn);
    }
 
 
@@ -442,6 +522,16 @@ public class AssistantApi
          .withRating(number.intValue())
          .withReason(reason)
          .withComment(comment));
+   }
+
+
+
+   /*******************************************************************************
+    ** The configured turn time limit (replay loops are capped by it).
+    *******************************************************************************/
+   public int maxTurnSeconds()
+   {
+      return (config.getMaxTurnSeconds());
    }
 
 

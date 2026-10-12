@@ -140,7 +140,7 @@ public class ScriptedModelProvider implements AssistantModelProvider
    {
       return (thenRespond(request ->
       {
-         throw (new ScriptedFailure(new ModelProviderException(kind, null, message)));
+         throw (new ScriptedFailure(new ModelProviderException(kind, null, message).withPartialUsage(new ModelUsage().add(usagePerCall))));
       }));
    }
 

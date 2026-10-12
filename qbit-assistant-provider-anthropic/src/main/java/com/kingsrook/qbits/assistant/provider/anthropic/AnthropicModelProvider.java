@@ -20,6 +20,7 @@ package com.kingsrook.qbits.assistant.provider.anthropic;
 import java.time.Duration;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import com.anthropic.client.AnthropicClient;
@@ -34,6 +35,7 @@ import com.kingsrook.qbits.assistant.provider.ModelCapabilities;
 import com.kingsrook.qbits.assistant.provider.ModelEventListener;
 import com.kingsrook.qbits.assistant.provider.ModelProviderException;
 import com.kingsrook.qbits.assistant.provider.ModelRequest;
+import com.kingsrook.qbits.assistant.provider.ModelUsage;
 import com.kingsrook.qbits.assistant.provider.StreamHandle;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
@@ -258,6 +260,9 @@ public class AnthropicModelProvider implements AssistantModelProvider
          return (handle);
       }
 
+      AtomicReference<ModelUsage> seen = new AtomicReference<>();
+      handle.setPartialUsage(seen::get);
+
       executor.submit(() ->
       {
          try(StreamResponse<RawMessageStreamEvent> response = client.messages().createStreaming(params))
@@ -272,6 +277,12 @@ public class AnthropicModelProvider implements AssistantModelProvider
             response.stream().forEach(event ->
             {
                accumulator.accumulate(event);
+               event.messageStart().ifPresent(start -> seen.set(AnthropicMapping.toUsage(start.message().usage())));
+               event.messageDelta().ifPresent(delta ->
+               {
+                  ModelUsage current = seen.get() == null ? new ModelUsage() : seen.get();
+                  seen.set(current.withOutputTokens(delta.usage().outputTokens()));
+               });
                event.contentBlockDelta().flatMap(delta -> delta.delta().text()).ifPresent(text -> listener.onTextDelta(text.text()));
                event.contentBlockStart().flatMap(start -> start.contentBlock().toolUse()).ifPresent(use -> listener.onToolUseStart(use.id(), use.name()));
             });
@@ -285,7 +296,7 @@ public class AnthropicModelProvider implements AssistantModelProvider
          {
             if(!handle.isCancelled())
             {
-               ModelProviderException exception = AnthropicMapping.toProviderException(t);
+               ModelProviderException exception = AnthropicMapping.toProviderException(t).withPartialUsage(seen.get());
                LOG.info("Anthropic stream failed", logPair("kind", exception.getKind()), logPair("httpStatus", exception.getHttpStatus()), logPair("model", request.getModel()));
                handle.fail(exception);
             }

@@ -22,7 +22,9 @@ import java.time.Instant;
 import java.util.List;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
+import com.kingsrook.qbits.assistant.engine.MessageParts;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
+import com.kingsrook.qbits.assistant.model.AssistantMessage;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -30,6 +32,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
+import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
@@ -63,6 +66,8 @@ public class AssistantRetentionStep implements BackendStep
       Result result = purge(runtime.getConfig(), runtime.getStore(), runtime.getClock().instant());
       output.addValue("conversationsDeleted", result.conversationsDeleted());
       output.addValue("toolResultsCleared", result.toolResultsCleared());
+      output.addValue("turnEventsDeleted", result.turnEventsDeleted());
+      output.addValue("messagesStripped", result.messagesStripped());
    }
 
 
@@ -70,7 +75,7 @@ public class AssistantRetentionStep implements BackendStep
    /*******************************************************************************
     ** What was purged.
     *******************************************************************************/
-   public record Result(int conversationsDeleted, int toolResultsCleared)
+   public record Result(int conversationsDeleted, int toolResultsCleared, int turnEventsDeleted, int messagesStripped)
    {
    }
 
@@ -110,8 +115,45 @@ public class AssistantRetentionStep implements BackendStep
          }
       }
 
-      LOG.info("Assistant retention ran", logPair("conversationsDeleted", deleted), logPair("toolResultsCleared", cleared));
-      return (new Result(deleted, cleared));
+      ///////////////////////////////////////////////////////////////////////
+      // the same cutoff for record data kept elsewhere: stream events     //
+      // (replay only - deleted) and render / record refs in messages      //
+      ///////////////////////////////////////////////////////////////////////
+      int eventsDeleted = 0;
+      while(true)
+      {
+         int count = store.deleteTurnEventsBefore(toolResultCutoff, BATCH);
+         eventsDeleted += count;
+         if(count < BATCH)
+         {
+            break;
+         }
+      }
+
+      int messagesStripped = 0;
+      int afterId          = 0;
+      while(true)
+      {
+         List<AssistantMessage> batch = store.listAssistantMessagesBefore(toolResultCutoff, afterId, BATCH);
+         for(AssistantMessage message : batch)
+         {
+            afterId = message.getId();
+            MessageParts parts = MessageParts.fromJson(message.getPartsJson());
+            if(parts.stripRecordData())
+            {
+               store.updateFields(AssistantMessage.TABLE_NAME, new QRecord().withValue("id", message.getId()).withValue("partsJson", parts.toJson()));
+               messagesStripped++;
+            }
+         }
+         if(batch.size() < BATCH)
+         {
+            break;
+         }
+      }
+
+      LOG.info("Assistant retention ran", logPair("conversationsDeleted", deleted), logPair("toolResultsCleared", cleared),
+         logPair("turnEventsDeleted", eventsDeleted), logPair("messagesStripped", messagesStripped));
+      return (new Result(deleted, cleared, eventsDeleted, messagesStripped));
    }
 
 }

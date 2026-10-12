@@ -184,6 +184,11 @@ public class AssistantQBitProducer implements QBitMetaDataProducer<AssistantQBit
          routes = true;
       }
 
+      if(qBitConfig.isEffectivelyEnabled())
+      {
+         com.kingsrook.qbits.assistant.metadata.AssistantInstanceMetaData.register(qInstance);
+      }
+
       boolean developerPanel = false;
       if(com.kingsrook.qbits.assistant.developer.AssistantDeveloperPanels.isContractAvailable())
       {

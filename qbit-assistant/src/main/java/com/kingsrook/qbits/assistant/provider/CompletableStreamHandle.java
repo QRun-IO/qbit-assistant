@@ -23,6 +23,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 
 
 /*******************************************************************************
@@ -35,6 +36,7 @@ public class CompletableStreamHandle implements StreamHandle
    private final CompletableFuture<ModelResponse> future    = new CompletableFuture<>();
    private final AtomicBoolean                    cancelled = new AtomicBoolean(false);
    private volatile Runnable                      onCancel;
+   private volatile Supplier<ModelUsage>          partialUsage;
 
 
 
@@ -44,6 +46,34 @@ public class CompletableStreamHandle implements StreamHandle
    public void setOnCancel(Runnable onCancel)
    {
       this.onCancel = onCancel;
+   }
+
+
+
+   /*******************************************************************************
+    ** What the call has used so far (for cancelled / timed-out calls).
+    *******************************************************************************/
+   public void setPartialUsage(Supplier<ModelUsage> partialUsage)
+   {
+      this.partialUsage = partialUsage;
+   }
+
+
+
+   /*******************************************************************************
+    ** The usage so far, or null.
+    *******************************************************************************/
+   public ModelUsage partialUsage()
+   {
+      try
+      {
+         Supplier<ModelUsage> supplier = partialUsage;
+         return (supplier == null ? null : supplier.get());
+      }
+      catch(RuntimeException e)
+      {
+         return (null);
+      }
    }
 
 
@@ -90,7 +120,8 @@ public class CompletableStreamHandle implements StreamHandle
                ////////////////////////////////////////////////
             }
          }
-         future.complete(new ModelResponse().withStopReason(ModelResponse.STOP_CANCELLED));
+         ModelUsage used = partialUsage();
+         future.complete(new ModelResponse().withStopReason(ModelResponse.STOP_CANCELLED).withUsage(used == null ? new ModelUsage() : used));
       }
    }
 
@@ -120,7 +151,7 @@ public class CompletableStreamHandle implements StreamHandle
       catch(TimeoutException e)
       {
          cancel();
-         throw (new ModelProviderException(ModelProviderException.Kind.TIMEOUT, null, "The model did not answer in time."));
+         throw (new ModelProviderException(ModelProviderException.Kind.TIMEOUT, null, "The model did not answer in time.").withPartialUsage(partialUsage()));
       }
       catch(ExecutionException e)
       {

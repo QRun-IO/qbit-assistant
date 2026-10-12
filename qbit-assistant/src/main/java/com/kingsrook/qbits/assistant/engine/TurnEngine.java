@@ -123,6 +123,8 @@ public class TurnEngine implements Runnable
    private int     modelCallCount = 0;
    private long    costMicros     = 0;
 
+   private volatile boolean finished = false;
+
 
 
    /*******************************************************************************
@@ -166,6 +168,7 @@ public class TurnEngine implements Runnable
       try
       {
          QContext.init(runtime.getQInstance(), session);
+         startKillSwitchWatcher();
 
          emit(TurnEvent.MESSAGE_START, map("turnId", turn.getId(), "conversationId", conversation.getId(), "userMessageId", userMessage.getId(), "messageId", assistantMessage.getId()));
          if(softBudgetNotice != null)
@@ -291,6 +294,11 @@ public class TurnEngine implements Runnable
       }
       catch(ModelProviderException e)
       {
+         if(e.getPartialUsage() != null)
+         {
+            usage.add(e.getPartialUsage());
+            costMicros += pricing(policy.mainModel()).costMicros(e.getPartialUsage());
+         }
          status = "ERROR";
          errorCode = e.getKind() == ModelProviderException.Kind.TIMEOUT ? "TIMEOUT" : "PROVIDER";
          errorText = e.getKind() == ModelProviderException.Kind.TIMEOUT
@@ -313,9 +321,52 @@ public class TurnEngine implements Runnable
       }
       finally
       {
+         finished = true;
          finish(status, stopReason, errorCode, errorText);
          QContext.clear();
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Poll the kill switch while the turn runs (with the user's own session),
+    ** so a flip cancels the turn - and every other turn here - even while it
+    ** waits on the model.
+    *******************************************************************************/
+   private void startKillSwitchWatcher()
+   {
+      long pollMillis = config.getKillSwitchPollMillis() == null ? 2000 : config.getKillSwitchPollMillis();
+      Thread.ofVirtual().name("assistant-killswitch-" + turn.getId()).start(() ->
+      {
+         try
+         {
+            while(!finished && !running.isCancelled())
+            {
+               Thread.sleep(pollMillis);
+               if(finished)
+               {
+                  return;
+               }
+               QContext.init(runtime.getQInstance(), session);
+               try
+               {
+                  if(runtime.getPolicyService().isKillSwitchOn())
+                  {
+                     runtime.cancelAll("KILL_SWITCH");
+                  }
+               }
+               finally
+               {
+                  QContext.clear();
+               }
+            }
+         }
+         catch(InterruptedException e)
+         {
+            Thread.currentThread().interrupt();
+         }
+      });
    }
 
 
@@ -349,7 +400,7 @@ public class TurnEngine implements Runnable
       }
       if(runtime.getPolicyService().isKillSwitchOn())
       {
-         running.cancel("KILL_SWITCH");
+         runtime.cancelAll("KILL_SWITCH");
          return (cancelledStop());
       }
       if(!runtime.getClock().instant().isBefore(deadline))
@@ -640,23 +691,6 @@ public class TurnEngine implements Runnable
                .withValue("model", model)
                .withValue("partsJson", parts.toJson()));
 
-            store.updateFields(AssistantTurn.TABLE_NAME, new QRecord()
-               .withValue("id", turn.getId())
-               .withValue("status", status)
-               .withValue("stopReason", truncate(stopReason, 64))
-               .withValue("errorCode", errorCode)
-               .withValue("cancelReason", running.getCancelReason())
-               .withValue("model", model)
-               .withValue("endedAt", now)
-               .withValue("toolCallCount", toolCallCount)
-               .withValue("modelCallCount", modelCallCount)
-               .withValue("inputTokens", usage.getInputTokens())
-               .withValue("outputTokens", usage.getOutputTokens())
-               .withValue("cacheReadTokens", usage.getCacheReadTokens())
-               .withValue("cacheWriteTokens", usage.getCacheWriteTokens())
-               .withValue("costMicros", costMicros)
-               .withValue("providerRequestIds", requestIds.isEmpty() ? null : String.join(",", requestIds)));
-
             AssistantConversation current = store.getConversation(userId, conversation.getId());
             if(current != null)
             {
@@ -676,6 +710,10 @@ public class TurnEngine implements Runnable
             LOG.warn("Could not persist the end of an assistant turn", e, logPair("turnId", turn.getId()));
          }
 
+         /////////////////////////////////////////////////////////////////////
+         // terminal events are persisted BEFORE the turn row turns final, //
+         // so a replay of a finished turn always ends with message.end    //
+         /////////////////////////////////////////////////////////////////////
          emit(TurnEvent.USAGE, map("turnId", turn.getId(), "inputTokens", usage.getInputTokens(), "outputTokens", usage.getOutputTokens(),
             "cacheReadTokens", usage.getCacheReadTokens(), "cacheWriteTokens", usage.getCacheWriteTokens(), "costMicros", costMicros));
          if(errorCode != null)
@@ -689,6 +727,30 @@ public class TurnEngine implements Runnable
          }
          emit(TurnEvent.MESSAGE_END, end);
          persistPendingEvents();
+
+         try
+         {
+            store.updateFields(AssistantTurn.TABLE_NAME, new QRecord()
+               .withValue("id", turn.getId())
+               .withValue("status", status)
+               .withValue("stopReason", truncate(stopReason, 64))
+               .withValue("errorCode", errorCode)
+               .withValue("cancelReason", running.getCancelReason())
+               .withValue("model", model)
+               .withValue("endedAt", now)
+               .withValue("toolCallCount", toolCallCount)
+               .withValue("modelCallCount", modelCallCount)
+               .withValue("inputTokens", usage.getInputTokens())
+               .withValue("outputTokens", usage.getOutputTokens())
+               .withValue("cacheReadTokens", usage.getCacheReadTokens())
+               .withValue("cacheWriteTokens", usage.getCacheWriteTokens())
+               .withValue("costMicros", costMicros)
+               .withValue("providerRequestIds", requestIds.isEmpty() ? null : String.join(",", requestIds)));
+         }
+         catch(QException e)
+         {
+            LOG.warn("Could not persist the end of an assistant turn", e, logPair("turnId", turn.getId()));
+         }
 
          LOG.info("Assistant turn finished",
             logPair("turnId", turn.getId()),

@@ -40,6 +40,7 @@ public class ModelProviderException extends Exception
 
    private final Kind    kind;
    private final Integer httpStatus;
+   private ModelUsage    partialUsage;
 
 
 
@@ -71,6 +72,28 @@ public class ModelProviderException extends Exception
    public Integer getHttpStatus()
    {
       return (httpStatus);
+   }
+
+
+
+   /*******************************************************************************
+    ** Usage already incurred by the failed call (e.g. input tokens of a stream
+    ** that broke off), or null. Counted toward budgets and cost.
+    *******************************************************************************/
+   public ModelUsage getPartialUsage()
+   {
+      return (partialUsage);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for partialUsage
+    *******************************************************************************/
+   public ModelProviderException withPartialUsage(ModelUsage partialUsage)
+   {
+      this.partialUsage = partialUsage;
+      return (this);
    }
 
 

@@ -5,7 +5,7 @@ All notable changes to this project are documented here. The format follows Keep
 ## [0.1.0] - Unreleased
 
 Phase 0/1 of the QQQ Assistant: read-only Q&A and navigation. Requires QQQ 4.1 with:
-- the AI tool kernel (`qqq-backend-core` `actions.ai`, QRun-IO/qqq#1077)
+- the AI tool kernel (`qqq-backend-core` `actions.ai`, QRun-IO/qqq#1078)
 - the developer-panel contract (QRun-IO/qqq#1076).
 
 ### Added
@@ -43,3 +43,13 @@ Phase 0/1 of the QQQ Assistant: read-only Q&A and navigation. Requires QQQ 4.1 w
   - the permission red team (a build gate)
   - Anthropic tests against recorded SSE streams
   - live evals against Claude (opt-in).
+
+### Security review follow-ups
+- Kernel settings come from config: `allowedWidgetNames` (the kernel denies any widget not listed), `hiddenWidgetNames` and `customRedactionPatterns`.
+- **Orphaned turns.** A turn left RUNNING by a dead replica is finished as ERROR the first time it is seen, by replay, cancel, delete or a new turn. Its message gets status ERROR, and synthetic `error` (INTERNAL) and `message.end` events are persisted. Replay loops are capped at `maxTurnSeconds` + 60 s.
+- **Retention.** The tool-result cutoff now also deletes stream events, and removes render payloads and record references from stored messages.
+- **Usage.** `addUsage` uses per-key locks, a unique key on (scope, userId, usageDate) and an insert-race retry. Usage of cancelled, timed-out and failed model calls is counted when the provider reports it.
+- **Kill switch.** It fails closed when the policy can't be read. A watcher cancels running turns promptly when it flips.
+- **Limits.** Page-context scalars are capped (strings up to 512 characters, at most 100 selected ids). Conversation lists are limited to 200, running turns to 50, and replay is paged at 500 events.
+- **Ordering.** Terminal events (`usage`, `error`, `message.end`) are persisted before the turn's status becomes final.
+- **Supplemental meta-data.** The `assistant` supplemental instance meta-data is registered when the QBit is enabled.

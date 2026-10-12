@@ -45,6 +45,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.security.QSecurityKeyType;
 import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 
 
@@ -140,6 +141,7 @@ public class AssistantMetaDataBuilder
          .withRecordLabelFormat("%s").withRecordLabelFields("name"));
 
       tables.add(readOnly(owned(base(AssistantUsageDaily.TABLE_NAME, "Assistant Usage (Daily)", "query_stats", AssistantUsageDaily.class), true))
+         .withUniqueKey(new UniqueKey("scope", "userId", "usageDate"))
          .withRecordLabelFormat("%s %s").withRecordLabelFields("scope", "usageDate"));
 
       return (tables);

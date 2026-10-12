@@ -269,7 +269,7 @@ class AnthropicModelProviderTest
          });
 
       assertThatThrownBy(() -> provider.stream(request(), t -> { }).await(Duration.ofSeconds(10)))
-         .isInstanceOf(ModelProviderException.class);
+         .isInstanceOfSatisfying(ModelProviderException.class, e -> assertThat(e.getPartialUsage().getInputTokens()).isEqualTo(50));
    }
 
 
@@ -296,6 +296,7 @@ class AnthropicModelProviderTest
       ModelResponse response = handle.await(Duration.ofSeconds(5));
       assertThat(response.getStopReason()).isEqualTo(ModelResponse.STOP_CANCELLED);
       assertThat(System.currentTimeMillis() - start).isLessThan(3000);
+      assertThat(response.getUsage().getInputTokens()).as("usage of the cancelled call is kept").isEqualTo(50);
       assertThat(handle.isCancelled()).isTrue();
    }
 

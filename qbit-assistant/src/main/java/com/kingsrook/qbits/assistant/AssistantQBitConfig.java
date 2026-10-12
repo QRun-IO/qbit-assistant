@@ -19,8 +19,11 @@ package com.kingsrook.qbits.assistant;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.kingsrook.qbits.assistant.engine.ModelPricing;
 import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
@@ -76,6 +79,11 @@ public class AssistantQBitConfig implements QBitConfig
    private String                retentionSchedulerName;
    private Boolean               registerRoutes             = true;
    private Map<String, ModelPricing> pricing                = ModelPricing.defaults();
+
+   private Set<String>               hiddenWidgetNames        = new LinkedHashSet<>();
+   private Set<String>               allowedWidgetNames       = new LinkedHashSet<>();
+   private List<String>              customRedactionPatterns  = new ArrayList<>();
+   private Integer                   killSwitchPollMillis     = 2000;
 
    private transient MetaDataCustomizerInterface<QTableMetaData> tableMetaDataCustomizer;
    private transient Map<String, AssistantModelProvider>        modelProviders = new LinkedHashMap<>();
@@ -139,6 +147,18 @@ public class AssistantQBitConfig implements QBitConfig
       requirePositive(errors, "conversationRetentionDays", conversationRetentionDays);
       requirePositive(errors, "toolResultRetentionDays", toolResultRetentionDays);
       requirePositive(errors, "approvalRetentionDays", approvalRetentionDays);
+      requirePositive(errors, "killSwitchPollMillis", killSwitchPollMillis);
+      for(String pattern : customRedactionPatterns == null ? List.<String>of() : customRedactionPatterns)
+      {
+         try
+         {
+            Pattern.compile(pattern);
+         }
+         catch(RuntimeException e)
+         {
+            errors.add("customRedactionPatterns: not a valid regular expression: " + pattern);
+         }
+      }
       if(policyCacheSeconds == null || policyCacheSeconds < 0)
       {
          errors.add("policyCacheSeconds must not be negative");
@@ -1043,6 +1063,130 @@ public class AssistantQBitConfig implements QBitConfig
    public AssistantQBitConfig withPricing(Map<String, ModelPricing> pricing)
    {
       this.pricing = pricing;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for hiddenWidgetNames
+    *******************************************************************************/
+   public Set<String> getHiddenWidgetNames()
+   {
+      return (this.hiddenWidgetNames);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for hiddenWidgetNames
+    *******************************************************************************/
+   public void setHiddenWidgetNames(Set<String> hiddenWidgetNames)
+   {
+      this.hiddenWidgetNames = hiddenWidgetNames;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for hiddenWidgetNames
+    *******************************************************************************/
+   public AssistantQBitConfig withHiddenWidgetNames(Set<String> hiddenWidgetNames)
+   {
+      this.hiddenWidgetNames = hiddenWidgetNames;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for allowedWidgetNames
+    *******************************************************************************/
+   public Set<String> getAllowedWidgetNames()
+   {
+      return (this.allowedWidgetNames);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for allowedWidgetNames
+    *******************************************************************************/
+   public void setAllowedWidgetNames(Set<String> allowedWidgetNames)
+   {
+      this.allowedWidgetNames = allowedWidgetNames;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for allowedWidgetNames
+    *******************************************************************************/
+   public AssistantQBitConfig withAllowedWidgetNames(Set<String> allowedWidgetNames)
+   {
+      this.allowedWidgetNames = allowedWidgetNames;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for customRedactionPatterns
+    *******************************************************************************/
+   public List<String> getCustomRedactionPatterns()
+   {
+      return (this.customRedactionPatterns);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for customRedactionPatterns
+    *******************************************************************************/
+   public void setCustomRedactionPatterns(List<String> customRedactionPatterns)
+   {
+      this.customRedactionPatterns = customRedactionPatterns;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for customRedactionPatterns
+    *******************************************************************************/
+   public AssistantQBitConfig withCustomRedactionPatterns(List<String> customRedactionPatterns)
+   {
+      this.customRedactionPatterns = customRedactionPatterns;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for killSwitchPollMillis
+    *******************************************************************************/
+   public Integer getKillSwitchPollMillis()
+   {
+      return (this.killSwitchPollMillis);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for killSwitchPollMillis
+    *******************************************************************************/
+   public void setKillSwitchPollMillis(Integer killSwitchPollMillis)
+   {
+      this.killSwitchPollMillis = killSwitchPollMillis;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for killSwitchPollMillis
+    *******************************************************************************/
+   public AssistantQBitConfig withKillSwitchPollMillis(Integer killSwitchPollMillis)
+   {
+      this.killSwitchPollMillis = killSwitchPollMillis;
       return (this);
    }
 

@@ -23,6 +23,8 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantFeedback;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
@@ -64,6 +66,12 @@ public class AssistantStore
 {
    public static final String SCOPE_USER     = "USER";
    public static final String SCOPE_INSTANCE = "INSTANCE";
+
+   public static final int MAX_CONVERSATIONS = 200;
+   public static final int MAX_RUNNING_TURNS = 50;
+   public static final int EVENT_PAGE_SIZE   = 500;
+
+   private static final Map<String, Object> USAGE_LOCKS = new ConcurrentHashMap<>();
 
 
 
@@ -193,7 +201,9 @@ public class AssistantStore
    public List<AssistantConversation> listConversations(String userId, String status) throws QException
    {
       List<AssistantConversation> list = query(AssistantConversation.TABLE_NAME, owned(userId)
-         .withCriteria("status", QCriteriaOperator.EQUALS, status), AssistantConversation.class);
+         .withCriteria("status", QCriteriaOperator.EQUALS, status)
+         .withOrderBy(new QFilterOrderBy("id", false))
+         .withLimit(MAX_CONVERSATIONS), AssistantConversation.class);
 
       /////////////////////////////////////////////////////////////////////
       // pinned first, then newest activity (or creation) first, then id //
@@ -315,7 +325,10 @@ public class AssistantStore
     *******************************************************************************/
    public List<AssistantTurn> listRunningTurns(String userId) throws QException
    {
-      return (query(AssistantTurn.TABLE_NAME, owned(userId).withCriteria("status", QCriteriaOperator.IN, List.of("RUNNING", "CANCELLING")), AssistantTurn.class));
+      return (query(AssistantTurn.TABLE_NAME, owned(userId)
+         .withCriteria("status", QCriteriaOperator.IN, List.of("RUNNING", "CANCELLING"))
+         .withOrderBy(new QFilterOrderBy("id", false))
+         .withLimit(MAX_RUNNING_TURNS), AssistantTurn.class));
    }
 
 
@@ -338,12 +351,27 @@ public class AssistantStore
    /*******************************************************************************
     ** A turn's persisted events after a sequence number, in order.
     *******************************************************************************/
-   public List<AssistantTurnEvent> listEvents(String userId, Integer turnId, int afterSeq) throws QException
+   public List<AssistantTurnEvent> listEvents(String userId, Integer turnId, int afterSeq, int limit) throws QException
    {
       return (query(AssistantTurnEvent.TABLE_NAME, owned(userId)
          .withCriteria("turnId", QCriteriaOperator.EQUALS, turnId)
          .withCriteria("seq", QCriteriaOperator.GREATER_THAN, afterSeq)
-         .withOrderBy(new QFilterOrderBy("seq", true)), AssistantTurnEvent.class));
+         .withOrderBy(new QFilterOrderBy("seq", true))
+         .withLimit(limit), AssistantTurnEvent.class));
+   }
+
+
+
+   /*******************************************************************************
+    ** The highest persisted event seq of a turn (0 when none).
+    *******************************************************************************/
+   public int lastEventSeq(String userId, Integer turnId) throws QException
+   {
+      List<AssistantTurnEvent> last = query(AssistantTurnEvent.TABLE_NAME, owned(userId)
+         .withCriteria("turnId", QCriteriaOperator.EQUALS, turnId)
+         .withOrderBy(new QFilterOrderBy("seq", false))
+         .withLimit(1), AssistantTurnEvent.class);
+      return (last.isEmpty() || last.get(0).getSeq() == null ? 0 : last.get(0).getSeq());
    }
 
 
@@ -401,42 +429,88 @@ public class AssistantStore
 
    /*******************************************************************************
     ** Add a turn's usage to the user's and the instance's rows of the day.
-    ** (Read-modify-write: concurrent turns of different users can lose an
-    ** increment on the instance row; budgets are approximate by design.)
+    **
+    ** QQQ has no atomic increment, so this is read-modify-write, made safe as
+    ** far as one JVM goes: every row key (scope, userId, date) has its own lock,
+    ** the USER rows have a unique key (scope, userId, usageDate), and an insert
+    ** that loses the race to a concurrent insert is retried as an update.
+    ** Remaining gap: two replicas updating the same row in the same instant
+    ** (the INSTANCE row under heavy multi-replica load) can lose one increment.
     *******************************************************************************/
    public void addUsage(String userId, LocalDate date, ModelUsage usage, long costMicros, boolean countTurn) throws QException
    {
-      AssistantUsageDaily userRow = getUserUsage(userId, date);
-      if(userRow == null)
-      {
-         userRow = new AssistantUsageDaily().withScope(SCOPE_USER).withUserId(userId).withUsageDate(date);
-      }
-      AssistantUsageDaily instanceRow = first(query(AssistantUsageDaily.TABLE_NAME, new QQueryFilter()
-         .withCriteria("scope", QCriteriaOperator.EQUALS, SCOPE_INSTANCE)
-         .withCriteria("userId", QCriteriaOperator.IS_BLANK)
-         .withCriteria("usageDate", QCriteriaOperator.EQUALS, date), AssistantUsageDaily.class));
-      if(instanceRow == null)
-      {
-         instanceRow = new AssistantUsageDaily().withScope(SCOPE_INSTANCE).withUsageDate(date);
-      }
+      increment(SCOPE_USER, userId, date, usage, costMicros, countTurn);
+      increment(SCOPE_INSTANCE, null, date, usage, costMicros, countTurn);
+   }
 
-      for(AssistantUsageDaily row : List.of(userRow, instanceRow))
+
+
+   /*******************************************************************************
+    ** Increment one usage row (under its in-process lock, insert-race retry).
+    *******************************************************************************/
+   private void increment(String scope, String userId, LocalDate date, ModelUsage usage, long costMicros, boolean countTurn) throws QException
+   {
+      Object lock = USAGE_LOCKS.computeIfAbsent(scope + "|" + userId + "|" + date, k -> new Object());
+      synchronized(lock)
       {
-         row.setTurnCount(nz(row.getTurnCount()) + (countTurn ? 1 : 0));
-         row.setInputTokens(nz(row.getInputTokens()) + nz(usage.getInputTokens()));
-         row.setOutputTokens(nz(row.getOutputTokens()) + nz(usage.getOutputTokens()));
-         row.setCacheReadTokens(nz(row.getCacheReadTokens()) + nz(usage.getCacheReadTokens()));
-         row.setCacheWriteTokens(nz(row.getCacheWriteTokens()) + nz(usage.getCacheWriteTokens()));
-         row.setCostMicros(nz(row.getCostMicros()) + costMicros);
-         if(row.getId() == null)
+         for(int attempt = 0; ; attempt++)
          {
-            insert(row);
-         }
-         else
-         {
-            update(row);
+            AssistantUsageDaily row = usageRow(scope, userId, date);
+            if(row == null)
+            {
+               row = new AssistantUsageDaily().withScope(scope).withUserId(userId).withUsageDate(date);
+            }
+            row.setTurnCount(nz(row.getTurnCount()) + (countTurn ? 1 : 0));
+            row.setInputTokens(nz(row.getInputTokens()) + nz(usage.getInputTokens()));
+            row.setOutputTokens(nz(row.getOutputTokens()) + nz(usage.getOutputTokens()));
+            row.setCacheReadTokens(nz(row.getCacheReadTokens()) + nz(usage.getCacheReadTokens()));
+            row.setCacheWriteTokens(nz(row.getCacheWriteTokens()) + nz(usage.getCacheWriteTokens()));
+            row.setCostMicros(nz(row.getCostMicros()) + costMicros);
+            try
+            {
+               if(row.getId() == null)
+               {
+                  insert(row);
+               }
+               else
+               {
+                  update(row);
+               }
+               return;
+            }
+            catch(QException e)
+            {
+               ///////////////////////////////////////////////////////////////
+               // a concurrent insert of the same key (unique key) - re-read //
+               ///////////////////////////////////////////////////////////////
+               if(row.getId() != null || attempt >= 2)
+               {
+                  throw (e);
+               }
+            }
          }
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** One usage row by key, or null.
+    *******************************************************************************/
+   private AssistantUsageDaily usageRow(String scope, String userId, LocalDate date) throws QException
+   {
+      QQueryFilter filter = new QQueryFilter()
+         .withCriteria("scope", QCriteriaOperator.EQUALS, scope)
+         .withCriteria("usageDate", QCriteriaOperator.EQUALS, date);
+      if(userId == null)
+      {
+         filter.withCriteria("userId", QCriteriaOperator.IS_BLANK);
+      }
+      else
+      {
+         filter.withCriteria("userId", QCriteriaOperator.EQUALS, userId);
+      }
+      return (first(query(AssistantUsageDaily.TABLE_NAME, filter.withOrderBy(new QFilterOrderBy("id", true)), AssistantUsageDaily.class)));
    }
 
 
@@ -478,6 +552,42 @@ public class AssistantStore
       }
       new UpdateAction().execute(new UpdateInput(AssistantToolCall.TABLE_NAME).withRecords(records));
       return (calls.size());
+   }
+
+
+
+   /*******************************************************************************
+    ** Delete stream events (replay data, incl. render payloads) created before
+    ** a time; returns how many.
+    *******************************************************************************/
+   public int deleteTurnEventsBefore(Instant cutoff, int limit) throws QException
+   {
+      List<AssistantTurnEvent> events = query(AssistantTurnEvent.TABLE_NAME, new QQueryFilter()
+         .withCriteria("createDate", QCriteriaOperator.LESS_THAN, cutoff)
+         .withLimit(limit), AssistantTurnEvent.class);
+      if(events.isEmpty())
+      {
+         return (0);
+      }
+      List<Serializable> ids = new ArrayList<>();
+      events.forEach(e -> ids.add(e.getId()));
+      new DeleteAction().execute(new DeleteInput(AssistantTurnEvent.TABLE_NAME).withPrimaryKeys(ids));
+      return (events.size());
+   }
+
+
+
+   /*******************************************************************************
+    ** A page of assistant messages created before a time, by id after afterId.
+    *******************************************************************************/
+   public List<AssistantMessage> listAssistantMessagesBefore(Instant cutoff, int afterId, int limit) throws QException
+   {
+      return (query(AssistantMessage.TABLE_NAME, new QQueryFilter()
+         .withCriteria("role", QCriteriaOperator.EQUALS, "ASSISTANT")
+         .withCriteria("createDate", QCriteriaOperator.LESS_THAN, cutoff)
+         .withCriteria("id", QCriteriaOperator.GREATER_THAN, afterId)
+         .withOrderBy(new QFilterOrderBy("id", true))
+         .withLimit(limit), AssistantMessage.class));
    }
 
 

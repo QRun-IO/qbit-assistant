@@ -149,6 +149,26 @@ public class MessageParts
 
 
    /*******************************************************************************
+    ** Remove record data (retention): the render payloads of tool parts and
+    ** the record_refs parts. Tool summaries, text, navigation and notices
+    ** stay. Returns whether anything was removed.
+    *******************************************************************************/
+   public synchronized boolean stripRecordData()
+   {
+      boolean changed = parts.removeIf(p -> "record_refs".equals(p.get("type")));
+      for(Map<String, Object> part : parts)
+      {
+         if("tool".equals(part.get("type")) && part.remove("render") != null)
+         {
+            changed = true;
+         }
+      }
+      return (changed);
+   }
+
+
+
+   /*******************************************************************************
     ** All text parts joined (for the model's history and titles).
     *******************************************************************************/
    public synchronized String text()

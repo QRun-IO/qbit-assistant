@@ -310,8 +310,22 @@ class EngineComponentsTest extends BaseAssistantTest
       Map<String, Object> clean = ContextBuilder.sanitizePageContext(Map.of("route", "/app/x", "tableName", "page", "recordId", 12, "evil", "x"));
       assertThat(clean).containsOnlyKeys("route", "tableName", "recordId");
       assertThat(ContextBuilder.sanitizePageContext(null)).isEmpty();
-      Map<String, Object> huge = ContextBuilder.sanitizePageContext(Map.of("tableName", "page", "selectedIds", java.util.Collections.nCopies(2000, 123456)));
-      assertThat(huge).containsOnlyKeys("tableName");
+      Map<String, Object> many = ContextBuilder.sanitizePageContext(Map.of("tableName", "page", "selectedIds", java.util.Collections.nCopies(2000, 123456)));
+      assertThat((List<?>) many.get("selectedIds")).hasSize(ContextBuilder.MAX_SELECTED_IDS);
+
+      Map<String, Object> hostile = ContextBuilder.sanitizePageContext(Map.of(
+         "route", "x".repeat(5000),
+         "tableName", Map.of("nested", "object"),
+         "recordId", List.of(1, 2),
+         "selectedIds", List.of("a", Map.of("b", 1), "y".repeat(2000)),
+         "filter", "not an object"));
+      assertThat(hostile).containsOnlyKeys("route", "selectedIds");
+      assertThat((String) hostile.get("route")).hasSize(ContextBuilder.MAX_CONTEXT_CHARS);
+      assertThat((List<?>) hostile.get("selectedIds")).hasSize(2);
+      assertThat(((String) ((List<?>) hostile.get("selectedIds")).get(1))).hasSize(ContextBuilder.MAX_CONTEXT_CHARS);
+
+      Map<String, Object> bigFilter = ContextBuilder.sanitizePageContext(Map.of("tableName", "page", "filter", Map.of("criteria", "z".repeat(5000))));
+      assertThat(bigFilter).containsOnlyKeys("tableName");
 
       assertThat(TurnEngine.map("a", 1, "b", null, "c", new Object() { public String toString() { return ("obj"); } })).containsEntry("a", 1).doesNotContainKey("b").containsEntry("c", "obj");
    }

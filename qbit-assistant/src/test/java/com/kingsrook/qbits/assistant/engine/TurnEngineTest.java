@@ -122,7 +122,7 @@ class TurnEngineTest extends BaseAssistantTest
          assertThat(messages.get(1).getStatus()).isEqualTo("COMPLETE");
          assertThat(messages.get(1).getPartsJson()).contains("\"type\":\"tool\"").contains("There are 4 published posts.");
 
-         assertThat(store.listEvents(EDITOR, outcome.turnId(), 0)).hasSize(outcome.events().size());
+         assertThat(store.listEvents(EDITOR, outcome.turnId(), 0, 1000)).hasSize(outcome.events().size());
 
          AssistantUsageDaily usage = store.query(AssistantUsageDaily.TABLE_NAME, new QQueryFilter().withCriteria("userId", QCriteriaOperator.EQUALS, EDITOR), AssistantUsageDaily.class).get(0);
          assertThat(usage.getTurnCount()).isEqualTo(1);
