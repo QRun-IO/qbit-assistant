@@ -38,7 +38,7 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
 /*******************************************************************************
  ** Configuration of the Assistant QBit (spec 2.3).
  **
- ** Required: backendName (where the assistant* tables live) and at least one
+ ** Required: backendName (where the assistant_* tables live) and at least one
  ** model provider (withModelProvider), named by providerName. API keys never
  ** go here: a provider reads its key from the environment or from a value the
  ** host passes in from its secret store.
@@ -48,9 +48,17 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
  *******************************************************************************/
 public class AssistantQBitConfig implements QBitConfig
 {
-   public static final String ACCESS_PERMISSION        = "assistant.hasAccess";
+   public static final String ACCESS_PERMISSION        = "assistant.has_access";
    public static final String ADMIN_PERMISSION         = "assistant.admin";
-   public static final String DEFAULT_OWNER_KEY_TYPE   = "assistantUserId";
+   public static final String DEFAULT_OWNER_KEY_TYPE   = "assistant_user_id";
+
+   /*******************************************************************************
+    ** Names used before 0.1.0-RC.2 (camelCase). See UPGRADE.md.
+    *******************************************************************************/
+   @Deprecated(since = "0.1.0-RC.2")
+   public static final String LEGACY_ACCESS_PERMISSION      = "assistant.hasAccess";
+   @Deprecated(since = "0.1.0-RC.2")
+   public static final String LEGACY_DEFAULT_OWNER_KEY_TYPE = "assistantUserId";
    public static final String ENABLED_ENV_VAR          = "QQQ_ASSISTANT_ENABLED";
    public static final String DEFAULT_SHORTCUT         = "mod+j";
    public static final String DEFAULT_PROVIDER_NAME    = "anthropic";

@@ -59,22 +59,30 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
  **
  ** Security:
  ** - Every user-owned table carries userId and a record security lock on it
- **   (key type ownerSecurityKeyType, default assistantUserId). The panel
+ **   (key type ownerSecurityKeyType, default assistant_user_id). The panel
  **   routes put the user's own id in their session, so reads and writes of
  **   these tables through QQQ actions only ever touch the user's own rows.
- ** - The key type's all-access key (assistantUserIdAllAccess) lets admins see
+ ** - The key type's all-access key (assistant_user_id_all_access) lets admins see
  **   everyone's rows; hosts grant it to users holding assistant.admin with
  **   AssistantSecurity.applySessionKeys in their authentication customizer.
  ** - Tables, app and process need assistant.admin in the generic UI / API.
- ** - assistantUsageDaily rows with a null userId are the INSTANCE rollup and
+ ** - assistant_usage_daily rows with a null userId are the INSTANCE rollup and
  **   are readable by any session (the lock allows null).
- ** - The assistant's own tool kernel never exposes assistant* tables to the
+ ** - The assistant's own tool kernel never exposes assistant_* tables to the
  **   model (exposure NONE by name).
  *******************************************************************************/
 public class AssistantMetaDataBuilder
 {
    public static final String APP_NAME               = "assistantAdmin";
    public static final String RETENTION_PROCESS_NAME = "assistantRetention";
+   public static final String ALL_ACCESS_SUFFIX      = "_all_access";
+
+   /*******************************************************************************
+    ** The all-access key suffix before 0.1.0-RC.2 (assistant_user_id_all_access).
+    ** See UPGRADE.md.
+    *******************************************************************************/
+   @Deprecated(since = "0.1.0-RC.2")
+   public static final String LEGACY_ALL_ACCESS_SUFFIX = "AllAccess";
 
    private final AssistantQBitConfig config;
 
@@ -95,7 +103,7 @@ public class AssistantMetaDataBuilder
     *******************************************************************************/
    public static String allAccessKeyName(String ownerKeyType)
    {
-      return (ownerKeyType + "AllAccess");
+      return (ownerKeyType + ALL_ACCESS_SUFFIX);
    }
 
 

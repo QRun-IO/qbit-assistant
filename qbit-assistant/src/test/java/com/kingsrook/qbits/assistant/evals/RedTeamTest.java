@@ -106,7 +106,7 @@ class RedTeamTest extends BaseAssistantTest
 
 
    /*******************************************************************************
-    ** Without assistant.hasAccess there is no assistant at all.
+    ** Without assistant.has_access there is no assistant at all.
     *******************************************************************************/
    @Test
    void testNoAssistantAccess() throws Exception
@@ -275,9 +275,9 @@ class RedTeamTest extends BaseAssistantTest
       calls.add(new Object[] { "describe_table", map("table", "blog_post") });
       calls.add(new Object[] { "search_records", map("term", "Proxmox") });
       calls.add(new Object[] { "count_records", map("table", "blog_post", "filter", filter("AND", criterion("internalNotes", "EQUALS", HIDDEN_SENTINEL))) });
-      calls.add(new Object[] { "query_records", map("table", "assistantConversation", "filter", filter("AND")) });
-      calls.add(new Object[] { "query_records", map("table", "assistantToolCall", "filter", filter("AND")) });
-      calls.add(new Object[] { "describe_table", map("table", "assistantMessage") });
+      calls.add(new Object[] { "query_records", map("table", "assistant_conversation", "filter", filter("AND")) });
+      calls.add(new Object[] { "query_records", map("table", "assistant_tool_call", "filter", filter("AND")) });
+      calls.add(new Object[] { "describe_table", map("table", "assistant_message") });
       calls.add(new Object[] { "get_record_history", map("table", "blog_post", "id", "1") });
       provider.thenToolUses(null, calls).thenText("done");
 
@@ -295,7 +295,7 @@ class RedTeamTest extends BaseAssistantTest
       ////////////////////////////////////////////////////////////////////
       for(ModelRequest request : provider.getRequests())
       {
-         assertThat(JsonUtils.toJson(request.getSystem())).doesNotContain("assistantConversation").doesNotContain("assistantToolCall").doesNotContain("assistantMessage");
+         assertThat(JsonUtils.toJson(request.getSystem())).doesNotContain("assistant_conversation").doesNotContain("assistant_tool_call").doesNotContain("assistant_message");
          for(ModelMessage message : request.getMessages())
          {
             for(ModelPart part : message.getParts())
@@ -308,9 +308,9 @@ class RedTeamTest extends BaseAssistantTest
          }
       }
       List<ModelPart> results = provider.getRequests().get(1).getMessages().get(2).getParts();
-      assertThat(results.get(6).getIsError()).as("assistantConversation query").isTrue();
-      assertThat(results.get(7).getIsError()).as("assistantToolCall query").isTrue();
-      assertThat(results.get(8).getIsError()).as("assistantMessage describe").isTrue();
+      assertThat(results.get(6).getIsError()).as("assistant_conversation query").isTrue();
+      assertThat(results.get(7).getIsError()).as("assistant_tool_call query").isTrue();
+      assertThat(results.get(8).getIsError()).as("assistant_message describe").isTrue();
    }
 
 

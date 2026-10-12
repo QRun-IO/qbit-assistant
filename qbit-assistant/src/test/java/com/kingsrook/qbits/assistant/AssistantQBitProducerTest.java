@@ -62,7 +62,7 @@ class AssistantQBitProducerTest extends BaseAssistantTest
    @Test
    void testProducedMetaData()
    {
-      List<String> owned = List.of("assistantConversation", "assistantMessage", "assistantTurn", "assistantTurnEvent", "assistantToolCall", "assistantFeedback", "assistantUsageDaily");
+      List<String> owned = List.of("assistant_conversation", "assistant_message", "assistant_turn", "assistant_turn_event", "assistant_tool_call", "assistant_feedback", "assistant_usage_daily");
       for(String name : owned)
       {
          QTableMetaData table = qInstance.getTable(name);
@@ -79,7 +79,7 @@ class AssistantQBitProducerTest extends BaseAssistantTest
       assertThat(qInstance.getTable(AssistantPolicy.TABLE_NAME).getRecordSecurityLocks()).isNullOrEmpty();
 
       QSecurityKeyType keyType = qInstance.getSecurityKeyType(AssistantQBitConfig.DEFAULT_OWNER_KEY_TYPE);
-      assertThat(keyType.getAllAccessKeyName()).isEqualTo("assistantUserIdAllAccess");
+      assertThat(keyType.getAllAccessKeyName()).isEqualTo("assistant_user_id_all_access");
 
       assertThat(qInstance.getApp(AssistantMetaDataBuilder.APP_NAME).getChildren()).hasSize(9);
       assertThat(qInstance.getProcess(AssistantMetaDataBuilder.RETENTION_PROCESS_NAME)).isNotNull();
@@ -159,12 +159,12 @@ class AssistantQBitProducerTest extends BaseAssistantTest
       AssistantSecurity.applySessionKeys(editor, config);
       AssistantSecurity.applySessionKeys(editor, config);
       assertThat(editor.getSecurityKeyValues(AssistantQBitConfig.DEFAULT_OWNER_KEY_TYPE)).containsExactly(AssistantTestFixture.EDITOR);
-      assertThat(editor.getSecurityKeyValues("assistantUserIdAllAccess")).isNullOrEmpty();
+      assertThat(editor.getSecurityKeyValues("assistant_user_id_all_access")).isNullOrEmpty();
 
       QSession admin = new QSession().withUser(new com.kingsrook.qqq.backend.core.model.session.QUser().withIdReference("boss"));
       admin.withPermission(AssistantQBitConfig.ADMIN_PERMISSION);
       AssistantSecurity.applySessionKeys(admin, config);
-      assertThat(admin.getSecurityKeyValues("assistantUserIdAllAccess")).containsExactly(true);
+      assertThat(admin.getSecurityKeyValues("assistant_user_id_all_access")).containsExactly(true);
 
       AssistantSecurity.applySessionKeys(null, config);
       assertThat(AssistantSecurity.userId(new QSession())).isNull();

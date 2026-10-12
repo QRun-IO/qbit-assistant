@@ -57,7 +57,7 @@ public class AssistantDeveloperInfo
     ** The assembled information.
     **
     ** @param enabled        the QBit is enabled for the application
-    ** @param hasAccess      the user holds assistant.hasAccess
+    ** @param hasAccess      the user holds assistant.has_access
     ** @param killSwitch     an admin switched the assistant off
     ** @param model          the main model
     ** @param access         the kernel's access report (null when the user has

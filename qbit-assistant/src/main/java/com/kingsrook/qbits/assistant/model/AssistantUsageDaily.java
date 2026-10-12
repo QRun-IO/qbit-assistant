@@ -31,7 +31,13 @@ import com.kingsrook.qqq.backend.core.model.data.QRecordEntity;
  *******************************************************************************/
 public class AssistantUsageDaily extends QRecordEntity
 {
-   public static final String TABLE_NAME = "assistantUsageDaily";
+   public static final String TABLE_NAME = "assistant_usage_daily";
+
+   /*******************************************************************************
+    ** The table name before 0.1.0-RC.2 (camelCase). See UPGRADE.md.
+    *******************************************************************************/
+   @Deprecated(since = "0.1.0-RC.2")
+   public static final String LEGACY_TABLE_NAME = "assistantUsageDaily";
 
    @QField(isEditable = false, isPrimaryKey = true)
    private Integer id;

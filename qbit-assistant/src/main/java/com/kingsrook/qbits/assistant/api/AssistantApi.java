@@ -537,7 +537,7 @@ public class AssistantApi
 
 
    /*******************************************************************************
-    ** The user may use the panel: enabled, signed in, assistant.hasAccess.
+    ** The user may use the panel: enabled, signed in, assistant.has_access.
     *******************************************************************************/
    public boolean hasAccess()
    {
