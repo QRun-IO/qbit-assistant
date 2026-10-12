@@ -78,10 +78,10 @@ public class AssistantMetaDataBuilder
    public static final String ALL_ACCESS_SUFFIX      = "_all_access";
 
    /*******************************************************************************
-    ** The all-access key suffix before 0.1.0-RC.2 (assistant_user_id_all_access).
+    ** The all-access key suffix before 0.1.0-RC.3 (assistant_user_id_all_access).
     ** See UPGRADE.md.
     *******************************************************************************/
-   @Deprecated(since = "0.1.0-RC.2")
+   @Deprecated(since = "0.1.0-RC.3")
    public static final String LEGACY_ALL_ACCESS_SUFFIX = "AllAccess";
 
    private final AssistantQBitConfig config;

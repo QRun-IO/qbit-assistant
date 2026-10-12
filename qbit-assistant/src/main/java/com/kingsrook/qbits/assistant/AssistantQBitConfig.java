@@ -56,9 +56,9 @@ public class AssistantQBitConfig implements QBitConfig
    public static final String DEFAULT_PROVIDER_NAME    = "anthropic";
 
    /*******************************************************************************
-    ** The owner key type used before 0.1.0-RC.2 (camelCase). See UPGRADE.md.
+    ** The owner key type used before 0.1.0-RC.3 (camelCase). See UPGRADE.md.
     *******************************************************************************/
-   @Deprecated(since = "0.1.0-RC.2")
+   @Deprecated(since = "0.1.0-RC.3")
    public static final String LEGACY_DEFAULT_OWNER_KEY_TYPE = "assistantUserId";
 
    private Boolean               enabled                    = true;

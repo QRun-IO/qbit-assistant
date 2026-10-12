@@ -33,9 +33,9 @@ public class AssistantTurnEvent extends QRecordEntity
    public static final String TABLE_NAME = "assistant_turn_event";
 
    /*******************************************************************************
-    ** The table name before 0.1.0-RC.2 (camelCase). See UPGRADE.md.
+    ** The table name before 0.1.0-RC.3 (camelCase). See UPGRADE.md.
     *******************************************************************************/
-   @Deprecated(since = "0.1.0-RC.2")
+   @Deprecated(since = "0.1.0-RC.3")
    public static final String LEGACY_TABLE_NAME = "assistantTurnEvent";
 
    @QField(isEditable = false, isPrimaryKey = true)
