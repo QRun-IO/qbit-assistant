@@ -78,7 +78,7 @@ The provider's `toString` never contains the key. Its errors carry only the HTTP
 | `retentionSchedulerName` | none | Runs `assistantRetention` daily on that scheduler. |
 | `ownerSecurityKeyType` | `assistantUserId` | Key type of the owner record locks. |
 | `pricing` | Anthropic list prices, 2026-10 | USD per million tokens per model, used for cost and budgets. |
-| `allowedWidgetNames` | none | Dashboard widgets `render_widget` may render. The kernel denies every widget not on this list. |
+| `allowedWidgetNames` | none | Dashboard widgets `render_widget` may render. The kernel denies every widget not on this list. This config list is the **only** way to allow a widget: QQQ widget meta-data has no supplemental hook, so there is no per-widget "assistant-safe" flag. Allow only widgets that render the same data for every user who can see them. |
 | `hiddenWidgetNames` | none | Widgets that are never rendered, even when allowed. |
 | `customRedactionPatterns` | none | Extra regular expressions the kernel redacts from tool results. |
 | `killSwitchPollMillis` | 2000 | How often a running turn re-checks the kill switch while it waits on the model. |
@@ -100,7 +100,7 @@ When a turn sees the switch on, it cancels every turn running on that replica. I
 
 There is no assistant-specific data permission. Everything the kernel reads is checked against the user's normal table permissions and record locks. The QBit never uses a system session (an ArchUnit test enforces this).
 
-When the QBit is enabled, it registers the supplemental instance meta-data `assistant` (`{version, basePath}`). The Next UI only probes `/config` when `/metaData` carries it.
+When the QBit is enabled, it registers the supplemental instance meta-data `assistant`. The v1 `/metaData` response publishes it as `supplementalInstanceMetaData.assistant: {"available": true, "version": 1, "basePath": "/qqq/v1/assistant"}`. The Next UI only probes `/config` when that object is present.
 
 ### Record locks on the assistant's own tables
 
