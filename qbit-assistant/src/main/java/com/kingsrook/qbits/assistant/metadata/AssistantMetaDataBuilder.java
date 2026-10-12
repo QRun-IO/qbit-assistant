@@ -36,6 +36,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.DenyBehavior;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
@@ -209,11 +211,18 @@ public class AssistantMetaDataBuilder
 
 
    /*******************************************************************************
-    ** assistant.admin, through the custom checker.
+    ** assistant.admin, through the custom checker. The level and deny behavior
+    ** are explicit: left null, the enricher copies the host's default level
+    ** (often NOT_PROTECTED), and the meta-data path (app tree, table list) then
+    ** allows the object without ever calling the checker, so every user would
+    ** see the Assistant Admin app and its tables in the nav.
     *******************************************************************************/
    public static QPermissionRules adminRules()
    {
-      return (new QPermissionRules().withCustomPermissionChecker(new QCodeReference(AssistantAdminPermissionChecker.class)));
+      return (new QPermissionRules()
+         .withLevel(PermissionLevel.HAS_ACCESS_PERMISSION)
+         .withDenyBehavior(DenyBehavior.HIDDEN)
+         .withCustomPermissionChecker(new QCodeReference(AssistantAdminPermissionChecker.class)));
    }
 
 

@@ -26,12 +26,19 @@ import com.kingsrook.qbits.assistant.model.AssistantPolicy;
 import com.kingsrook.qbits.assistant.model.AssistantUsageDaily;
 import com.kingsrook.qbits.assistant.testing.AssistantTestFixture;
 import com.kingsrook.qbits.assistant.testing.BaseAssistantTest;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionCheckResult;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
+import com.kingsrook.qqq.backend.core.instances.QInstanceEnricher;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.MetaDataInput;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.DenyBehavior;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.MetaDataWithPermissionRules;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.security.QSecurityKeyType;
 import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
@@ -105,6 +112,38 @@ class AssistantQBitProducerTest extends BaseAssistantTest
       QContext.init(qInstance, AssistantTestFixture.sessionFor(AssistantTestFixture.EDITOR));
       assertThatThrownBy(() -> checker.checkPermissionsThrowing(new MetaDataInput(), qInstance.getTable(AssistantConversation.TABLE_NAME)))
          .isInstanceOf(QPermissionDeniedException.class);
+      QContext.clear();
+   }
+
+
+
+   /*******************************************************************************
+    ** On a host whose default permission level is NOT_PROTECTED (enriched),
+    ** the meta-data path hides the admin app, tables and retention process from
+    ** a user without assistant.admin, and shows them to an admin.
+    *******************************************************************************/
+   @Test
+   void testAdminObjectsHiddenInMetaDataOnUnprotectedHost() throws Exception
+   {
+      QInstance host = AssistantTestFixture.build(config);
+      host.setDefaultPermissionRules(new QPermissionRules().withLevel(PermissionLevel.NOT_PROTECTED).withDenyBehavior(DenyBehavior.DISABLED));
+      new QInstanceEnricher(host).enrich();
+
+      List<MetaDataWithPermissionRules> adminObjects = List.of(host.getApp(AssistantMetaDataBuilder.APP_NAME),
+         host.getProcess(AssistantMetaDataBuilder.RETENTION_PROCESS_NAME), host.getTable(AssistantPolicy.TABLE_NAME), host.getTable(AssistantConversation.TABLE_NAME));
+
+      QContext.init(host, AssistantTestFixture.sessionFor(AssistantTestFixture.EDITOR));
+      for(MetaDataWithPermissionRules object : adminObjects)
+      {
+         assertThat(PermissionsHelper.getPermissionCheckResult(new MetaDataInput(), object)).as(object.getName()).isEqualTo(PermissionCheckResult.DENY_HIDE);
+      }
+      QContext.clear();
+
+      QContext.init(host, AssistantTestFixture.sessionFor(AssistantTestFixture.ADMIN));
+      for(MetaDataWithPermissionRules object : adminObjects)
+      {
+         assertThat(PermissionsHelper.getPermissionCheckResult(new MetaDataInput(), object)).as(object.getName()).isEqualTo(PermissionCheckResult.ALLOW);
+      }
       QContext.clear();
    }
 
