@@ -44,7 +44,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
  ** - no QSystemUserSession, no QSession construction (the assistant only
  **   ever uses the requesting user's own session);
  ** - QQQ data actions only from the persistence package (the QBit's own
- **   assistant* tables); everything else reaches data through the
+ **   assistant_* tables); everything else reaches data through the
  **   AiToolKernel.
  *******************************************************************************/
 class ArchitectureTest

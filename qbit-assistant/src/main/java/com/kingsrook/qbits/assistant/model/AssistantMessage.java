@@ -31,7 +31,13 @@ import com.kingsrook.qqq.backend.core.model.data.QRecordEntity;
  *******************************************************************************/
 public class AssistantMessage extends QRecordEntity
 {
-   public static final String TABLE_NAME = "assistantMessage";
+   public static final String TABLE_NAME = "assistant_message";
+
+   /*******************************************************************************
+    ** The table name before 0.1.0-RC.2 (camelCase). See UPGRADE.md.
+    *******************************************************************************/
+   @Deprecated(since = "0.1.0-RC.2")
+   public static final String LEGACY_TABLE_NAME = "assistantMessage";
 
    @QField(isEditable = false, isPrimaryKey = true)
    private Integer id;

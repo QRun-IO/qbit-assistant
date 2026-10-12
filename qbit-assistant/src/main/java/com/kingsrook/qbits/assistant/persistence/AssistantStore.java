@@ -54,7 +54,7 @@ import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 
 
 /*******************************************************************************
- ** Reads and writes the QBit's own assistant* tables through QQQ actions,
+ ** Reads and writes the QBit's own assistant_* tables through QQQ actions,
  ** under whatever session is in QContext - always the requesting user's
  ** session (the record locks on userId then confine every call to the user's
  ** own rows). Queries also filter on userId explicitly, so an admin's
