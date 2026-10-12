@@ -26,6 +26,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
 import com.kingsrook.qbits.assistant.api.AssistantApi;
@@ -46,6 +50,7 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.data.QRecordEntity;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import org.junit.jupiter.api.Test;
 import static com.kingsrook.qbits.assistant.testing.AssistantTestFixture.ADMIN;
@@ -158,31 +163,43 @@ class RobustnessTest extends BaseAssistantTest
    @Test
    void testConcurrentUsage() throws Exception
    {
-      LocalDate      today   = LocalDate.now(ZoneOffset.UTC);
-      List<Thread>   threads = new ArrayList<>();
-      for(int i = 0; i < 20; i++)
+      LocalDate       today   = LocalDate.now(ZoneOffset.UTC);
+      int             writers = 20;
+      CountDownLatch  ready   = new CountDownLatch(writers);
+      CountDownLatch  go      = new CountDownLatch(1);
+      List<Future<?>> results = new ArrayList<>();
+      try(ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor())
       {
-         String user = i % 2 == 0 ? EDITOR : AssistantTestFixture.OTHER_EDITOR;
-         threads.add(Thread.ofVirtual().start(() ->
+         for(int i = 0; i < writers; i++)
          {
-            QContext.init(qInstance, AssistantTestFixture.ownerSession(user, config));
-            try
+            String user = i % 2 == 0 ? EDITOR : AssistantTestFixture.OTHER_EDITOR;
+            results.add(executor.submit(() ->
             {
-               new AssistantStore().addUsage(user, today, new ModelUsage().withInputTokens(10L).withOutputTokens(1L), 7, true);
-            }
-            catch(QException e)
-            {
-               throw (new RuntimeException(e));
-            }
-            finally
-            {
-               QContext.clear();
-            }
-         }));
-      }
-      for(Thread thread : threads)
-      {
-         thread.join();
+               QContext.init(qInstance, AssistantTestFixture.ownerSession(user, config));
+               try
+               {
+                  ready.countDown();
+                  go.await();
+                  new AtomicCallsStore().addUsage(user, today, new ModelUsage().withInputTokens(10L).withOutputTokens(1L), 7, true);
+               }
+               finally
+               {
+                  QContext.clear();
+               }
+               return (null);
+            }));
+         }
+
+         ///////////////////////////////////////////////////////////////////
+         // release every writer at once, then surface any writer failure //
+         // (a worker exception must fail the test, not vanish)           //
+         ///////////////////////////////////////////////////////////////////
+         ready.await();
+         go.countDown();
+         for(Future<?> result : results)
+         {
+            result.get();
+         }
       }
 
       QContext.init(qInstance, AssistantTestFixture.sessionFor(ADMIN));
@@ -200,6 +217,65 @@ class RobustnessTest extends BaseAssistantTest
       finally
       {
          QContext.clear();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** AssistantStore whose individual backend calls are atomic, as they are on a
+    ** real database. QQQ's in-memory backend is not safe for concurrent callers:
+    ** MemoryRecordStore.query iterates a table's synchronized map without holding
+    ** its lock, so inserting a different usage row (another key, so another
+    ** AssistantStore usage lock) can throw ConcurrentModificationException. Each
+    ** call is made atomic here; the read-modify-write across calls is still only
+    ** protected by AssistantStore's per-key usage locks, which is what the test
+    ** checks.
+    *******************************************************************************/
+   private static class AtomicCallsStore extends AssistantStore
+   {
+      private static final Object BACKEND_LOCK = new Object();
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public <T extends QRecordEntity> List<T> query(String tableName, QQueryFilter filter, Class<T> entityClass) throws QException
+      {
+         synchronized(BACKEND_LOCK)
+         {
+            return (super.query(tableName, filter, entityClass));
+         }
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public <T extends QRecordEntity> T insert(T entity) throws QException
+      {
+         synchronized(BACKEND_LOCK)
+         {
+            return (super.insert(entity));
+         }
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public void update(QRecordEntity entity) throws QException
+      {
+         synchronized(BACKEND_LOCK)
+         {
+            super.update(entity);
+         }
       }
    }
 
