@@ -184,7 +184,14 @@ public class AssistantQBitProducer implements QBitMetaDataProducer<AssistantQBit
          routes = true;
       }
 
-      LOG.info("Assistant QBit produced", logPair("version", VERSION), logPair("backendName", qBitConfig.getBackendName()), logPair("routes", routes),
+      boolean developerPanel = false;
+      if(com.kingsrook.qbits.assistant.developer.AssistantDeveloperPanels.isContractAvailable())
+      {
+         com.kingsrook.qbits.assistant.developer.AssistantDeveloperPanels.register(qInstance);
+         developerPanel = true;
+      }
+
+      LOG.info("Assistant QBit produced", logPair("version", VERSION), logPair("backendName", qBitConfig.getBackendName()), logPair("routes", routes), logPair("developerPanel", developerPanel),
          logPair("enabled", qBitConfig.isEffectivelyEnabled()), logPair("providerName", qBitConfig.getProviderName()),
          logPair("providerRegistered", qBitConfig.getActiveModelProvider() != null), logPair("mainModel", qBitConfig.getModels().getMainModel()));
    }

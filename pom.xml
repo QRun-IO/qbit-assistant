@@ -28,6 +28,8 @@
       <anthropic.version>2.71.0</anthropic.version>
       <archunit.version>1.5.1</archunit.version>
       <jackson.version>2.21.7</jackson.version>
+      <!-- live evals call the real API; run them with -Dtest.excludedGroups= -Dgroups=live -->
+      <test.excludedGroups>live</test.excludedGroups>
    </properties>
 
    <parent>

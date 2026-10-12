@@ -348,6 +348,19 @@ public class AssistantStore
 
 
 
+   /*******************************************************************************
+    ** The user's latest tool calls on a table, newest first.
+    *******************************************************************************/
+   public List<AssistantToolCall> recentToolCalls(String userId, String tableName, int limit) throws QException
+   {
+      return (query(AssistantToolCall.TABLE_NAME, owned(userId)
+         .withCriteria("tableName", QCriteriaOperator.EQUALS, tableName)
+         .withOrderBy(new QFilterOrderBy("id", false))
+         .withLimit(limit), AssistantToolCall.class));
+   }
+
+
+
    /////////////////////////////////////////////////////////////////////////////
    // policy and usage                                                        //
    /////////////////////////////////////////////////////////////////////////////

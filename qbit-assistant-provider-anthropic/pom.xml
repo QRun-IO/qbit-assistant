@@ -75,7 +75,7 @@
             <artifactId>maven-surefire-plugin</artifactId>
             <configuration>
                <!-- live evals call the real API: opt-in only -->
-               <excludedGroups>live</excludedGroups>
+               <excludedGroups>${test.excludedGroups}</excludedGroups>
                <redirectTestOutputToFile>true</redirectTestOutputToFile>
             </configuration>
          </plugin>

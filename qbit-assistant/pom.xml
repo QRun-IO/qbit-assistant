@@ -86,7 +86,7 @@
             <configuration>
                <!-- golden (fake provider) and redteam run in every build; live is -->
                <!-- opt-in (ANTHROPIC_API_KEY + -Dassistant.live=true).            -->
-               <excludedGroups>live</excludedGroups>
+               <excludedGroups>${test.excludedGroups}</excludedGroups>
                <redirectTestOutputToFile>true</redirectTestOutputToFile>
             </configuration>
          </plugin>

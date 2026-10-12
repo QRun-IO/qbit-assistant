@@ -62,8 +62,8 @@ import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.Mem
  **
  ** - blog_post (with a hidden field and a password field holding sentinel
  **   values that must never reach a model, and one record carrying a prompt
- **   injection), page (FIELD audits; page 12 is edited three times at seed
- **   time, so "this week" has 3 changes), media, analytics_daily_stat;
+ **   injection), page (FIELD audits; page 12 is created and edited three times
+ **   at seed time, so "this week" has 4 audit entries), media, analytics_daily_stat;
  ** - QQQ's audit tables; an app "content" over the content tables;
  ** - MOCK authentication whose session id is the user id; permissions come
  **   from the id's prefix (see TestSessionCustomizer).
@@ -89,7 +89,7 @@ public class AssistantTestFixture
    public static final int PUBLISHED_POSTS               = 4;
    public static final int PUBLISHED_POSTS_NO_EXCERPT    = 2;
    public static final int PUBLISHED_POSTS_NO_META       = 3;
-   public static final int PAGE_12_CHANGES_THIS_WEEK     = 3;
+   public static final int PAGE_12_CHANGES_THIS_WEEK     = 4; // created + 3 edits, all at seed time
 
 
 
@@ -117,6 +117,7 @@ public class AssistantTestFixture
          .withField(new QFieldMetaData("internalNotes", QFieldType.STRING).withLabel("Internal Notes").withIsHidden(true))
          .withField(new QFieldMetaData("apiSecret", QFieldType.PASSWORD).withLabel("API Secret"));
       blogPost.withAuditRules(new QAuditRules().withAuditLevel(AuditLevel.FIELD));
+      blogPost.withSearchFields(List.of("title", "slug"));
       qInstance.addTable(blogPost);
 
       QTableMetaData page = table("page", "Page", "title")
@@ -124,6 +125,7 @@ public class AssistantTestFixture
          .withField(new QFieldMetaData("metaDescription", QFieldType.STRING).withLabel("Meta Description"))
          .withField(new QFieldMetaData("content", QFieldType.TEXT).withLabel("Content"));
       page.withAuditRules(new QAuditRules().withAuditLevel(AuditLevel.FIELD));
+      page.withSearchFields(List.of("title"));
       qInstance.addTable(page);
 
       qInstance.addTable(table("media", "Media", "fileName")
