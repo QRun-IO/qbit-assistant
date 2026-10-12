@@ -32,7 +32,13 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueTooLongBehavior
  *******************************************************************************/
 public class AssistantToolCall extends QRecordEntity
 {
-   public static final String TABLE_NAME = "assistantToolCall";
+   public static final String TABLE_NAME = "assistant_tool_call";
+
+   /*******************************************************************************
+    ** The table name before 0.1.0-RC.2 (camelCase). See UPGRADE.md.
+    *******************************************************************************/
+   @Deprecated(since = "0.1.0-RC.2")
+   public static final String LEGACY_TABLE_NAME = "assistantToolCall";
 
    @QField(isEditable = false, isPrimaryKey = true)
    private Integer id;

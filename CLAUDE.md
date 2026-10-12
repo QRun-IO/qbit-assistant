@@ -32,7 +32,7 @@ Always use the wrapper: Maven 3.10 cannot read the parent POM. The committed def
 - `qbit-assistant` (`com.kingsrook.qbits.assistant`):
   - `AssistantQBitProducer`, `AssistantQBitConfig` (with `AssistantModelRouting` and `AssistantBudgets`), `AssistantRuntime`, `AssistantSecurity`.
   - `metadata/`: tables, owner key type, the Assistant Admin app, the retention process, and the `assistant.admin` custom permission checker.
-  - `model/`: entities for the `assistant*` tables.
+  - `model/`: entities for the `assistant_*` tables.
   - `persistence/AssistantStore`: the **only** code that calls QQQ data actions, and only on the QBit's own tables, under the user's session.
   - `engine/`: `TurnEngine` (the loop), `ContextBuilder` (cache-prefix order), `SystemPrompt`, `PolicyService` (policy row, budgets), `RateLimiter`, the `TurnEvent` / `TurnEventLog` stream, and `MessageParts`.
   - `api/`: `AssistantApi` (transport-free) and `AssistantRouteProvider` (Javalin, SSE).

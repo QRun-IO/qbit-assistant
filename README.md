@@ -35,7 +35,7 @@ The data access itself is done by the AI tool kernel in QQQ core (`com.kingsrook
 
 ```java
 AssistantQBitConfig config = new AssistantQBitConfig()
-   .withBackendName("rdbms")                                     // where the assistant* tables live
+   .withBackendName("rdbms")                                     // where the assistant_* tables live
    .withTableMetaDataCustomizer(snakeCaseCustomizer)             // optional: backend names for your schema
    .withModelProvider(AnthropicModelProvider.fromEnvironment()); // key from ANTHROPIC_API_KEY
 
@@ -44,7 +44,7 @@ new AssistantQBitProducer().withQBitConfig(config).produce(qInstance);
 
 `produce` does the following:
 - Registers the QBit.
-- Adds the tables, the `assistantUserId` security key type, the `assistantRetention` process and the **Assistant Admin** app.
+- Adds the tables, the `assistant_user_id` security key type, the `assistantRetention` process and the **Assistant Admin** app.
 - Builds the runtime.
 - Registers the `/qqq/v1/assistant/*` routes when Javalin is on the classpath.
 - Registers the record Developer-screen panel when QQQ core has the developer-panel contract.
@@ -64,7 +64,7 @@ The provider's `toString` never contains the key. Its errors carry only the HTTP
 | Setting | Default | Meaning |
 |---|---|---|
 | `enabled` | `true` | Per-app switch. The environment variable `QQQ_ASSISTANT_ENABLED=false` also turns it off. |
-| `backendName` | (required) | Backend of the `assistant*` tables. |
+| `backendName` | (required) | Backend of the `assistant_*` tables. |
 | `providerName` | `anthropic` | Which registered provider to use. |
 | `models` | Sonnet 5.5 at effort `medium` | `mainModel`, `mainEffort`, `mainMaxOutputTokens` (16000). The escalation (Opus 5.5, `high`) and summary (Haiku 5.5) slots are reserved for phase 2. Model ids are the exact strings `claude-sonnet-5-5`, `claude-opus-5-5` and `claude-haiku-5-5`. |
 | `defaultExposure` | `VALUES` | The kernel's default exposure. Use `METADATA_ONLY` for high-sensitivity apps. |
@@ -76,14 +76,14 @@ The provider's `toString` never contains the key. Its errors carry only the HTTP
 | `maxTurnsPerUserPerMinute` / `maxConcurrentTurnsPerUser` | 10 / 1 | Rate limits. |
 | `conversationRetentionDays` / `toolResultRetentionDays` / `approvalRetentionDays` | 90 / 30 / 365 | Used by `assistantRetention`. |
 | `retentionSchedulerName` | none | Runs `assistantRetention` daily on that scheduler. |
-| `ownerSecurityKeyType` | `assistantUserId` | Key type of the owner record locks. |
+| `ownerSecurityKeyType` | `assistant_user_id` | Key type of the owner record locks. |
 | `pricing` | Anthropic list prices, 2026-10 | USD per million tokens per model, used for cost and budgets. |
 | `allowedWidgetNames` | none | Dashboard widgets `render_widget` may render. The kernel denies every widget not on this list. This config list is the **only** way to allow a widget: QQQ widget meta-data has no supplemental hook, so there is no per-widget "assistant-safe" flag. Allow only widgets that render the same data for every user who can see them. |
 | `hiddenWidgetNames` | none | Widgets that are never rendered, even when allowed. |
 | `customRedactionPatterns` | none | Extra regular expressions the kernel redacts from tool results. |
 | `killSwitchPollMillis` | 2000 | How often a running turn re-checks the kill switch while it waits on the model. |
 
-At runtime, an admin can override the kill switch, the main model and effort, and the budgets in the single **`assistantPolicy`** row.
+At runtime, an admin can override the kill switch, the main model and effort, and the budgets in the single **`assistant_policy`** row.
 
 A running turn notices the kill switch in two ways:
 - It re-reads the switch before every model call and tool step.
@@ -104,9 +104,9 @@ When the QBit is enabled, it registers the supplemental instance meta-data `assi
 
 ### Record locks on the assistant's own tables
 
-Conversation data belongs to its user. Every user-owned table has a record lock on `userId` with key type `assistantUserId`:
+Conversation data belongs to its user. Every user-owned table has a record lock on `userId` with key type `assistant_user_id`:
 - The panel routes add the user's own id to their session, so users only ever see their own rows.
-- Admins see everyone's rows in the Assistant Admin app through the key type's all-access key, `assistantUserIdAllAccess`. Grant that key to `assistant.admin` holders from your authentication customizer:
+- Admins see everyone's rows in the Assistant Admin app through the key type's all-access key, `assistant_user_id_all_access`. Grant that key to `assistant.admin` holders from your authentication customizer:
 
 ```java
 // in your QAuthenticationModuleCustomizerInterface.customizeSession(...)
@@ -128,7 +128,7 @@ The kernel applies these rules to tool results:
 - Exposure `METADATA_ONLY` and `MASKED` fields are filtered or masked.
 - Rows are capped at 50 and cells at 500 characters.
 - Secrets such as keys, JWTs and card numbers are redacted.
-- The `assistant*` tables are never visible to the model.
+- The `assistant_*` tables are never visible to the model.
 
 Old tool results are cleared from the context of later turns; only one-line summaries remain.
 
@@ -178,16 +178,16 @@ All of these are standard, visible QQQ tables in the Assistant Admin app:
 
 | Table | Holds |
 |---|---|
-| `assistantConversation` | Conversations. |
-| `assistantMessage` | Messages (`partsJson`). |
-| `assistantTurn` | Turn accounting. |
-| `assistantTurnEvent` | Stream events, for replay. |
-| `assistantToolCall` | The audit of every tool call. |
-| `assistantFeedback` | Feedback on answers. |
-| `assistantPolicy` | The kill switch and overrides. |
-| `assistantUsageDaily` | Usage rollups: per user per day, plus an instance row whose `userId` is null. |
+| `assistant_conversation` | Conversations. |
+| `assistant_message` | Messages (`partsJson`). |
+| `assistant_turn` | Turn accounting. |
+| `assistant_turn_event` | Stream events, for replay. |
+| `assistant_tool_call` | The audit of every tool call. |
+| `assistant_feedback` | Feedback on answers. |
+| `assistant_policy` | The kill switch and overrides. |
+| `assistant_usage_daily` | Usage rollups: per user per day, plus an instance row whose `userId` is null. |
 
-Field names are camelCase. Map them to your schema with a table customizer. `docs/schema-postgres.sql` has a reference DDL.
+Table names follow the QRun-IO naming rule: lowercase snake_case with the `assistant_` prefix, the same as the physical tables in `docs/schema-postgres.sql` (the reference DDL). Field names are camelCase. Map them to your columns with a table customizer. Upgrading from 0.1.0-RC.1, which used camelCase table names and the `assistantUserId` key type: see [UPGRADE.md](UPGRADE.md).
 
 ## Build
 

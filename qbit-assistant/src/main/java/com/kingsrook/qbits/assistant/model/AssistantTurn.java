@@ -30,7 +30,13 @@ import com.kingsrook.qqq.backend.core.model.data.QRecordEntity;
  *******************************************************************************/
 public class AssistantTurn extends QRecordEntity
 {
-   public static final String TABLE_NAME = "assistantTurn";
+   public static final String TABLE_NAME = "assistant_turn";
+
+   /*******************************************************************************
+    ** The table name before 0.1.0-RC.2 (camelCase). See UPGRADE.md.
+    *******************************************************************************/
+   @Deprecated(since = "0.1.0-RC.2")
+   public static final String LEGACY_TABLE_NAME = "assistantTurn";
 
    @QField(isEditable = false, isPrimaryKey = true)
    private Integer id;

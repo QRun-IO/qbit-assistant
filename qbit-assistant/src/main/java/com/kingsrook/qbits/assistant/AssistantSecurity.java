@@ -24,7 +24,7 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
 
 
 /*******************************************************************************
- ** Session helpers for the owner record locks on the assistant* tables.
+ ** Session helpers for the owner record locks on the assistant_* tables.
  **
  ** The assistant never creates sessions. These methods only add security key
  ** values to the user's OWN session:
