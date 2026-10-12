@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 import com.kingsrook.qbits.assistant.metadata.AssistantMetaDataBuilder;
+import com.kingsrook.qbits.assistant.metadata.AssistantRecordScreens;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducerMultiOutput;
@@ -150,6 +151,8 @@ public class AssistantQBitProducer implements QBitMetaDataProducer<AssistantQBit
          tables.add(customized);
       }
       qInstance.addPossibleValueSource(builder.buildConversationPossibleValueSource());
+      AssistantRecordScreens.buildPossibleValueSources().forEach(qInstance::addPossibleValueSource);
+      AssistantRecordScreens.addConversationChildLists(qInstance);
 
       QProcessMetaData retention = builder.buildRetentionProcess();
       retention.setSourceQBitName(qBitMetaData.getName());
