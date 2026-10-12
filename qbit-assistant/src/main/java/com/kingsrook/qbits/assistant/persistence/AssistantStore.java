@@ -1,0 +1,613 @@
+/*
+ * Copyright 2026 Kingsrook, LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.kingsrook.qbits.assistant.persistence;
+
+
+import java.io.Serializable;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import com.kingsrook.qbits.assistant.model.AssistantConversation;
+import com.kingsrook.qbits.assistant.model.AssistantFeedback;
+import com.kingsrook.qbits.assistant.model.AssistantMessage;
+import com.kingsrook.qbits.assistant.model.AssistantPolicy;
+import com.kingsrook.qbits.assistant.model.AssistantToolCall;
+import com.kingsrook.qbits.assistant.model.AssistantTurn;
+import com.kingsrook.qbits.assistant.model.AssistantTurnEvent;
+import com.kingsrook.qbits.assistant.model.AssistantUsageDaily;
+import com.kingsrook.qbits.assistant.provider.ModelUsage;
+import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
+import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
+import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
+import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateOutput;
+import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.data.QRecordEntity;
+import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
+
+
+/*******************************************************************************
+ ** Reads and writes the QBit's own assistant* tables through QQQ actions,
+ ** under whatever session is in QContext - always the requesting user's
+ ** session (the record locks on userId then confine every call to the user's
+ ** own rows). Queries also filter on userId explicitly, so an admin's
+ ** all-access key never mixes other users' conversations into the panel.
+ **
+ ** This is the only package allowed to call QQQ data actions (ArchUnit).
+ *******************************************************************************/
+public class AssistantStore
+{
+   public static final String SCOPE_USER     = "USER";
+   public static final String SCOPE_INSTANCE = "INSTANCE";
+
+   public static final int MAX_CONVERSATIONS = 200;
+   public static final int MAX_RUNNING_TURNS = 50;
+   public static final int EVENT_PAGE_SIZE   = 500;
+
+   private static final Map<String, Object> USAGE_LOCKS = new ConcurrentHashMap<>();
+
+
+
+   /////////////////////////////////////////////////////////////////////////////
+   // generic helpers                                                         //
+   /////////////////////////////////////////////////////////////////////////////
+
+   /*******************************************************************************
+    ** Query into entities.
+    *******************************************************************************/
+   public <T extends QRecordEntity> List<T> query(String tableName, QQueryFilter filter, Class<T> entityClass) throws QException
+   {
+      List<QRecord> records = new QueryAction().execute(new QueryInput(tableName).withFilter(filter)).getRecords();
+      List<T>       result  = new ArrayList<>();
+      for(QRecord record : CollectionUtils.nonNullList(records))
+      {
+         result.add(QRecordEntity.fromQRecord(entityClass, record));
+      }
+      return (result);
+   }
+
+
+
+   /*******************************************************************************
+    ** Insert one entity; returns it with its id.
+    *******************************************************************************/
+   @SuppressWarnings("unchecked")
+   public <T extends QRecordEntity> T insert(T entity) throws QException
+   {
+      InsertOutput output = new InsertAction().execute(new InsertInput(entity.tableName()).withRecordEntity(entity));
+      QRecord      record = output.getRecords().get(0);
+      if(CollectionUtils.nullSafeHasContents(record.getErrors()))
+      {
+         throw (new QException("Could not save to " + entity.tableName() + ": " + record.getErrors().get(0).getMessage()));
+      }
+      return ((T) QRecordEntity.fromQRecord(entity.getClass(), record));
+   }
+
+
+
+   /*******************************************************************************
+    ** Update one entity (all its fields).
+    *******************************************************************************/
+   public void update(QRecordEntity entity) throws QException
+   {
+      UpdateOutput output = new UpdateAction().execute(new UpdateInput(entity.tableName()).withRecordEntity(entity));
+      QRecord      record = output.getRecords().get(0);
+      if(CollectionUtils.nullSafeHasContents(record.getErrors()))
+      {
+         throw (new QException("Could not update " + entity.tableName() + ": " + record.getErrors().get(0).getMessage()));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Update some fields of one record.
+    *******************************************************************************/
+   public void updateFields(String tableName, QRecord record) throws QException
+   {
+      UpdateOutput output = new UpdateAction().execute(new UpdateInput(tableName).withRecord(record));
+      QRecord      result = output.getRecords().get(0);
+      if(CollectionUtils.nullSafeHasContents(result.getErrors()))
+      {
+         throw (new QException("Could not update " + tableName + ": " + result.getErrors().get(0).getMessage()));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Delete by filter.
+    *******************************************************************************/
+   public void delete(String tableName, QQueryFilter filter) throws QException
+   {
+      new DeleteAction().execute(new DeleteInput(tableName).withQueryFilter(filter));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static QQueryFilter owned(String userId)
+   {
+      return (new QQueryFilter().withCriteria("userId", QCriteriaOperator.EQUALS, userId));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static <T> T first(List<T> list)
+   {
+      return (list.isEmpty() ? null : list.get(0));
+   }
+
+
+
+   /////////////////////////////////////////////////////////////////////////////
+   // conversations                                                           //
+   /////////////////////////////////////////////////////////////////////////////
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public AssistantConversation createConversation(String userId, String title, String contextJson) throws QException
+   {
+      return (insert(new AssistantConversation()
+         .withUserId(userId)
+         .withTitle(title)
+         .withStatus("ACTIVE")
+         .withPinned(false)
+         .withUnreadCount(0)
+         .withContextJson(contextJson)
+         .withTotalTokensIn(0L)
+         .withTotalTokensOut(0L)
+         .withTotalCostMicros(0L)));
+   }
+
+
+
+   /*******************************************************************************
+    ** The user's conversations in a status, newest activity first.
+    *******************************************************************************/
+   public List<AssistantConversation> listConversations(String userId, String status) throws QException
+   {
+      List<AssistantConversation> list = query(AssistantConversation.TABLE_NAME, owned(userId)
+         .withCriteria("status", QCriteriaOperator.EQUALS, status)
+         .withOrderBy(new QFilterOrderBy("id", false))
+         .withLimit(MAX_CONVERSATIONS), AssistantConversation.class);
+
+      /////////////////////////////////////////////////////////////////////
+      // pinned first, then newest activity (or creation) first, then id //
+      /////////////////////////////////////////////////////////////////////
+      list.sort((a, b) ->
+      {
+         int pinned = Boolean.compare(Boolean.TRUE.equals(b.getPinned()), Boolean.TRUE.equals(a.getPinned()));
+         if(pinned != 0)
+         {
+            return (pinned);
+         }
+         Instant ia = a.getLastMessageAt() != null ? a.getLastMessageAt() : a.getCreateDate();
+         Instant ib = b.getLastMessageAt() != null ? b.getLastMessageAt() : b.getCreateDate();
+         int     c  = (ib == null ? Instant.EPOCH : ib).compareTo(ia == null ? Instant.EPOCH : ia);
+         return (c != 0 ? c : Integer.compare(b.getId(), a.getId()));
+      });
+      return (list);
+   }
+
+
+
+   /*******************************************************************************
+    ** One of the user's conversations, or null.
+    *******************************************************************************/
+   public AssistantConversation getConversation(String userId, Integer id) throws QException
+   {
+      return (first(query(AssistantConversation.TABLE_NAME, owned(userId).withCriteria("id", QCriteriaOperator.EQUALS, id), AssistantConversation.class)));
+   }
+
+
+
+   /*******************************************************************************
+    ** Delete a conversation and everything under it.
+    *******************************************************************************/
+   public void deleteConversation(String userId, Integer conversationId) throws QException
+   {
+      List<Serializable> turnIds = new ArrayList<>();
+      for(AssistantTurn turn : query(AssistantTurn.TABLE_NAME, owned(userId).withCriteria("conversationId", QCriteriaOperator.EQUALS, conversationId), AssistantTurn.class))
+      {
+         turnIds.add(turn.getId());
+      }
+      if(!turnIds.isEmpty())
+      {
+         delete(AssistantTurnEvent.TABLE_NAME, owned(userId).withCriteria("turnId", QCriteriaOperator.IN, turnIds));
+      }
+      for(String table : List.of(AssistantToolCall.TABLE_NAME, AssistantFeedback.TABLE_NAME, AssistantMessage.TABLE_NAME, AssistantTurn.TABLE_NAME))
+      {
+         delete(table, owned(userId).withCriteria("conversationId", QCriteriaOperator.EQUALS, conversationId));
+      }
+      delete(AssistantConversation.TABLE_NAME, owned(userId).withCriteria("id", QCriteriaOperator.EQUALS, conversationId));
+   }
+
+
+
+   /////////////////////////////////////////////////////////////////////////////
+   // messages                                                                //
+   /////////////////////////////////////////////////////////////////////////////
+
+   /*******************************************************************************
+    ** A page of a conversation's messages, oldest first: the newest `limit`
+    ** messages, or the ones before `beforeId`.
+    *******************************************************************************/
+   public List<AssistantMessage> listMessages(String userId, Integer conversationId, Integer beforeId, int limit) throws QException
+   {
+      QQueryFilter filter = owned(userId).withCriteria("conversationId", QCriteriaOperator.EQUALS, conversationId);
+      if(beforeId != null)
+      {
+         filter.withCriteria("id", QCriteriaOperator.LESS_THAN, beforeId);
+      }
+      filter.withOrderBy(new QFilterOrderBy("id", false)).withLimit(limit);
+
+      List<AssistantMessage> list = query(AssistantMessage.TABLE_NAME, filter, AssistantMessage.class);
+      Collections.reverse(list);
+      return (list);
+   }
+
+
+
+   /*******************************************************************************
+    ** One of the user's messages, or null.
+    *******************************************************************************/
+   public AssistantMessage getMessage(String userId, Integer id) throws QException
+   {
+      return (first(query(AssistantMessage.TABLE_NAME, owned(userId).withCriteria("id", QCriteriaOperator.EQUALS, id), AssistantMessage.class)));
+   }
+
+
+
+   /*******************************************************************************
+    ** Next message sequence number in a conversation.
+    *******************************************************************************/
+   public int nextMessageSeq(String userId, Integer conversationId) throws QException
+   {
+      List<AssistantMessage> last = query(AssistantMessage.TABLE_NAME, owned(userId)
+         .withCriteria("conversationId", QCriteriaOperator.EQUALS, conversationId)
+         .withOrderBy(new QFilterOrderBy("id", false))
+         .withLimit(1), AssistantMessage.class);
+      return (last.isEmpty() || last.get(0).getSeq() == null ? 1 : last.get(0).getSeq() + 1);
+   }
+
+
+
+   /////////////////////////////////////////////////////////////////////////////
+   // turns and events                                                        //
+   /////////////////////////////////////////////////////////////////////////////
+
+   /*******************************************************************************
+    ** One of the user's turns, or null.
+    *******************************************************************************/
+   public AssistantTurn getTurn(String userId, Integer id) throws QException
+   {
+      return (first(query(AssistantTurn.TABLE_NAME, owned(userId).withCriteria("id", QCriteriaOperator.EQUALS, id), AssistantTurn.class)));
+   }
+
+
+
+   /*******************************************************************************
+    ** The user's turns still running (any replica).
+    *******************************************************************************/
+   public List<AssistantTurn> listRunningTurns(String userId) throws QException
+   {
+      return (query(AssistantTurn.TABLE_NAME, owned(userId)
+         .withCriteria("status", QCriteriaOperator.IN, List.of("RUNNING", "CANCELLING"))
+         .withOrderBy(new QFilterOrderBy("id", false))
+         .withLimit(MAX_RUNNING_TURNS), AssistantTurn.class));
+   }
+
+
+
+   /*******************************************************************************
+    ** Persist one streamed event.
+    *******************************************************************************/
+   public void insertEvent(Integer turnId, String userId, int seq, String eventType, String dataJson) throws QException
+   {
+      insert(new AssistantTurnEvent()
+         .withTurnId(turnId)
+         .withUserId(userId)
+         .withSeq(seq)
+         .withEventType(eventType)
+         .withDataJson(dataJson));
+   }
+
+
+
+   /*******************************************************************************
+    ** A turn's persisted events after a sequence number, in order.
+    *******************************************************************************/
+   public List<AssistantTurnEvent> listEvents(String userId, Integer turnId, int afterSeq, int limit) throws QException
+   {
+      return (query(AssistantTurnEvent.TABLE_NAME, owned(userId)
+         .withCriteria("turnId", QCriteriaOperator.EQUALS, turnId)
+         .withCriteria("seq", QCriteriaOperator.GREATER_THAN, afterSeq)
+         .withOrderBy(new QFilterOrderBy("seq", true))
+         .withLimit(limit), AssistantTurnEvent.class));
+   }
+
+
+
+   /*******************************************************************************
+    ** The highest persisted event seq of a turn (0 when none).
+    *******************************************************************************/
+   public int lastEventSeq(String userId, Integer turnId) throws QException
+   {
+      List<AssistantTurnEvent> last = query(AssistantTurnEvent.TABLE_NAME, owned(userId)
+         .withCriteria("turnId", QCriteriaOperator.EQUALS, turnId)
+         .withOrderBy(new QFilterOrderBy("seq", false))
+         .withLimit(1), AssistantTurnEvent.class);
+      return (last.isEmpty() || last.get(0).getSeq() == null ? 0 : last.get(0).getSeq());
+   }
+
+
+
+   /*******************************************************************************
+    ** The user's latest tool calls on a table, newest first.
+    *******************************************************************************/
+   public List<AssistantToolCall> recentToolCalls(String userId, String tableName, int limit) throws QException
+   {
+      return (query(AssistantToolCall.TABLE_NAME, owned(userId)
+         .withCriteria("tableName", QCriteriaOperator.EQUALS, tableName)
+         .withOrderBy(new QFilterOrderBy("id", false))
+         .withLimit(limit), AssistantToolCall.class));
+   }
+
+
+
+   /////////////////////////////////////////////////////////////////////////////
+   // policy and usage                                                        //
+   /////////////////////////////////////////////////////////////////////////////
+
+   /*******************************************************************************
+    ** The policy row (lowest id), or null.
+    *******************************************************************************/
+   public AssistantPolicy loadPolicy() throws QException
+   {
+      return (first(query(AssistantPolicy.TABLE_NAME, new QQueryFilter().withOrderBy(new QFilterOrderBy("id", true)).withLimit(1), AssistantPolicy.class)));
+   }
+
+
+
+   /*******************************************************************************
+    ** A user's usage row for a day (or null).
+    *******************************************************************************/
+   public AssistantUsageDaily getUserUsage(String userId, LocalDate date) throws QException
+   {
+      return (first(query(AssistantUsageDaily.TABLE_NAME, owned(userId)
+         .withCriteria("scope", QCriteriaOperator.EQUALS, SCOPE_USER)
+         .withCriteria("usageDate", QCriteriaOperator.EQUALS, date), AssistantUsageDaily.class)));
+   }
+
+
+
+   /*******************************************************************************
+    ** The instance usage rows of a date range (inclusive).
+    *******************************************************************************/
+   public List<AssistantUsageDaily> listInstanceUsage(LocalDate from, LocalDate to) throws QException
+   {
+      return (query(AssistantUsageDaily.TABLE_NAME, new QQueryFilter()
+         .withCriteria("scope", QCriteriaOperator.EQUALS, SCOPE_INSTANCE)
+         .withCriteria("usageDate", QCriteriaOperator.BETWEEN, from, to), AssistantUsageDaily.class));
+   }
+
+
+
+   /*******************************************************************************
+    ** Add a turn's usage to the user's and the instance's rows of the day.
+    **
+    ** QQQ has no atomic increment, so this is read-modify-write, made safe as
+    ** far as one JVM goes: every row key (scope, userId, date) has its own lock,
+    ** the USER rows have a unique key (scope, userId, usageDate), and an insert
+    ** that loses the race to a concurrent insert is retried as an update.
+    ** Remaining gap: two replicas updating the same row in the same instant
+    ** (the INSTANCE row under heavy multi-replica load) can lose one increment.
+    *******************************************************************************/
+   public void addUsage(String userId, LocalDate date, ModelUsage usage, long costMicros, boolean countTurn) throws QException
+   {
+      increment(SCOPE_USER, userId, date, usage, costMicros, countTurn);
+      increment(SCOPE_INSTANCE, null, date, usage, costMicros, countTurn);
+   }
+
+
+
+   /*******************************************************************************
+    ** Increment one usage row (under its in-process lock, insert-race retry).
+    *******************************************************************************/
+   private void increment(String scope, String userId, LocalDate date, ModelUsage usage, long costMicros, boolean countTurn) throws QException
+   {
+      Object lock = USAGE_LOCKS.computeIfAbsent(scope + "|" + userId + "|" + date, k -> new Object());
+      synchronized(lock)
+      {
+         for(int attempt = 0; ; attempt++)
+         {
+            AssistantUsageDaily row = usageRow(scope, userId, date);
+            if(row == null)
+            {
+               row = new AssistantUsageDaily().withScope(scope).withUserId(userId).withUsageDate(date);
+            }
+            row.setTurnCount(nz(row.getTurnCount()) + (countTurn ? 1 : 0));
+            row.setInputTokens(nz(row.getInputTokens()) + nz(usage.getInputTokens()));
+            row.setOutputTokens(nz(row.getOutputTokens()) + nz(usage.getOutputTokens()));
+            row.setCacheReadTokens(nz(row.getCacheReadTokens()) + nz(usage.getCacheReadTokens()));
+            row.setCacheWriteTokens(nz(row.getCacheWriteTokens()) + nz(usage.getCacheWriteTokens()));
+            row.setCostMicros(nz(row.getCostMicros()) + costMicros);
+            try
+            {
+               if(row.getId() == null)
+               {
+                  insert(row);
+               }
+               else
+               {
+                  update(row);
+               }
+               return;
+            }
+            catch(QException e)
+            {
+               ///////////////////////////////////////////////////////////////
+               // a concurrent insert of the same key (unique key) - re-read //
+               ///////////////////////////////////////////////////////////////
+               if(row.getId() != null || attempt >= 2)
+               {
+                  throw (e);
+               }
+            }
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** One usage row by key, or null.
+    *******************************************************************************/
+   private AssistantUsageDaily usageRow(String scope, String userId, LocalDate date) throws QException
+   {
+      QQueryFilter filter = new QQueryFilter()
+         .withCriteria("scope", QCriteriaOperator.EQUALS, scope)
+         .withCriteria("usageDate", QCriteriaOperator.EQUALS, date);
+      if(userId == null)
+      {
+         filter.withCriteria("userId", QCriteriaOperator.IS_BLANK);
+      }
+      else
+      {
+         filter.withCriteria("userId", QCriteriaOperator.EQUALS, userId);
+      }
+      return (first(query(AssistantUsageDaily.TABLE_NAME, filter.withOrderBy(new QFilterOrderBy("id", true)), AssistantUsageDaily.class)));
+   }
+
+
+
+   /////////////////////////////////////////////////////////////////////////////
+   // retention                                                               //
+   /////////////////////////////////////////////////////////////////////////////
+
+   /*******************************************************************************
+    ** Conversations (any owner visible to the session) not active since a time.
+    *******************************************************************************/
+   public List<AssistantConversation> listConversationsInactiveSince(Instant cutoff, int limit) throws QException
+   {
+      return (query(AssistantConversation.TABLE_NAME, new QQueryFilter()
+         .withCriteria("modifyDate", QCriteriaOperator.LESS_THAN, cutoff)
+         .withOrderBy(new QFilterOrderBy("id", true))
+         .withLimit(limit), AssistantConversation.class));
+   }
+
+
+
+   /*******************************************************************************
+    ** Null out resultJson of tool calls created before a time; returns count.
+    *******************************************************************************/
+   public int clearToolResultsBefore(Instant cutoff, int limit) throws QException
+   {
+      List<AssistantToolCall> calls = query(AssistantToolCall.TABLE_NAME, new QQueryFilter()
+         .withCriteria("createDate", QCriteriaOperator.LESS_THAN, cutoff)
+         .withCriteria("resultJson", QCriteriaOperator.IS_NOT_BLANK)
+         .withLimit(limit), AssistantToolCall.class);
+      if(calls.isEmpty())
+      {
+         return (0);
+      }
+      List<QRecord> records = new ArrayList<>();
+      for(AssistantToolCall call : calls)
+      {
+         records.add(new QRecord().withValue("id", call.getId()).withValue("resultJson", null));
+      }
+      new UpdateAction().execute(new UpdateInput(AssistantToolCall.TABLE_NAME).withRecords(records));
+      return (calls.size());
+   }
+
+
+
+   /*******************************************************************************
+    ** Delete stream events (replay data, incl. render payloads) created before
+    ** a time; returns how many.
+    *******************************************************************************/
+   public int deleteTurnEventsBefore(Instant cutoff, int limit) throws QException
+   {
+      List<AssistantTurnEvent> events = query(AssistantTurnEvent.TABLE_NAME, new QQueryFilter()
+         .withCriteria("createDate", QCriteriaOperator.LESS_THAN, cutoff)
+         .withLimit(limit), AssistantTurnEvent.class);
+      if(events.isEmpty())
+      {
+         return (0);
+      }
+      List<Serializable> ids = new ArrayList<>();
+      events.forEach(e -> ids.add(e.getId()));
+      new DeleteAction().execute(new DeleteInput(AssistantTurnEvent.TABLE_NAME).withPrimaryKeys(ids));
+      return (events.size());
+   }
+
+
+
+   /*******************************************************************************
+    ** A page of assistant messages created before a time, by id after afterId.
+    *******************************************************************************/
+   public List<AssistantMessage> listAssistantMessagesBefore(Instant cutoff, int afterId, int limit) throws QException
+   {
+      return (query(AssistantMessage.TABLE_NAME, new QQueryFilter()
+         .withCriteria("role", QCriteriaOperator.EQUALS, "ASSISTANT")
+         .withCriteria("createDate", QCriteriaOperator.LESS_THAN, cutoff)
+         .withCriteria("id", QCriteriaOperator.GREATER_THAN, afterId)
+         .withOrderBy(new QFilterOrderBy("id", true))
+         .withLimit(limit), AssistantMessage.class));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static long nz(Long value)
+   {
+      return (value == null ? 0 : value);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static int nz(Integer value)
+   {
+      return (value == null ? 0 : value);
+   }
+
+}

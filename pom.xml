@@ -1,58 +1,212 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
-         http://maven.apache.org/xsd/maven-4.0.0.xsd">
-   <modelVersion>4.0.0</modelVersion>
+<!--
+  ~ Copyright 2026 Kingsrook, LLC
+  ~
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~     http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
 
-   <groupId>com.kingsrook.qbits</groupId>
-   <artifactId>qbit-example-extension</artifactId>
-   <version>0.1.0-SNAPSHOT</version>
-   <packaging>jar</packaging>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 
-   <name>QBit Example Extension</name>
-   <description>Example Extension QBit - rename this for your QBit</description>
-
+   <!-- Multi-module build. The qqq-orb sets <revision> here; the modules     -->
+   <!-- inherit it, and the flatten plugin resolves it in the published POMs. -->
    <properties>
+      <revision>0.1.0-SNAPSHOT</revision>
       <maven.compiler.source>21</maven.compiler.source>
       <maven.compiler.target>21</maven.compiler.target>
       <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-      <qqq.version>4.0.0</qqq.version>
+      <jacoco.version>0.8.15</jacoco.version>
+      <anthropic.version>2.71.0</anthropic.version>
+      <archunit.version>1.5.1</archunit.version>
+      <jackson.version>2.21.7</jackson.version>
+      <!-- live evals call the real API; run them with -Dtest.excludedGroups= -Dgroups=live -->
+      <test.excludedGroups>live</test.excludedGroups>
    </properties>
 
-   <dependencies>
-      <dependency>
-         <groupId>com.kingsrook.qqq</groupId>
-         <artifactId>qqq-backend-core</artifactId>
-         <version>${qqq.version}</version>
-      </dependency>
+   <parent>
+      <groupId>com.kingsrook</groupId>
+      <artifactId>qbit-build-parent</artifactId>
+      <version>2.0.0</version>
+   </parent>
 
-      <dependency>
-         <groupId>org.junit.jupiter</groupId>
-         <artifactId>junit-jupiter</artifactId>
-         <version>5.10.0</version>
-         <scope>test</scope>
-      </dependency>
-      <dependency>
-         <groupId>org.assertj</groupId>
-         <artifactId>assertj-core</artifactId>
-         <version>3.27.7</version>
-         <scope>test</scope>
-      </dependency>
-   </dependencies>
+   <groupId>com.kingsrook.qbits</groupId>
+   <artifactId>qbit-assistant-parent</artifactId>
+   <version>${revision}</version>
+   <packaging>pom</packaging>
+
+   <name>QBit Assistant (parent)</name>
+   <description>In-app AI assistant for QQQ applications: the qbit and its model providers</description>
+   <url>https://github.com/QRun-IO/qbit-assistant</url>
+
+   <modelVersion>4.0.0</modelVersion>
+
+   <modules>
+      <module>qbit-assistant</module>
+      <module>qbit-assistant-provider-anthropic</module>
+   </modules>
+
+   <licenses>
+      <license>
+         <name>Apache License, Version 2.0</name>
+         <url>https://www.apache.org/licenses/LICENSE-2.0</url>
+         <distribution>repo</distribution>
+      </license>
+   </licenses>
+
+   <developers>
+      <developer>
+         <id>kingsrook</id>
+         <name>Kingsrook Team</name>
+         <email>contact@kingsrook.com</email>
+         <organization>Kingsrook, LLC</organization>
+         <organizationUrl>https://kingsrook.com</organizationUrl>
+      </developer>
+   </developers>
+
+   <scm>
+      <connection>scm:git:git://github.com/QRun-IO/qbit-assistant.git</connection>
+      <developerConnection>scm:git:ssh://github.com:QRun-IO/qbit-assistant.git</developerConnection>
+      <url>https://github.com/QRun-IO/qbit-assistant</url>
+      <tag>HEAD</tag>
+   </scm>
+
+   <dependencyManagement>
+      <dependencies>
+         <!-- QQQ 4.1 is built on Jackson 2.21; the Anthropic SDK asks for 2.19. -->
+         <!-- Pin the newer one so both resolve to the same line.               -->
+         <dependency>
+            <groupId>com.fasterxml.jackson</groupId>
+            <artifactId>jackson-bom</artifactId>
+            <version>${jackson.version}</version>
+            <type>pom</type>
+            <scope>import</scope>
+         </dependency>
+         <dependency>
+            <groupId>com.kingsrook.qbits</groupId>
+            <artifactId>qbit-assistant</artifactId>
+            <version>${revision}</version>
+         </dependency>
+         <dependency>
+            <groupId>com.kingsrook.qbits</groupId>
+            <artifactId>qbit-assistant</artifactId>
+            <version>${revision}</version>
+            <type>test-jar</type>
+         </dependency>
+         <dependency>
+            <groupId>com.anthropic</groupId>
+            <artifactId>anthropic-java</artifactId>
+            <version>${anthropic.version}</version>
+         </dependency>
+         <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <version>3.27.7</version>
+         </dependency>
+         <dependency>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit-junit5</artifactId>
+            <version>${archunit.version}</version>
+         </dependency>
+      </dependencies>
+   </dependencyManagement>
 
    <build>
+      <pluginManagement>
+         <plugins>
+            <plugin>
+               <groupId>org.apache.maven.plugins</groupId>
+               <artifactId>maven-surefire-plugin</artifactId>
+               <version>3.5.4</version>
+            </plugin>
+            <plugin>
+               <groupId>org.apache.maven.plugins</groupId>
+               <artifactId>maven-jar-plugin</artifactId>
+               <version>3.4.2</version>
+            </plugin>
+            <plugin>
+               <groupId>org.jacoco</groupId>
+               <artifactId>jacoco-maven-plugin</artifactId>
+               <version>${jacoco.version}</version>
+            </plugin>
+         </plugins>
+      </pluginManagement>
       <plugins>
+         <!-- Resolve ${revision} in the installed / deployed POMs. -->
          <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-compiler-plugin</artifactId>
-            <version>3.11.0</version>
-         </plugin>
-         <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-surefire-plugin</artifactId>
-            <version>3.1.2</version>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>flatten-maven-plugin</artifactId>
+            <version>1.7.3</version>
+            <configuration>
+               <updatePomFile>true</updatePomFile>
+               <flattenMode>resolveCiFriendliesOnly</flattenMode>
+            </configuration>
+            <executions>
+               <execution>
+                  <id>flatten</id>
+                  <phase>process-resources</phase>
+                  <goals>
+                     <goal>flatten</goal>
+                  </goals>
+               </execution>
+               <execution>
+                  <id>flatten-clean</id>
+                  <phase>clean</phase>
+                  <goals>
+                     <goal>clean</goal>
+                  </goals>
+               </execution>
+            </executions>
          </plugin>
       </plugins>
    </build>
+
+   <profiles>
+      <!-- The assistant needs QQQ 4.1.0-RC.4: the AI tool kernel (package        -->
+      <!-- actions.ai, qqq#1078) and the developer panels (qqq#1076). Until        -->
+      <!-- qbit-build-parent imports the 4.1 BOM, this                              -->
+      <!-- profile is active by default and imports qqq-bom-pom ahead of the        -->
+      <!-- parent's 4.0.0 BOM, as in qbit-quick-search (ADR-0007). Override with    -->
+      <!-- -Dqqq.snapshot.version=... (e.g. a locally installed kernel build).      -->
+      <profile>
+         <id>qqq-snapshot</id>
+         <activation>
+            <activeByDefault>true</activeByDefault>
+         </activation>
+         <properties>
+            <qqq.snapshot.version>4.1.0-RC.4</qqq.snapshot.version>
+         </properties>
+         <dependencyManagement>
+            <dependencies>
+               <dependency>
+                  <groupId>com.kingsrook.qqq</groupId>
+                  <artifactId>qqq-bom-pom</artifactId>
+                  <version>${qqq.snapshot.version}</version>
+                  <type>pom</type>
+                  <scope>import</scope>
+               </dependency>
+            </dependencies>
+         </dependencyManagement>
+         <repositories>
+            <repository>
+               <id>sonatype-snapshots</id>
+               <url>https://central.sonatype.com/repository/maven-snapshots/</url>
+               <releases>
+                  <enabled>false</enabled>
+               </releases>
+               <snapshots>
+                  <enabled>true</enabled>
+               </snapshots>
+            </repository>
+         </repositories>
+      </profile>
+   </profiles>
 </project>

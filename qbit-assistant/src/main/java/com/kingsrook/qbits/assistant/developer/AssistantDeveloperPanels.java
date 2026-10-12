@@ -1,0 +1,62 @@
+/*
+ * Copyright 2026 Kingsrook, LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.kingsrook.qbits.assistant.developer;
+
+
+import com.kingsrook.qqq.backend.core.model.developer.DeveloperPanelsMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
+
+
+/*******************************************************************************
+ ** Registers the Assistant developer panel with the core developer-panel
+ ** registry (idempotent). The producer calls it only when the running QQQ
+ ** has the developer-panel contract.
+ *******************************************************************************/
+public class AssistantDeveloperPanels
+{
+   public static final String CONTRACT_CLASS = "com.kingsrook.qqq.backend.core.model.developer.DeveloperPanelsMetaData";
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public static void register(QInstance qInstance)
+   {
+      DeveloperPanelsMetaData.ofOrWithNew(qInstance).withProvider(new QCodeReference(AssistantDeveloperPanelProvider.class));
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the running QQQ has the developer-panel contract.
+    *******************************************************************************/
+   public static boolean isContractAvailable()
+   {
+      try
+      {
+         Class.forName(CONTRACT_CLASS, false, AssistantDeveloperPanels.class.getClassLoader());
+         return (true);
+      }
+      catch(ClassNotFoundException | LinkageError e)
+      {
+         return (false);
+      }
+   }
+
+}
