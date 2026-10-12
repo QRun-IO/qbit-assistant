@@ -2,7 +2,7 @@
 
 ## 0.1.0-RC.1 to 0.1.0-RC.2: snake_case names
 
-RC.2 applies the QRun-IO naming rule (owner decision, 2026-10-12): *"table names should always be lowercase and use _, and qbits should always be prefixed with their name"*. The QQQ table names, the access permission, the owner security key type and the possible-value source change. **This is a metadata-only change**: no table, column or index in your database changes, and no Liquibase or DDL step is needed.
+RC.2 applies the QRun-IO naming rule (owner decision, 2026-10-12): *"table names should always be lowercase and use _, and qbits should always be prefixed with their name"*. The QQQ table names, the owner security key type and the possible-value source change. Permissions do not. **This is a metadata-only change**: no table, column or index in your database changes, and no Liquibase or DDL step is needed.
 
 ### What changed
 
@@ -17,14 +17,13 @@ RC.2 applies the QRun-IO naming rule (owner decision, 2026-10-12): *"table names
 | Table | `assistantPolicy` | `assistant_policy` |
 | Table | `assistantUsageDaily` | `assistant_usage_daily` |
 | Possible-value source (conversations) | `assistantConversation` | `assistant_conversation` |
-| Permission (use the panel) | `assistant.hasAccess` | `assistant.has_access` |
-| Permission (admin) | `assistant.admin` | `assistant.admin` (unchanged) |
+| Permissions | `assistant.hasAccess`, `assistant.admin` | unchanged (QQQ's standard `<base>.hasAccess` suffix; the `assistant` base already follows the rule) |
 | Security key type | `assistantUserId` | `assistant_user_id` |
 | All-access key | `assistantUserIdAllAccess` | `assistant_user_id_all_access` |
 
 Unchanged: Java class names, field names (`userId`, `conversationId`, ...), the `assistantAdmin` app, the `assistantRetention` process, the `/qqq/v1/assistant` routes and the `assistant` supplemental instance meta-data.
 
-The old names stay available as `@Deprecated` constants for one release, so migration code can refer to them: `<Entity>.LEGACY_TABLE_NAME`, `AssistantQBitConfig.LEGACY_ACCESS_PERMISSION`, `AssistantQBitConfig.LEGACY_DEFAULT_OWNER_KEY_TYPE` and `AssistantMetaDataBuilder.LEGACY_ALL_ACCESS_SUFFIX`. They will be removed in 0.2.0.
+The old names stay available as `@Deprecated` constants for one release, so migration code can refer to them: `<Entity>.LEGACY_TABLE_NAME`, `AssistantQBitConfig.LEGACY_DEFAULT_OWNER_KEY_TYPE` and `AssistantMetaDataBuilder.LEGACY_ALL_ACCESS_SUFFIX`. They will be removed in 0.2.0.
 
 ### Physical tables
 
@@ -47,7 +46,7 @@ or keep them and set `RDBMSTableBackendDetails.tableName` to the old name in you
 
 QQQ stores table names, permission names and key names outside this qbit. Update them in the same deployment. The examples are for Postgres with QQQ's default snake_case backend names; adjust the table and column names to your schema.
 
-1. **Permissions and security keys.** Wherever your users get permissions (identity-provider roles or groups, Authentik group attributes, a permissions table), grant `assistant.has_access` instead of `assistant.hasAccess`. If your authentication customizer grants the all-access key itself rather than calling `AssistantSecurity.applySessionKeys`, grant `assistant_user_id_all_access`. If you set `ownerSecurityKeyType` explicitly, the all-access key is now `<keyType>_all_access`.
+1. **Security keys.** Permission grants (`assistant.hasAccess`, `assistant.admin`) need no change. If your authentication customizer grants the all-access key itself rather than calling `AssistantSecurity.applySessionKeys`, grant `assistant_user_id_all_access`. If you set `ownerSecurityKeyType` explicitly, the all-access key is now `<keyType>_all_access`.
 
 2. **Saved views and saved reports** on the assistant tables:
 
@@ -91,4 +90,4 @@ QQQ stores table names, permission names and key names outside this qbit. Update
 
 ### Order
 
-Deploy RC.2 and run the statements above in the same maintenance window. Before the update runs, users with only `assistant.hasAccess` lose the panel, and saved views on the assistant tables do not open.
+Deploy RC.2 and run the statements above in the same maintenance window. Until the update runs, saved views and reports on the assistant tables do not open, and admins who get the all-access key from their own customizer only see their own rows.

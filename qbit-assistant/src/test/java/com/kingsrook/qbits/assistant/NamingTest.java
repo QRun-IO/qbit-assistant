@@ -114,8 +114,10 @@ class NamingTest extends BaseAssistantTest
          .containsEntry("assistant_policy", "assistantPolicy")
          .containsEntry("assistant_usage_daily", "assistantUsageDaily");
 
-      assertThat(AssistantQBitConfig.ACCESS_PERMISSION).isEqualTo("assistant.has_access");
-      assertThat(AssistantQBitConfig.LEGACY_ACCESS_PERMISSION).isEqualTo("assistant.hasAccess");
+      ///////////////////////////////////////////////////////////////////////
+      // permissions keep QQQ's standard <base>.hasAccess suffix (unchanged) //
+      ///////////////////////////////////////////////////////////////////////
+      assertThat(AssistantQBitConfig.ACCESS_PERMISSION).isEqualTo("assistant.hasAccess");
       assertThat(AssistantQBitConfig.ADMIN_PERMISSION).isEqualTo("assistant.admin");
       assertThat(AssistantQBitConfig.DEFAULT_OWNER_KEY_TYPE).isEqualTo("assistant_user_id");
       assertThat(AssistantQBitConfig.LEGACY_DEFAULT_OWNER_KEY_TYPE).isEqualTo("assistantUserId");

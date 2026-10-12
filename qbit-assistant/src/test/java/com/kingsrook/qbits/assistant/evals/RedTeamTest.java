@@ -106,7 +106,7 @@ class RedTeamTest extends BaseAssistantTest
 
 
    /*******************************************************************************
-    ** Without assistant.has_access there is no assistant at all.
+    ** Without assistant.hasAccess there is no assistant at all.
     *******************************************************************************/
    @Test
    void testNoAssistantAccess() throws Exception

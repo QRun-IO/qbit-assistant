@@ -11,7 +11,7 @@ Phase 0/1 of the QQQ Assistant: read-only Q&A and navigation. Requires QQQ 4.1 w
 ### Changed (0.1.0-RC.2)
 - **Snake_case names** (QRun-IO naming rule, 2026-10-12). Metadata only; the physical tables were already `assistant_*`:
   - tables `assistantConversation` ... `assistantUsageDaily` are now `assistant_conversation`, `assistant_message`, `assistant_turn`, `assistant_turn_event`, `assistant_tool_call`, `assistant_feedback`, `assistant_policy` and `assistant_usage_daily`; the conversation possible-value source follows the table name
-  - permission `assistant.hasAccess` is now `assistant.has_access` (`assistant.admin` is unchanged)
+  - permissions are unchanged: `assistant.hasAccess` keeps QQQ's standard `hasAccess` suffix, and `assistant.admin` stays as is
   - security key type `assistantUserId` is now `assistant_user_id`, with all-access key `assistant_user_id_all_access`
   - the old names remain as `@Deprecated` `LEGACY_*` constants until 0.2.0. See [UPGRADE.md](UPGRADE.md) for the stored references to update (permissions, saved views and reports, `audit_table` names).
 
@@ -27,7 +27,7 @@ Phase 0/1 of the QQQ Assistant: read-only Q&A and navigation. Requires QQQ 4.1 w
   - Standard, visible tables: `assistant_conversation`, `assistant_message`, `assistant_turn`, `assistant_turn_event`, `assistant_tool_call`, `assistant_feedback`, `assistant_policy` and `assistant_usage_daily`. User-owned tables are locked to their owner (`assistant_user_id`), and admins read everything through `assistant_user_id_all_access`.
   - The Assistant Admin app, gated by `assistant.admin`.
   - The `assistantRetention` process.
-  - `/qqq/v1/assistant` routes: config probe, conversations CRUD, turns as Server-Sent Events, replay through `/events?after=`, cancel, and feedback. The panel requires `assistant.has_access`. The kill switch and budgets are checked when a turn starts, and the kill switch again before every step.
+  - `/qqq/v1/assistant` routes: config probe, conversations CRUD, turns as Server-Sent Events, replay through `/events?after=`, cancel, and feedback. The panel requires `assistant.hasAccess`. The kill switch and budgets are checked when a turn starts, and the kill switch again before every step.
   - `TurnEngine`:
     - streams the model's answer
     - runs read and navigation tools through `AiToolKernel`, with parallel calls bounded

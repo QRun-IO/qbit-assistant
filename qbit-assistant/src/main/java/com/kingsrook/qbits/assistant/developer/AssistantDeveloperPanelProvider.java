@@ -36,7 +36,7 @@ import com.kingsrook.qqq.backend.core.model.developer.DeveloperPanelTone;
 /*******************************************************************************
  ** The "Assistant" panel of the record Developer screen (contract 5.2), on
  ** the core developer-panel-provider contract. Available whenever the QBit
- ** is installed and enabled; for a user without assistant.has_access it only
+ ** is installed and enabled; for a user without assistant.hasAccess it only
  ** says so. Everything else comes from AssistantDeveloperInfo, i.e. from the
  ** kernel's permission-scoped access report for the CURRENT user.
  *******************************************************************************/
@@ -130,7 +130,7 @@ public class AssistantDeveloperPanelProvider implements DeveloperPanelProviderIn
       if(!info.hasAccess())
       {
          return (panel.withStatusLabel("No access").withStatusTone(DeveloperPanelTone.INFO)
-            .withBlock(DeveloperPanelBlock.text("You do not have access to the assistant (permission assistant.has_access).", DeveloperPanelTone.INFO)));
+            .withBlock(DeveloperPanelBlock.text("You do not have access to the assistant (permission assistant.hasAccess).", DeveloperPanelTone.INFO)));
       }
 
       if(info.killSwitch())
@@ -145,7 +145,7 @@ public class AssistantDeveloperPanelProvider implements DeveloperPanelProviderIn
       panel.withBlock(DeveloperPanelBlock.keyValues("Status")
          .withItem("Enabled for this application", yesNo(info.enabled()))
          .withItem("Kill switch", info.killSwitch() ? "On - the assistant is off for everyone" : "Off")
-         .withItem("Your access (assistant.has_access)", "Yes")
+         .withItem("Your access (assistant.hasAccess)", "Yes")
          .withItem("Model", info.model())
          .withItem("Writes", "Not available in this version (read and navigate only)"));
 

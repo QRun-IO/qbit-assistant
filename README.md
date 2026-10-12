@@ -95,7 +95,7 @@ When a turn sees the switch on, it cancels every turn running on that replica. I
 
 | Permission | Grants |
 |---|---|
-| `assistant.has_access` | Use the panel. It grants **no data access**: the assistant reads only what the user can read anyway. |
+| `assistant.hasAccess` | Use the panel. It grants **no data access**: the assistant reads only what the user can read anyway. |
 | `assistant.admin` | The Assistant Admin app, its tables and the retention process. |
 
 There is no assistant-specific data permission. Everything the kernel reads is checked against the user's normal table permissions and record locks. The QBit never uses a system session (an ArchUnit test enforces this).
@@ -187,7 +187,7 @@ All of these are standard, visible QQQ tables in the Assistant Admin app:
 | `assistant_policy` | The kill switch and overrides. |
 | `assistant_usage_daily` | Usage rollups: per user per day, plus an instance row whose `userId` is null. |
 
-Table names follow the QRun-IO naming rule: lowercase snake_case with the `assistant_` prefix, the same as the physical tables in `docs/schema-postgres.sql` (the reference DDL). Field names are camelCase. Map them to your columns with a table customizer. Upgrading from 0.1.0-RC.1, which used camelCase table names, `assistant.hasAccess` and `assistantUserId`: see [UPGRADE.md](UPGRADE.md).
+Table names follow the QRun-IO naming rule: lowercase snake_case with the `assistant_` prefix, the same as the physical tables in `docs/schema-postgres.sql` (the reference DDL). Field names are camelCase. Map them to your columns with a table customizer. Upgrading from 0.1.0-RC.1, which used camelCase table names and the `assistantUserId` key type: see [UPGRADE.md](UPGRADE.md).
 
 ## Build
 

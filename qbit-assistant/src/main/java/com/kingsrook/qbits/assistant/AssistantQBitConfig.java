@@ -48,20 +48,18 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
  *******************************************************************************/
 public class AssistantQBitConfig implements QBitConfig
 {
-   public static final String ACCESS_PERMISSION        = "assistant.has_access";
+   public static final String ACCESS_PERMISSION        = "assistant.hasAccess";
    public static final String ADMIN_PERMISSION         = "assistant.admin";
    public static final String DEFAULT_OWNER_KEY_TYPE   = "assistant_user_id";
-
-   /*******************************************************************************
-    ** Names used before 0.1.0-RC.2 (camelCase). See UPGRADE.md.
-    *******************************************************************************/
-   @Deprecated(since = "0.1.0-RC.2")
-   public static final String LEGACY_ACCESS_PERMISSION      = "assistant.hasAccess";
-   @Deprecated(since = "0.1.0-RC.2")
-   public static final String LEGACY_DEFAULT_OWNER_KEY_TYPE = "assistantUserId";
    public static final String ENABLED_ENV_VAR          = "QQQ_ASSISTANT_ENABLED";
    public static final String DEFAULT_SHORTCUT         = "mod+j";
    public static final String DEFAULT_PROVIDER_NAME    = "anthropic";
+
+   /*******************************************************************************
+    ** The owner key type used before 0.1.0-RC.2 (camelCase). See UPGRADE.md.
+    *******************************************************************************/
+   @Deprecated(since = "0.1.0-RC.2")
+   public static final String LEGACY_DEFAULT_OWNER_KEY_TYPE = "assistantUserId";
 
    private Boolean               enabled                    = true;
    private String                backendName;
