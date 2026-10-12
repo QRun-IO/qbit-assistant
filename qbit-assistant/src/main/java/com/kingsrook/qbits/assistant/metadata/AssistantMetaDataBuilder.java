@@ -154,6 +154,7 @@ public class AssistantMetaDataBuilder
          .withUniqueKey(new UniqueKey("scope", "userId", "usageDate"))
          .withRecordLabelFormat("%s %s").withRecordLabelFields("scope", "usageDate"));
 
+      tables.forEach(AssistantRecordScreens::apply);
       return (tables);
    }
 
