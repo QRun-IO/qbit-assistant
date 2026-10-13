@@ -105,6 +105,26 @@ public class AssistantRouteProvider implements QJavalinRouteProviderInterface
    @Override
    public void acceptJavalinConfig(JavalinConfig config)
    {
+      ///////////////////////////////////////////////////////////////////////
+      // learn this server's local port from the first UI request (e.g.   //
+      // the metaData load), so tools and Explain access can loop back to //
+      // /qqq/v1 before any assistant route has been called               //
+      ///////////////////////////////////////////////////////////////////////
+      config.routes.before("/qqq/v1/*", ctx ->
+      {
+         AssistantRuntime runtime = AssistantRuntime.of(qInstance);
+         if(runtime != null && runtime.uiApiBaseUrl() == null)
+         {
+            try
+            {
+               runtime.learnLocalPort(ctx.req().getLocalPort());
+            }
+            catch(RuntimeException e)
+            {
+               LOG.debug("Could not read the local port", e);
+            }
+         }
+      });
       config.routes.get(BASE_PATH + "/config", ctx -> json(ctx, false, (api, body) -> api.config()));
       config.routes.get(BASE_PATH + "/conversations", ctx -> json(ctx, false, (api, body) -> api.listConversations(ctx.queryParam("status"))));
       config.routes.post(BASE_PATH + "/conversations", ctx -> json(ctx, true, (api, body) ->

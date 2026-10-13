@@ -159,8 +159,20 @@ public final class AssistantAccessWidget
          }
          String table  = input.getQueryParams() == null ? null : input.getQueryParams().get("table");
          String prompt = input.getQueryParams() == null ? null : input.getQueryParams().get("prompt");
-         List<AccessExplainer.TableAccess> tables = runtime.getAccessExplainer().explain(runtime.getUiApiGateway(), QContext.getQSession().getUuid(),
-            runtime.getPolicyService().current(false).tools(), table, prompt);
+         List<AccessExplainer.TableAccess> tables;
+         try
+         {
+            tables = runtime.getAccessExplainer().explain(runtime.getUiApiGateway(), QContext.getQSession().getUuid(), runtime.getPolicyService().current(false).tools(), table, prompt);
+         }
+         catch(QException e)
+         {
+            ////////////////////////////////////////////////////////////////////
+            // the UI API is not reachable (no assistant request has told the  //
+            // server its port yet, or the call failed): say so, don't guess  //
+            ////////////////////////////////////////////////////////////////////
+            return (new RenderWidgetOutput(new RawHTML(null, "<p style=\"opacity:.75;font-size:.9rem;margin:0;\">Access could not be computed from the UI API right now ("
+               + AssistantHomeView.esc(e.getMessage()) + "). Open the assistant panel once, or set uiApiBaseUrl, then refresh.</p>")));
+         }
          String user = QContext.getQSession().getUser() == null ? "you" : StringUtils.hasContent(QContext.getQSession().getUser().getFullName())
             ? QContext.getQSession().getUser().getFullName() : QContext.getQSession().getUser().getIdReference();
          return (new RenderWidgetOutput(new RawHTML(null, AssistantAccessWidget.render(tables, user, runtime.getConfig().getTablePathPrefix()))));
