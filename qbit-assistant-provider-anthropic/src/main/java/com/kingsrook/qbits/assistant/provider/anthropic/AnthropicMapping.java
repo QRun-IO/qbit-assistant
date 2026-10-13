@@ -313,8 +313,51 @@ public class AnthropicMapping
 
 
    /*******************************************************************************
-    ** Map an SDK error to a provider error. The message holds the status and
-    ** the API error type only - never request or response bodies.
+    ** Whether a 400 message says the strict tool schemas are the problem:
+    ** "The compiled grammar is too large ... reduce the number of strict tools"
+    ** or "Schema is too complex for compilation".
+    *******************************************************************************/
+   static boolean isStrictSchemaMessage(String message)
+   {
+      if(message == null)
+      {
+         return (false);
+      }
+      String lower = message.toLowerCase(java.util.Locale.ROOT);
+      return (lower.contains("grammar") || lower.contains("too complex for compilation") || lower.contains("strict tool"));
+   }
+
+
+
+   /*******************************************************************************
+    ** The API's own error message ({"error": {"message": ...}}), or null. The
+    ** caller sanitizes it; Anthropic's messages name parameters, not content.
+    *******************************************************************************/
+   static String errorMessage(AnthropicServiceException service)
+   {
+      try
+      {
+         Map<String, Object> body = service.body() == null ? null : service.body().convert(new TypeReference<Map<String, Object>>() {});
+         if(body != null && body.get("error") instanceof Map<?, ?> error && error.get("message") instanceof String message)
+         {
+            return (message);
+         }
+      }
+      catch(RuntimeException e)
+      {
+         //////////////////////////////////////////////
+         // not JSON / not the documented error shape //
+         //////////////////////////////////////////////
+      }
+      return (null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Map an SDK error to a provider error. The message holds the status, the
+    ** API error type and the API's own (sanitized) error message - never request
+    ** bodies, prompts or keys.
     *******************************************************************************/
    public static ModelProviderException toProviderException(Throwable throwable)
    {
@@ -348,7 +391,11 @@ public class AnthropicMapping
          {
             kind = "overloaded_error".equals(type) ? ModelProviderException.Kind.OVERLOADED : ModelProviderException.Kind.OTHER;
          }
-         return (new ModelProviderException(kind, status >= 400 ? status : null, "Anthropic API error" + (status >= 400 ? " (HTTP " + status + ")" : "") + (type == null ? "" : " " + type)));
+         String apiMessage = errorMessage(service);
+         String requestId  = service.headers() == null ? null : service.headers().values("request-id").stream().findFirst().orElse(null);
+         ModelProviderException exception = new ModelProviderException(kind, status >= 400 ? status : null, "Anthropic API error" + (status >= 400 ? " (HTTP " + status + ")" : "") + (type == null ? "" : " " + type)
+            + (apiMessage == null ? "" : ": " + ModelProviderException.sanitizeProviderMessage(apiMessage, ModelProviderException.MAX_PROVIDER_MESSAGE_CHARS)));
+         return (exception.withProviderDetails(type, apiMessage, requestId).withStrictSchemaRejected(status == 400 && isStrictSchemaMessage(apiMessage)));
       }
       if(throwable instanceof AnthropicIoException)
       {

@@ -97,7 +97,11 @@ class TurnEngineTest extends BaseAssistantTest
       assertThat(first.getSystem().get(0).getText()).contains("qqq_data").contains("untrusted").contains("/app/");
       assertThat(first.getSystem().get(1).getCacheHint()).isEqualTo(CacheHint.SHORT);
       assertThat(first.getTools()).extracting(t -> t.getName()).contains("count_records", "query_records", "navigate").doesNotHaveDuplicates();
-      assertThat(first.getTools()).allMatch(t -> Boolean.TRUE.equals(t.getStrict()));
+      //////////////////////////////////////////////////////////////////////
+      // no strict tools by default: Anthropic refused all ten strict      //
+      // ("compiled grammar is too large"); the kernel validates inputs   //
+      //////////////////////////////////////////////////////////////////////
+      assertThat(first.getTools()).noneMatch(t -> Boolean.TRUE.equals(t.getStrict()));
 
       ModelRequest second = requests.get(1);
       assertThat(second.getSystem().get(0).getText()).isEqualTo(first.getSystem().get(0).getText());

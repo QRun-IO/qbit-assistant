@@ -239,7 +239,7 @@ public class TurnEngine implements Runnable
                break;
             }
 
-            ModelResponse response = callModel(provider, request);
+            ModelResponse response = callModelWithStrictFallback(provider, request);
             stopReason = response.getStopReason();
 
             if(ModelResponse.STOP_CANCELLED.equals(stopReason))
@@ -334,7 +334,15 @@ public class TurnEngine implements Runnable
          errorText = e.getKind() == ModelProviderException.Kind.TIMEOUT
             ? "The assistant took too long to answer."
             : (e.isRetryable() ? "The AI service is busy or unavailable right now. Try again in a moment." : "The AI service could not answer this request.");
-         LOG.warn("Assistant model call failed", logPair("turnId", turn.getId()), logPair("kind", e.getKind()), logPair("httpStatus", e.getHttpStatus()));
+         if(!e.isRetryable() && e.getProviderMessage() != null && session.hasPermission(AssistantQBitConfig.ADMIN_PERMISSION))
+         {
+            //////////////////////////////////////////////////////////////
+            // administrators see the provider's own (sanitized) reason //
+            //////////////////////////////////////////////////////////////
+            errorText += " The provider said: " + UsageRecorder.errorText(e);
+         }
+         LOG.warn("Assistant model call failed", logPair("turnId", turn.getId()), logPair("kind", e.getKind()), logPair("httpStatus", e.getHttpStatus()),
+            logPair("errorType", e.getProviderErrorType()), logPair("errorMessage", e.getProviderMessage()), logPair("requestId", e.getRequestId()));
       }
       catch(InterruptedException e)
       {
@@ -342,8 +350,12 @@ public class TurnEngine implements Runnable
          status = "CANCELLED";
          stopReason = ModelResponse.STOP_CANCELLED;
       }
-      catch(Exception e)
+      catch(Exception | Error e)
       {
+         ////////////////////////////////////////////////////////////////////
+         // Errors too (a missing class, a linkage problem): otherwise the //
+         // executor swallows them and the turn ends "COMPLETE" and empty  //
+         ////////////////////////////////////////////////////////////////////
          status = "ERROR";
          errorCode = "INTERNAL";
          errorText = "Something went wrong while answering. Try again.";
@@ -466,6 +478,33 @@ public class TurnEngine implements Runnable
          return (new Stop("CANCELLED", "KILL_SWITCH", "The assistant has been turned off by an administrator." + reason, ModelResponse.STOP_CANCELLED));
       }
       return (new Stop("CANCELLED", null, null, ModelResponse.STOP_CANCELLED));
+   }
+
+
+
+   /*******************************************************************************
+    ** A model call; when the provider refuses the request because of its strict
+    ** tool schemas, retry once (and for the rest of the turn) with no strict
+    ** tools. The kernel validates every tool input either way.
+    *******************************************************************************/
+   private ModelResponse callModelWithStrictFallback(AssistantModelProvider provider, ModelRequest request) throws ModelProviderException, InterruptedException
+   {
+      try
+      {
+         return (callModel(provider, request));
+      }
+      catch(ModelProviderException e)
+      {
+         boolean anyStrict = request.getTools().stream().anyMatch(tool -> Boolean.TRUE.equals(tool.getStrict()));
+         if(!e.isStrictSchemaRejected() || !anyStrict)
+         {
+            throw (e);
+         }
+         LOG.warn("Assistant provider refused the strict tool schemas; retrying without strict tools", logPair("turnId", turn.getId()), logPair("model", model),
+            logPair("errorMessage", e.getProviderMessage()), logPair("requestId", e.getRequestId()));
+         request.getTools().forEach(tool -> tool.setStrict(false));
+         return (callModel(provider, request));
+      }
    }
 
 

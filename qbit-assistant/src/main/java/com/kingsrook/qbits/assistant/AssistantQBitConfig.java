@@ -95,6 +95,14 @@ public class AssistantQBitConfig implements QBitConfig
 
    private Set<String>               hiddenWidgetNames        = new LinkedHashSet<>();
    private Set<String>               allowedWidgetNames       = new LinkedHashSet<>();
+
+   ////////////////////////////////////////////////////////////////////////////
+   // tools sent with strict: true. Empty by default: Anthropic compiles all //
+   // strict schemas of a request into one grammar and refuses the request  //
+   // (400 "compiled grammar is too large") with all ten read tools strict. //
+   // The kernel validates every input anyway (INVALID_INPUT results).      //
+   ////////////////////////////////////////////////////////////////////////////
+   private Set<String>               strictToolNames          = new LinkedHashSet<>();
    private List<String>              customRedactionPatterns  = new ArrayList<>();
    private Integer                   killSwitchPollMillis     = 2000;
    private Set<String>               allowedApiKeyEnvNames    = new LinkedHashSet<>();
@@ -1123,6 +1131,38 @@ public class AssistantQBitConfig implements QBitConfig
    public AssistantQBitConfig withHiddenWidgetNames(Set<String> hiddenWidgetNames)
    {
       this.hiddenWidgetNames = hiddenWidgetNames;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for strictToolNames: the tools sent with strict schema adherence
+    ** (empty by default; see the field comment).
+    *******************************************************************************/
+   public Set<String> getStrictToolNames()
+   {
+      return (this.strictToolNames);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for strictToolNames
+    *******************************************************************************/
+   public void setStrictToolNames(Set<String> strictToolNames)
+   {
+      this.strictToolNames = strictToolNames;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for strictToolNames
+    *******************************************************************************/
+   public AssistantQBitConfig withStrictToolNames(Set<String> strictToolNames)
+   {
+      this.strictToolNames = strictToolNames;
       return (this);
    }
 

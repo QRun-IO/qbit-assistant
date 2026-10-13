@@ -75,3 +75,32 @@ One HTML widget (`assistantHome`) on the Assistant app. It is the only place thi
 Every section has an empty state; nothing is invented.
 
 The nav is the home plus the main tables: Providers, Conversations, Model prices, Policy. Messages, turns, tool calls, feedback and model calls are child lists on a conversation, and model calls also on a provider. Processes are actions on their tables.
+
+## Strict tools (0.1.0-RC.5)
+
+**Incident (kof22, 2026-10-13).** Every turn failed on its first model call with 400 `invalid_request_error`: "The compiled grammar is too large, which would cause performance issues. Simplify your tool schemas or reduce the number of strict tools."
+- The request sent all ten read tools with `strict: true`.
+- Anthropic compiles every strict schema in a request into one grammar.
+- The request was inside every documented limit: 20 strict tools, 24 optional parameters, 16 union parameters. The real limit is not published.
+- The log line only said `INVALID_REQUEST httpStatus=400`, so the reason was invisible.
+
+**Decision.**
+- **No tool is strict by default.** `AssistantQBitConfig.strictToolNames` opts tools in.
+- Strict mode only guaranteed schema-valid input. The kernel already validates every input and returns `INVALID_INPUT` results, and the UI-API tools (below) go through the same validation as the UI.
+- If a provider still refuses strict schemas (`ModelProviderException.isStrictSchemaRejected`), the turn retries once with no strict tools and logs a WARN.
+
+**Budget.**
+- `AnthropicRequestContractTest` fails the build when the strict tools of the default request exceed 3 tools, 6 optional parameters or 2 union parameters. These budgets are far below the shape that failed.
+- It also checks the documented request rules:
+  - adaptive thinking without `budget_tokens`, and no sampling parameters;
+  - a valid effort, and no forced `tool_choice`;
+  - at most 4 cache breakpoints, with longer TTLs first;
+  - a user-first, user-last message order;
+  - strict-schema keywords.
+
+**Real-API check (dev).** `ANTHROPIC_API_KEY=... ./mvnw verify -Dassistant.live=true -Dtest.excludedGroups= -Dgroups=live -Djacoco.skip=true -pl qbit-assistant-provider-anthropic -am` runs the live golden evals. They send exactly this request shape.
+
+**Diagnostics.** On a 4xx the provider's error type, sanitized message and request id are:
+- logged at WARN;
+- recorded as the `assistant_usage` request id;
+- shown to `assistant.admin` holders, in the panel's error and in Test connection.
