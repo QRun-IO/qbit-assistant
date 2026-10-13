@@ -101,14 +101,15 @@ class AssistantRecordScreensTest extends BaseAssistantTest
 
 
    /*******************************************************************************
-    ** A conversation lists its messages, turns, tool calls and feedback.
+    ** A conversation lists its messages, turns, tool calls, feedback and model
+    ** calls.
     *******************************************************************************/
    @Test
    void testConversationChildLists()
    {
       QTableMetaData conversation = qInstance.getTable(AssistantConversation.TABLE_NAME);
       List<String> widgets = conversation.getSections().stream().map(QFieldSection::getWidgetName).filter(name -> name != null).toList();
-      assertThat(widgets).hasSize(4);
+      assertThat(widgets).hasSize(5);
       for(String widget : widgets)
       {
          assertThat(qInstance.getWidget(widget)).as(widget).isNotNull();
@@ -118,7 +119,7 @@ class AssistantRecordScreensTest extends BaseAssistantTest
       // a second pass does not add them again         //
       ///////////////////////////////////////////////////
       AssistantRecordScreens.addConversationChildLists(qInstance);
-      assertThat(conversation.getSections().stream().filter(section -> section.getWidgetName() != null)).hasSize(4);
+      assertThat(conversation.getSections().stream().filter(section -> section.getWidgetName() != null)).hasSize(5);
    }
 
 

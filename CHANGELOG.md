@@ -8,7 +8,21 @@ Phase 0/1 of the QQQ Assistant: read-only Q&A and navigation. Requires QQQ 4.1 w
 - the AI tool kernel (`qqq-backend-core` `actions.ai`, QRun-IO/qqq#1078)
 - the developer-panel contract (QRun-IO/qqq#1076).
 
-### Changed (0.1.0-RC.2)
+### Added (0.1.0-RC.4)
+- **Provider settings** (`assistant_provider`): type (registered `AssistantProviderType`s; `AnthropicProviderType` in the Anthropic module), model, enabled, default, base URL override, monthly cost cap, max output tokens per request, max concurrent requests, and the last connection test. The default enabled row is the active provider; with no rows the provider registered in code is used, so existing hosts keep working.
+- **Key handling:** the key is never stored. A row names the environment variable that holds it (`apiKeyEnvName`, allow-listed); `apiKeyStatus` is computed on read (`Set • …abcd`) and dropped on save. A pasted key, an unrelated variable or an unlisted base URL is refused. New config: `withProviderType`, `allowedApiKeyEnvNames`, `allowedBaseUrls`, `withSecretResolver`, `providerTestTimeoutSeconds`.
+- **Test connection**, a record action on providers (standard streamed ETL Review and Result lines): one short live call, result saved on the row and recorded as a `TEST` usage row.
+- **Per-call usage** (`assistant_usage`): one row per model call (turn steps and tests) with provider, model, status, error kind, HTTP status, latency, tokens and cost. Child list on conversations and providers.
+- **Model prices** (`assistant_model_price`), editable, used for every call's cost; the reference DDL seeds the Anthropic list prices of 2026-10. The built-in `pricing` defaults now cover every current Claude model.
+- **The app home** (`assistantHome` widget): health, providers, usage by day, costs against caps, by user, top tools and recent failures, from real rows with empty states.
+- `ModelResponse.model`: the model that answered (set by the Anthropic adapter).
+
+### Changed (0.1.0-RC.4)
+- The app is labelled **Assistant** (name `assistantAdmin` unchanged). Its nav lists the home and the main tables only (Providers, Conversations, Model prices, Policy); other tables are child lists. `assistantRetention` is a table action on conversations instead of a nav entry.
+- Every `assistant_*` table has AI exposure `NONE`, so the assistant never reads its own settings or audit tables (before, only the `assistant.admin` permission kept them out).
+- `AssistantMetaDataBuilder.buildAdminApp(tables)` no longer takes the retention process.
+
+### Changed (0.1.0-RC.3)
 - **Snake_case names** (QRun-IO naming rule, 2026-10-12). Metadata only; the physical tables were already `assistant_*`:
   - tables `assistantConversation` ... `assistantUsageDaily` are now `assistant_conversation`, `assistant_message`, `assistant_turn`, `assistant_turn_event`, `assistant_tool_call`, `assistant_feedback`, `assistant_policy` and `assistant_usage_daily`; the conversation possible-value source follows the table name
   - permissions are unchanged: `assistant.hasAccess` keeps QQQ's standard `hasAccess` suffix, and `assistant.admin` stays as is
@@ -60,3 +74,7 @@ Phase 0/1 of the QQQ Assistant: read-only Q&A and navigation. Requires QQQ 4.1 w
 - **Limits.** Page-context scalars are capped (strings up to 512 characters, at most 100 selected ids). Conversation lists are limited to 200, running turns to 50, and replay is paged at 500 events.
 - **Ordering.** Terminal events (`usage`, `error`, `message.end`) are persisted before the turn's status becomes final.
 - **Supplemental meta-data.** The `assistant` supplemental instance meta-data is registered when the QBit is enabled.
+
+## [0.1.0-RC.2] - 2026-10-12
+
+**Do not use.** 0.1.0-RC.2 on Maven Central is an accidental republish of the RC.1 code by a tag build; do not use it. The next real candidate is 0.1.0-RC.3. (Cause: QRun-IO/qqq-orb#20; the `publish_release` workflow now runs on GA tags only.)

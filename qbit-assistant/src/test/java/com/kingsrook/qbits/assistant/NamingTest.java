@@ -37,7 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /*******************************************************************************
  ** Owner naming rule (2026-10-12): table names are lowercase snake_case and
  ** prefixed with the qbit's name (assistant_). Pins the new names and the
- ** deprecated pre-RC.2 names that UPGRADE.md tells hosts to migrate from.
+ ** deprecated pre-RC.3 names that UPGRADE.md tells hosts to migrate from.
  *******************************************************************************/
 @SuppressWarnings("deprecation")
 class NamingTest extends BaseAssistantTest

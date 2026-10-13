@@ -264,6 +264,7 @@ public class AnthropicMapping
          .withStopReason(message.stopReason().map(s -> s.asString()).orElse(ModelResponse.STOP_END_TURN))
          .withUsage(toUsage(message.usage()))
          .withRequestId(message.id())
+         .withModel(message.model().asString())
          .withProviderState(message.toParam()));
    }
 

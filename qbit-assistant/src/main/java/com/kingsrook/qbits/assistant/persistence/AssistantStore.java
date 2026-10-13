@@ -28,10 +28,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantFeedback;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
+import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
 import com.kingsrook.qbits.assistant.model.AssistantPolicy;
+import com.kingsrook.qbits.assistant.model.AssistantProvider;
 import com.kingsrook.qbits.assistant.model.AssistantToolCall;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
 import com.kingsrook.qbits.assistant.model.AssistantTurnEvent;
+import com.kingsrook.qbits.assistant.model.AssistantUsage;
 import com.kingsrook.qbits.assistant.model.AssistantUsageDaily;
 import com.kingsrook.qbits.assistant.provider.ModelUsage;
 import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
@@ -70,6 +73,9 @@ public class AssistantStore
    public static final int MAX_CONVERSATIONS = 200;
    public static final int MAX_RUNNING_TURNS = 50;
    public static final int EVENT_PAGE_SIZE   = 500;
+   public static final int MAX_PROVIDERS     = 100;
+   public static final int MAX_PRICES        = 500;
+   public static final int MAX_SUM_ROWS      = 100_000;
 
    private static final Map<String, Object> USAGE_LOCKS = new ConcurrentHashMap<>();
 
@@ -608,6 +614,85 @@ public class AssistantStore
    private static int nz(Integer value)
    {
       return (value == null ? 0 : value);
+   }
+
+
+   /////////////////////////////////////////////////////////////////////////////
+   // provider settings, prices and per-call usage                            //
+   /////////////////////////////////////////////////////////////////////////////
+
+   /*******************************************************************************
+    ** All provider rows, by id.
+    *******************************************************************************/
+   public List<AssistantProvider> listProviders() throws QException
+   {
+      return (query(AssistantProvider.TABLE_NAME, new QQueryFilter().withOrderBy(new QFilterOrderBy("id", true)).withLimit(MAX_PROVIDERS), AssistantProvider.class));
+   }
+
+
+
+   /*******************************************************************************
+    ** One provider row, or null.
+    *******************************************************************************/
+   public AssistantProvider getProvider(Integer id) throws QException
+   {
+      return (first(query(AssistantProvider.TABLE_NAME, new QQueryFilter().withCriteria("id", QCriteriaOperator.EQUALS, id), AssistantProvider.class)));
+   }
+
+
+
+   /*******************************************************************************
+    ** Make every provider row other than `keepId` non-default.
+    *******************************************************************************/
+   public void clearOtherDefaultProviders(Integer keepId) throws QException
+   {
+      List<AssistantProvider> others = query(AssistantProvider.TABLE_NAME, new QQueryFilter()
+         .withCriteria("isDefault", QCriteriaOperator.EQUALS, true)
+         .withCriteria("id", QCriteriaOperator.NOT_EQUALS, keepId), AssistantProvider.class);
+      for(AssistantProvider other : others)
+      {
+         updateFields(AssistantProvider.TABLE_NAME, new QRecord().withValue("id", other.getId()).withValue("isDefault", false));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** All price rows.
+    *******************************************************************************/
+   public List<AssistantModelPrice> listPrices() throws QException
+   {
+      return (query(AssistantModelPrice.TABLE_NAME, new QQueryFilter().withOrderBy(new QFilterOrderBy("id", true)).withLimit(MAX_PRICES), AssistantModelPrice.class));
+   }
+
+
+
+   /*******************************************************************************
+    ** The cost (micro-dollars) of a provider's calls since a time.
+    *******************************************************************************/
+   public long sumUsageCostSince(Integer providerId, Instant since) throws QException
+   {
+      long total = 0;
+      for(QRecord record : queryRecords(AssistantUsage.TABLE_NAME, new QQueryFilter()
+         .withCriteria("providerId", QCriteriaOperator.EQUALS, providerId)
+         .withCriteria("createDate", QCriteriaOperator.GREATER_THAN_OR_EQUALS, since), MAX_SUM_ROWS))
+      {
+         Long cost = record.getValueLong("costMicros");
+         total += cost == null ? 0 : cost;
+      }
+      return (total);
+   }
+
+
+
+   /*******************************************************************************
+    ** Raw rows of one of the qbit's tables (the app home's reads), at most
+    ** `limit`.
+    *******************************************************************************/
+   public List<QRecord> queryRecords(String tableName, QQueryFilter filter, int limit) throws QException
+   {
+      List<QRecord> records = new QueryAction().execute(new QueryInput(tableName).withFilter(filter.withLimit(limit))).getRecords();
+      return (records == null ? List.of() : records);
    }
 
 }

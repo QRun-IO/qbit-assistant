@@ -35,9 +35,9 @@ public class AssistantPolicy extends QRecordEntity
    public static final String TABLE_NAME = "assistant_policy";
 
    /*******************************************************************************
-    ** The table name before 0.1.0-RC.2 (camelCase). See UPGRADE.md.
+    ** The table name before 0.1.0-RC.3 (camelCase). See UPGRADE.md.
     *******************************************************************************/
-   @Deprecated(since = "0.1.0-RC.2")
+   @Deprecated(since = "0.1.0-RC.3")
    public static final String LEGACY_TABLE_NAME = "assistantPolicy";
 
    @QField(isEditable = false, isPrimaryKey = true)

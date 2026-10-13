@@ -43,6 +43,7 @@ public class ModelResponse
    private String          stopReason;
    private ModelUsage      usage = new ModelUsage();
    private String          requestId;
+   private String          model;
 
    @JsonIgnore
    private transient Object providerState;
@@ -210,6 +211,37 @@ public class ModelResponse
    public ModelResponse withRequestId(String requestId)
    {
       this.requestId = requestId;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for model (the model that answered, when the provider reports it)
+    *******************************************************************************/
+   public String getModel()
+   {
+      return (this.model);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for model
+    *******************************************************************************/
+   public void setModel(String model)
+   {
+      this.model = model;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for model
+    *******************************************************************************/
+   public ModelResponse withModel(String model)
+   {
+      this.model = model;
       return (this);
    }
 

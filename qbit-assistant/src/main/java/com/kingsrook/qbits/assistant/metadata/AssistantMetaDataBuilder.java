@@ -22,13 +22,20 @@ import java.util.List;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantFeedback;
+import com.kingsrook.qbits.assistant.home.AssistantHome;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
+import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
 import com.kingsrook.qbits.assistant.model.AssistantPolicy;
+import com.kingsrook.qbits.assistant.model.AssistantProvider;
 import com.kingsrook.qbits.assistant.model.AssistantToolCall;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
 import com.kingsrook.qbits.assistant.model.AssistantTurnEvent;
+import com.kingsrook.qbits.assistant.model.AssistantUsage;
 import com.kingsrook.qbits.assistant.model.AssistantUsageDaily;
 import com.kingsrook.qbits.assistant.processes.AssistantRetentionStep;
+import com.kingsrook.qqq.backend.core.actions.ai.AiExposure;
+import com.kingsrook.qqq.backend.core.actions.ai.AiTableMetaData;
+import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.data.QRecordEntity;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
@@ -55,7 +62,7 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
  ** Builds the QBit's metadata (spec section 4, owner decision D6): standard,
  ** visible QQQ tables on the configured backend, the owner security key type,
  ** the conversation possible-value source, the retention process and the
- ** "Assistant Admin" app.
+ ** "Assistant" app (its home plus the main tables).
  **
  ** Security:
  ** - Every user-owned table carries userId and a record security lock on it
@@ -78,11 +85,19 @@ public class AssistantMetaDataBuilder
    public static final String ALL_ACCESS_SUFFIX      = "_all_access";
 
    /*******************************************************************************
-    ** The all-access key suffix before 0.1.0-RC.2 (assistant_user_id_all_access).
+    ** The all-access key suffix before 0.1.0-RC.3 (assistant_user_id_all_access).
     ** See UPGRADE.md.
     *******************************************************************************/
-   @Deprecated(since = "0.1.0-RC.2")
+   @Deprecated(since = "0.1.0-RC.3")
    public static final String LEGACY_ALL_ACCESS_SUFFIX = "AllAccess";
+
+   /*******************************************************************************
+    ** The tables in the app's nav, in order (the main tables). The others are
+    ** child lists on these (messages, turns, tool calls, feedback and model
+    ** calls on a conversation; model calls on a provider) or reached from the
+    ** home. Processes are table and record actions, never nav entries.
+    *******************************************************************************/
+   public static final List<String> NAV_TABLES = List.of(AssistantProvider.TABLE_NAME, AssistantConversation.TABLE_NAME, AssistantModelPrice.TABLE_NAME, AssistantPolicy.TABLE_NAME);
 
    private final AssistantQBitConfig config;
 
@@ -154,8 +169,37 @@ public class AssistantMetaDataBuilder
          .withUniqueKey(new UniqueKey("scope", "userId", "usageDate"))
          .withRecordLabelFormat("%s %s").withRecordLabelFields("scope", "usageDate"));
 
+      tables.add(settings(base(AssistantProvider.TABLE_NAME, "Assistant Provider", "settings_input_component", AssistantProvider.class))
+         .withUniqueKey(new UniqueKey("name"))
+         .withRecordLabelFormat("%s").withRecordLabelFields("name"));
+
+      tables.add(settings(base(AssistantModelPrice.TABLE_NAME, "Assistant Model Price", "sell", AssistantModelPrice.class))
+         .withUniqueKey(new UniqueKey("providerType", "model"))
+         .withRecordLabelFormat("%s").withRecordLabelFields("model"));
+
+      tables.add(readOnly(owned(base(AssistantUsage.TABLE_NAME, "Assistant Model Call", "receipt_long", AssistantUsage.class), false))
+         .withRecordLabelFormat("%s #%s").withRecordLabelFields("purpose", "id"));
+
       tables.forEach(AssistantRecordScreens::apply);
       return (tables);
+   }
+
+
+
+   /*******************************************************************************
+    ** A settings table: the customizer checks rows before a save, masks the
+    ** key status after a read and drops the provider caches after a change.
+    *******************************************************************************/
+   private static QTableMetaData settings(QTableMetaData table)
+   {
+      QCodeReference customizer = new QCodeReference(AssistantSettingsCustomizer.class);
+      return (table
+         .withCustomizer(TableCustomizers.POST_QUERY_RECORD, customizer)
+         .withCustomizer(TableCustomizers.PRE_INSERT_RECORD, customizer)
+         .withCustomizer(TableCustomizers.PRE_UPDATE_RECORD, customizer)
+         .withCustomizer(TableCustomizers.POST_INSERT_RECORD, customizer)
+         .withCustomizer(TableCustomizers.POST_UPDATE_RECORD, customizer)
+         .withCustomizer(TableCustomizers.POST_DELETE_RECORD, customizer));
    }
 
 
@@ -180,6 +224,7 @@ public class AssistantMetaDataBuilder
          .withName(RETENTION_PROCESS_NAME)
          .withLabel("Assistant Retention")
          .withIcon(new QIcon("auto_delete"))
+         .withTableName(AssistantConversation.TABLE_NAME)
          .withPermissionRules(adminRules())
          .withStep(new QBackendStepMetaData()
             .withName("purge")
@@ -197,22 +242,19 @@ public class AssistantMetaDataBuilder
 
 
    /*******************************************************************************
-    ** The Assistant Admin app over the tables and the retention process.
+    ** The Assistant app: the home widget, and the main tables in the nav.
     *******************************************************************************/
-   public QAppMetaData buildAdminApp(List<QTableMetaData> tables, QProcessMetaData retention)
+   public QAppMetaData buildAdminApp(List<QTableMetaData> tables)
    {
       QAppMetaData app = new QAppMetaData()
          .withName(APP_NAME)
-         .withLabel("Assistant Admin")
+         .withLabel("Assistant")
          .withIcon(new QIcon("smart_toy"))
-         .withPermissionRules(adminRules());
-      for(QTableMetaData table : tables)
+         .withPermissionRules(adminRules())
+         .withWidgets(List.of(AssistantHome.WIDGET_NAME));
+      for(String name : NAV_TABLES)
       {
-         app.withChild(table);
-      }
-      if(retention != null)
-      {
-         app.withChild(retention);
+         tables.stream().filter(t -> t.getName().equals(name)).findFirst().ifPresent(app::withChild);
       }
       return (app);
    }
@@ -224,7 +266,7 @@ public class AssistantMetaDataBuilder
     ** are explicit: left null, the enricher copies the host's default level
     ** (often NOT_PROTECTED), and the meta-data path (app tree, table list) then
     ** allows the object without ever calling the checker, so every user would
-    ** see the Assistant Admin app and its tables in the nav.
+    ** see the Assistant app and its tables in the nav.
     *******************************************************************************/
    public static QPermissionRules adminRules()
    {
@@ -249,6 +291,11 @@ public class AssistantMetaDataBuilder
          .withPrimaryKeyField("id")
          .withPermissionRules(adminRules())
          .withFieldsFromEntity(entity);
+
+      //////////////////////////////////////////////////////////////////
+      // the assistant never reads its own tables (settings, audit)    //
+      //////////////////////////////////////////////////////////////////
+      AiTableMetaData.ofOrWithNew(table).withExposure(AiExposure.NONE);
 
       QFieldMetaData conversationId = table.getFields().get("conversationId");
       if(conversationId != null)

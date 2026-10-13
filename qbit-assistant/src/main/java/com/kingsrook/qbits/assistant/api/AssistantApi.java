@@ -28,6 +28,7 @@ import com.kingsrook.qbits.assistant.AssistantSecurity;
 import com.kingsrook.qbits.assistant.engine.ContextBuilder;
 import com.kingsrook.qbits.assistant.engine.MessageParts;
 import com.kingsrook.qbits.assistant.engine.PolicyService;
+import com.kingsrook.qbits.assistant.engine.ProviderService;
 import com.kingsrook.qbits.assistant.engine.RunningTurn;
 import com.kingsrook.qbits.assistant.engine.TurnEngine;
 import com.kingsrook.qbits.assistant.engine.TurnEvent;
@@ -96,7 +97,7 @@ public class AssistantApi
       {
          reason = "NO_PERMISSION";
       }
-      else if(config.getActiveModelProvider() == null)
+      else if(activeProvider() == null)
       {
          reason = "NOT_CONFIGURED";
       }
@@ -111,7 +112,7 @@ public class AssistantApi
          result.put("reason", reason);
       }
       result.put("shortcut", config.getShortcut());
-      result.put("model", reason == null ? runtime.getPolicyService().current(false).mainModel() : config.getModels().getMainModel());
+      result.put("model", reason == null ? activeProvider().model() : config.getModels().getMainModel());
       result.put("limits", Map.of("maxTurnSeconds", config.getMaxTurnSeconds(), "maxToolCallsPerTurn", config.getMaxToolCallsPerTurn()));
       result.put("features", Map.of("writes", false));
       return (result);
@@ -267,15 +268,21 @@ public class AssistantApi
       }
       Map<String, Object> pageContext = body.get("pageContext") instanceof Map<?, ?> m ? ContextBuilder.sanitizePageContext((Map<String, Object>) m) : Map.of();
 
-      if(config.getActiveModelProvider() == null)
+      PolicyService.EffectivePolicy policy = runtime.getPolicyService().current(true);
+      ProviderService.Active        active = runtime.getProviderService().resolve(policy.mainModel());
+      if(active == null)
       {
          throw (new AssistantApiException(503, "NOT_CONFIGURED", "The assistant is not configured on this server."));
       }
-
-      PolicyService.EffectivePolicy policy = runtime.getPolicyService().current(true);
       if(policy.killSwitch())
       {
          throw (new AssistantApiException(503, "KILL_SWITCH", "The assistant has been turned off by an administrator."));
+      }
+
+      Long capMicros = ProviderService.capMicros(active.row());
+      if(capMicros != null && runtime.getProviderService().monthToDateCostMicros(active.providerId()) >= capMicros)
+      {
+         throw (new AssistantApiException(429, "BUDGET", "The assistant has reached this provider's monthly cost cap. Ask an administrator."));
       }
 
       PolicyService.BudgetStatus budget = runtime.getPolicyService().checkBudget(policy, userId, 0, 0);
@@ -326,7 +333,7 @@ public class AssistantApi
             .withUserId(userId)
             .withUserMessageId(userMessage.getId())
             .withStatus("RUNNING")
-            .withModel(policy.mainModel())
+            .withModel(active.model())
             .withStartedAt(runtime.getClock().instant())
             .withToolCallCount(0)
             .withModelCallCount(0));
@@ -338,7 +345,7 @@ public class AssistantApi
             .withStatus("STREAMING")
             .withTurnId(turn.getId())
             .withSeq(seq + 1)
-            .withModel(policy.mainModel())
+            .withModel(active.model())
             .withPartsJson("[]"));
 
          store.updateFields(AssistantMessage.TABLE_NAME, new QRecord().withValue("id", userMessage.getId()).withValue("turnId", turn.getId()));
@@ -655,6 +662,16 @@ public class AssistantApi
    private static String truncate(String value, int max)
    {
       return (value == null || value.length() <= max ? value : value.substring(0, max));
+   }
+
+
+
+   /*******************************************************************************
+    ** The provider answers would come from now, or null.
+    *******************************************************************************/
+   private ProviderService.Active activeProvider() throws QException
+   {
+      return (runtime.getProviderService().resolve(runtime.getPolicyService().current(false).mainModel()));
    }
 
 }

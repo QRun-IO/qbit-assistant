@@ -1,12 +1,28 @@
 # Upgrading qbit-assistant
 
-## 0.1.0-RC.1 to 0.1.0-RC.2: snake_case names
+## 0.1.0-RC.3 to 0.1.0-RC.4: provider settings, prices, per-call usage, app home
 
-RC.2 applies the QRun-IO naming rule (owner decision, 2026-10-12): *"table names should always be lowercase and use _, and qbits should always be prefixed with their name"*. The QQQ table names, the owner security key type and the possible-value source change. Permissions do not. **This is a metadata-only change**: no table, column or index in your database changes, and no Liquibase or DDL step is needed.
+Three new tables. Create them before you deploy (see `docs/schema-postgres.sql`, which also seeds the Anthropic prices):
+- `assistant_provider` (with the `api_key_status` column: it is filled on read and never written, but the backend selects it)
+- `assistant_model_price`
+- `assistant_usage`
+
+Then, to keep answering exactly as before:
+1. Register the provider type: `config.withProviderType(new AnthropicProviderType())`. Keep `withModelProvider(AnthropicModelProvider.fromEnvironment())` as the fallback.
+2. Add one provider row (or seed it in your migration): type `anthropic`, model = your current main model, enabled, default, `apiKeyEnvName` = `ANTHROPIC_API_KEY` (or leave it empty for the default). No key value is ever written.
+3. Run **Test connection** on it.
+
+Until a row exists, the provider registered in code answers, as in RC.3. Other changes: the app label is **Assistant**; the nav no longer lists the retention process (it is a table action on conversations) or the audit tables (they are child lists). Grants on `assistant.admin` cover everything new.
+
+## 0.1.0-RC.1 to 0.1.0-RC.3: snake_case names
+
+The rename shipped in 0.1.0-RC.3. 0.1.0-RC.2 on Maven Central is an accidental republish of the RC.1 code (see CHANGELOG.md), so upgrading from RC.2 is the same as upgrading from RC.1.
+
+RC.3 applies the QRun-IO naming rule (owner decision, 2026-10-12): *"table names should always be lowercase and use _, and qbits should always be prefixed with their name"*. The QQQ table names, the owner security key type and the possible-value source change. Permissions do not. **This is a metadata-only change**: no table, column or index in your database changes, and no Liquibase or DDL step is needed.
 
 ### What changed
 
-| Kind | RC.1 name | RC.2 name |
+| Kind | RC.1 (and RC.2) name | RC.3 name |
 |---|---|---|
 | Table | `assistantConversation` | `assistant_conversation` |
 | Table | `assistantMessage` | `assistant_message` |
@@ -84,10 +100,10 @@ QQQ stores table names, permission names and key names outside this qbit. Update
                    'assistantToolCall', 'assistantFeedback', 'assistantPolicy', 'assistantUsageDaily');
    ```
 
-   If a new-name row was already created (the app ran RC.2 before this update), repoint `audit.audit_table_id` from the old row to the new one first, then delete the old row.
+   If a new-name row was already created (the app ran RC.3 before this update), repoint `audit.audit_table_id` from the old row to the new one first, then delete the old row.
 
 4. **Anything else that stores a table name**: frontend links or bookmarks to `/app/.../assistantConversation`, Quick Search index rows (`quick_search_index.table_name`; reindex instead of editing), ESB topics or reports you configured by table name.
 
 ### Order
 
-Deploy RC.2 and run the statements above in the same maintenance window. Until the update runs, saved views and reports on the assistant tables do not open, and admins who get the all-access key from their own customizer only see their own rows.
+Deploy RC.3 and run the statements above in the same maintenance window. Until the update runs, saved views and reports on the assistant tables do not open, and admins who get the all-access key from their own customizer only see their own rows.
