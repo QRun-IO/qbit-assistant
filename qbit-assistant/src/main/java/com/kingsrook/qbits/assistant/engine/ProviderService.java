@@ -133,6 +133,10 @@ public class ProviderService
    public Active resolve(String policyModel) throws QException
    {
       AssistantProvider row = activeRow();
+      if(Boolean.TRUE.equals(config.getHipaaMode()) && (row == null || !Boolean.TRUE.equals(row.getHipaaEligible())))
+      {
+         throw (new ProviderSetupException("HIPAA mode: only HIPAA-eligible providers can be enabled; a persisted eligible provider is required."));
+      }
       if(row == null)
       {
          AssistantModelProvider provider = config.getActiveModelProvider();
@@ -183,6 +187,10 @@ public class ProviderService
     *******************************************************************************/
    public Active forRow(AssistantProvider row, String fallbackModel) throws ProviderSetupException
    {
+      if(Boolean.TRUE.equals(config.getHipaaMode()) && !Boolean.TRUE.equals(row.getHipaaEligible()))
+      {
+         throw (new ProviderSetupException("HIPAA mode: only HIPAA-eligible providers can be used."));
+      }
       ProviderSettings settings = settings(row);
       AssistantProviderType type = config.getProviderTypes().get(row.getProviderType());
       List<AssistantModel> models;
@@ -229,6 +237,10 @@ public class ProviderService
    public List<String> validate(AssistantProvider row)
    {
       List<String> errors = new ArrayList<>();
+      if(Boolean.TRUE.equals(config.getHipaaMode()) && !Boolean.FALSE.equals(row.getEnabled()) && !Boolean.TRUE.equals(row.getHipaaEligible()))
+      {
+         errors.add("HIPAA mode: only HIPAA-eligible providers can be enabled");
+      }
       AssistantProviderType type = row.getProviderType() == null ? null : config.getProviderTypes().get(row.getProviderType());
       if(type == null)
       {
@@ -642,6 +654,10 @@ public class ProviderService
     *******************************************************************************/
    public ProviderSettings settings(AssistantProvider row) throws ProviderSetupException
    {
+      if(Boolean.TRUE.equals(config.getHipaaMode()) && !Boolean.TRUE.equals(row.getHipaaEligible()))
+      {
+         throw (new ProviderSetupException("HIPAA mode: only HIPAA-eligible providers can be used."));
+      }
       List<String> errors = validate(row);
       if(!errors.isEmpty())
       {
@@ -707,4 +723,13 @@ public class ProviderService
       return (pricing(active == null ? null : active.providerType(), model));
    }
 
+
+
+   /*******************************************************************************
+    ** P-e seam: no automatic alternative is selected in P-c. Never downgrade PHI eligibility.
+    *******************************************************************************/
+   public java.util.Optional<Active> eligibleAlternative(com.kingsrook.qbits.assistant.classification.DataClassification classification, AssistantProvider blockedProvider)
+   {
+      return (java.util.Optional.empty());
+   }
 }

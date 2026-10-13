@@ -38,6 +38,9 @@ public class AssistantConversation extends QRecordEntity
    @Deprecated(since = "0.1.0-RC.3")
    public static final String LEGACY_TABLE_NAME = "assistantConversation";
 
+   @QField(isEditable = false, maxLength = 16)
+   private String maxClassification;
+
    @QField(isEditable = false, isPrimaryKey = true)
    private Integer id;
 
@@ -498,5 +501,38 @@ public class AssistantConversation extends QRecordEntity
       this.modifyDate = modifyDate;
       return (this);
    }
+
+
+
+   /*******************************************************************************
+    ** Getter for maxClassification
+    *******************************************************************************/
+   public String getMaxClassification()
+   {
+      return (maxClassification);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for maxClassification
+    *******************************************************************************/
+   public void setMaxClassification(String maxClassification)
+   {
+      this.maxClassification = maxClassification;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for maxClassification
+    *******************************************************************************/
+   public AssistantConversation withMaxClassification(String maxClassification)
+   {
+      this.maxClassification = maxClassification;
+      return (this);
+   }
+
+
 
 }

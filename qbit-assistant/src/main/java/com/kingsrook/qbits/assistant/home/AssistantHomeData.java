@@ -65,6 +65,8 @@ public class AssistantHomeData
    private final List<QRecord>            failedTools   = new ArrayList<>();
    private final List<QRecord>            deniedTools   = new ArrayList<>();
 
+   private Boolean hipaaMode;
+   private Integer hipaaRetentionDays;
    private LocalDate today;
    private long      monthCostMicros;
    private long      monthRequests;
@@ -133,6 +135,8 @@ public class AssistantHomeData
    public static AssistantHomeData load(AssistantRuntime runtime) throws QException
    {
       AssistantHomeData data = new AssistantHomeData();
+      data.hipaaMode = runtime.getConfig().getHipaaMode();
+      data.hipaaRetentionDays = runtime.getConfig().getHipaaRetentionDays();
       data.today = LocalDate.now(runtime.getClock().withZone(ZoneOffset.UTC));
       LocalDate firstDay   = data.today.minusDays(DAYS - 1);
       LocalDate monthStart = data.today.withDayOfMonth(1);
@@ -494,4 +498,23 @@ public class AssistantHomeData
       return (truncated);
    }
 
+
+
+   /*******************************************************************************
+    ** Read-only instance HIPAA status.
+    *******************************************************************************/
+   public Boolean getHipaaMode()
+   {
+      return (hipaaMode);
+   }
+
+
+
+   /*******************************************************************************
+    ** Configured PHI retention in days.
+    *******************************************************************************/
+   public Integer getHipaaRetentionDays()
+   {
+      return (hipaaRetentionDays);
+   }
 }

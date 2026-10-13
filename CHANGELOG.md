@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — P-c
+
+- Add configurable table/field classification, persistent turn/conversation maxima,
+  and PHI routing checks before every model call, with a safe blocked-turn reason.
+- Add HIPAA mode, eligible-provider enforcement, AES-256-GCM conversation storage,
+  provider diagnostic redaction, and independent PHI conversation retention.
+- Add owner-locked, admin read-only data routing audits and HIPAA status on the home.
+- Keep QQQ RC.4 compatibility with a classification stand-in and core #1142 adapter seam.
+
 All notable changes to this project are documented here. The format follows Keep a Changelog, and versions follow semantic versioning.
 
 ## [0.1.0] - Unreleased

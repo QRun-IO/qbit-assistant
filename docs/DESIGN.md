@@ -352,6 +352,30 @@ AI exposure NONE is not enough, because the assistant acts as the user and an ad
 - Localhost contract tests cover wire paths, authentication, text/tools/usage,
   expired-token refresh, errors, allowlists and golden turns for all three routes.
 
+### P-c as built
+
+- The qbit classification enum is a stand-in for core #1142 until a released RC
+  includes it. Configured table/field overrides are the default; hosts can supply
+  a `ClassificationSource` over core metadata, mapping enum names, then replace
+  the stand-in when the minimum QQQ version advances.
+- Turn/page/tool classification is monotonic, persisted on the turn and retained
+  on the conversation. Field subsets use overrides; unknown cross-table results
+  conservatively use the highest configured level. Metadata tools stay PUBLIC.
+- Small engine hooks check a fresh provider row before every model dispatch,
+  including strict retries. PHI requires explicit row eligibility; HIPAA mode
+  requires it for all calls. Blocks withhold results, explain the rule without
+  values, and write an audit. `ProviderService.eligibleAlternative` is an empty
+  seam for P-e; P-c never changes providers automatically.
+- HIPAA mode refuses non-eligible settings/selection and requires a valid key
+  reference at startup. AssistantStore alone encrypts/decrypts conversation
+  payloads using AES-256-GCM; legacy plaintext reads remain supported and corrupt
+  ciphertext fails closed. No key is persisted. Provider diagnostic text is
+  suppressed in HIPAA logs and turn errors.
+- Admin read-only, owner-locked `assistant_data_audit` records each PII/PHI model
+  dispatch and each block, outside navigation. PHI conversation retention defaults
+  to 2190 days in either mode; shorter tool-result/replay cleanup is unchanged.
+  The app home shows HIPAA mode and PHI retention.
+
 ### Phases (each a green PR)
 | | Scope | Depends on |
 |---|---|---|
