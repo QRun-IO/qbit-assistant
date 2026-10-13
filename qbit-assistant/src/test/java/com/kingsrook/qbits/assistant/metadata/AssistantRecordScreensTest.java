@@ -109,7 +109,7 @@ class AssistantRecordScreensTest extends BaseAssistantTest
    {
       QTableMetaData conversation = qInstance.getTable(AssistantConversation.TABLE_NAME);
       List<String> widgets = conversation.getSections().stream().map(QFieldSection::getWidgetName).filter(name -> name != null).toList();
-      assertThat(widgets).hasSize(5);
+      assertThat(widgets).hasSize(6);
       for(String widget : widgets)
       {
          assertThat(qInstance.getWidget(widget)).as(widget).isNotNull();
@@ -119,7 +119,7 @@ class AssistantRecordScreensTest extends BaseAssistantTest
       // a second pass does not add them again         //
       ///////////////////////////////////////////////////
       AssistantRecordScreens.addConversationChildLists(qInstance);
-      assertThat(conversation.getSections().stream().filter(section -> section.getWidgetName() != null)).hasSize(5);
+      assertThat(conversation.getSections().stream().filter(section -> section.getWidgetName() != null)).hasSize(6);
    }
 
 

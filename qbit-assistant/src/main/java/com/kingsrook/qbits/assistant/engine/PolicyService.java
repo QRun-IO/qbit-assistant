@@ -21,6 +21,8 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import com.kingsrook.qbits.assistant.AssistantBudgets;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.model.AssistantPolicy;
@@ -53,8 +55,79 @@ public class PolicyService
    /*******************************************************************************
     ** The resolved policy values.
     *******************************************************************************/
-   public record EffectivePolicy(boolean killSwitch, String killSwitchReason, String mainModel, String mainEffort, AssistantBudgets budgets)
+   public record EffectivePolicy(boolean killSwitch, String killSwitchReason, String mainModel, String mainEffort, AssistantBudgets budgets, ToolPolicy tools)
    {
+      /*******************************************************************************
+       ** Without tool settings (the defaults).
+       *******************************************************************************/
+      public EffectivePolicy(boolean killSwitch, String killSwitchReason, String mainModel, String mainEffort, AssistantBudgets budgets)
+      {
+         this(killSwitch, killSwitchReason, mainModel, mainEffort, budgets, ToolPolicy.defaults());
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** The policy row's tool settings, with their defaults.
+    **
+    ** @param writesRequireConfirmation every write waits for the user's
+    **        confirmation card (default true)
+    ** @param allowedTools tool names allowed; empty allows every tool
+    ** @param maxRowsPerCall most rows one tool call returns to the model
+    ** @param redactPii redact secrets and personal identifiers from tool
+    **        results (default true)
+    *******************************************************************************/
+   public record ToolPolicy(boolean writesRequireConfirmation, Set<String> allowedTools, int maxRowsPerCall, boolean redactPii)
+   {
+      public static final int DEFAULT_MAX_ROWS_PER_CALL = 50;
+      public static final int MAX_ROWS_PER_CALL_CEILING = 200;
+
+
+
+      /*******************************************************************************
+       ** The defaults.
+       *******************************************************************************/
+      public static ToolPolicy defaults()
+      {
+         return (new ToolPolicy(true, Set.of(), DEFAULT_MAX_ROWS_PER_CALL, true));
+      }
+
+
+
+      /*******************************************************************************
+       ** Whether a tool is allowed by name.
+       *******************************************************************************/
+      public boolean allows(String toolName)
+      {
+         return (allowedTools == null || allowedTools.isEmpty() || allowedTools.contains(toolName));
+      }
+
+
+
+      /*******************************************************************************
+       ** From a policy row (null: the defaults).
+       *******************************************************************************/
+      public static ToolPolicy of(AssistantPolicy row)
+      {
+         if(row == null)
+         {
+            return (defaults());
+         }
+         Set<String> allowed = new LinkedHashSet<>();
+         if(StringUtils.hasContent(row.getAllowedTools()))
+         {
+            for(String name : row.getAllowedTools().split("[,\\s]+"))
+            {
+               if(StringUtils.hasContent(name))
+               {
+                  allowed.add(name.trim());
+               }
+            }
+         }
+         int maxRows = row.getMaxRowsPerCall() == null || row.getMaxRowsPerCall() < 1 ? DEFAULT_MAX_ROWS_PER_CALL : Math.min(MAX_ROWS_PER_CALL_CEILING, row.getMaxRowsPerCall());
+         return (new ToolPolicy(!Boolean.FALSE.equals(row.getWritesRequireConfirmation()), allowed, maxRows, !Boolean.FALSE.equals(row.getRedactPii())));
+      }
    }
 
 
@@ -108,7 +181,7 @@ public class PolicyService
       String mainModel  = row != null && StringUtils.hasContent(row.getMainModel()) ? row.getMainModel() : config.getModels().getMainModel();
       String mainEffort = row != null && StringUtils.hasContent(row.getMainEffort()) ? row.getMainEffort() : config.getModels().getMainEffort();
 
-      return (new EffectivePolicy(row != null && Boolean.TRUE.equals(row.getKillSwitch()), row == null ? null : row.getKillSwitchReason(), mainModel, mainEffort, budgets));
+      return (new EffectivePolicy(row != null && Boolean.TRUE.equals(row.getKillSwitch()), row == null ? null : row.getKillSwitchReason(), mainModel, mainEffort, budgets, ToolPolicy.of(row)));
    }
 
 

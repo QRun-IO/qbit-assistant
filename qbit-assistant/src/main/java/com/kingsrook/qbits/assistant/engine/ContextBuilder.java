@@ -20,10 +20,12 @@ package com.kingsrook.qbits.assistant.engine;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
 import com.kingsrook.qbits.assistant.provider.CacheHint;
@@ -32,9 +34,9 @@ import com.kingsrook.qbits.assistant.provider.ModelPart;
 import com.kingsrook.qbits.assistant.provider.ModelRequest;
 import com.kingsrook.qbits.assistant.provider.ModelToolDefinition;
 import com.kingsrook.qbits.assistant.provider.SystemBlock;
+import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolDefinition;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolKernel;
-import com.kingsrook.qqq.backend.core.actions.ai.AiToolKind;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
@@ -51,12 +53,20 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
  *******************************************************************************/
 public class ContextBuilder
 {
-   public static final Set<AiToolKind> PHASE1_KINDS      = Set.of(AiToolKind.READ, AiToolKind.NAVIGATION);
-   public static final int             MAX_CONTEXT_CHARS = 512;
-   public static final int             MAX_SELECTED_IDS  = 100;
+   ///////////////////////////////////////////////////////////////////////
+   // tools that read no records stay on the core kernel: navigate only //
+   // builds an /app link (the page enforces permission when it opens)  //
+   // and search_help reads help text from metadata. Every tool that    //
+   // reads or writes data is a UI API tool (UiApiToolbox).             //
+   ///////////////////////////////////////////////////////////////////////
+   public static final Set<String> KERNEL_TOOLS = Set.of("navigate", "search_help");
+
+   public static final int MAX_CONTEXT_CHARS = 512;
+   public static final int MAX_SELECTED_IDS  = 100;
 
    private final AssistantQBitConfig config;
    private final AiToolKernel        kernel;
+   private final UiApiToolbox        toolbox;
    private volatile String           appDigest;
 
 
@@ -64,56 +74,83 @@ public class ContextBuilder
    /*******************************************************************************
     **
     *******************************************************************************/
-   public ContextBuilder(AssistantQBitConfig config, AiToolKernel kernel)
+   public ContextBuilder(AssistantQBitConfig config, AiToolKernel kernel, UiApiToolbox toolbox)
    {
       this.config = config;
       this.kernel = kernel;
+      this.toolbox = toolbox;
    }
 
 
 
    /*******************************************************************************
-    ** The phase-1 tools (read + navigation), in the kernel's stable order.
+    ** The tools with the default policy.
     *******************************************************************************/
    public List<ModelToolDefinition> tools()
    {
-      List<ModelToolDefinition> tools = new ArrayList<>();
+      return (tools(PolicyService.ToolPolicy.defaults()));
+   }
+
+
+
+   /*******************************************************************************
+    ** The tools a policy allows, sorted by name (a stable cache prefix): the UI
+    ** API data tools (write tools only when some table allows writes) plus the
+    ** kernel's navigate and search_help.
+    *******************************************************************************/
+   public List<ModelToolDefinition> tools(PolicyService.ToolPolicy policy)
+   {
+      Map<String, ModelToolDefinition> byName = new TreeMap<>();
+      for(ModelToolDefinition definition : toolbox.definitions(policy, toolbox.anyWritableTable()))
+      {
+         byName.put(definition.getName(), definition.withStrict(isStrict(definition.getName(), true)));
+      }
       for(AiToolDefinition definition : kernel.getToolDefinitions())
       {
-         if(definition.getKind() != null && PHASE1_KINDS.contains(definition.getKind()))
+         if(KERNEL_TOOLS.contains(definition.getName()) && (policy == null || policy.allows(definition.getName())))
          {
-            tools.add(new ModelToolDefinition()
+            byName.put(definition.getName(), new ModelToolDefinition()
                .withName(definition.getName())
                .withDescription(definition.getDescription())
                .withInputSchema(definition.getInputSchema())
-               .withStrict(isStrict(definition)));
+               .withStrict(isStrict(definition.getName(), !Boolean.FALSE.equals(definition.getStrict()))));
          }
       }
-      return (tools);
+      return (new ArrayList<>(byName.values()));
    }
 
 
 
    /*******************************************************************************
-    ** Strict only when the host names the tool in strictToolNames (and the
-    ** kernel does not opt it out): the provider compiles every strict schema of
-    ** a request into one grammar, which it refuses when it grows too large.
+    ** Strict only when the host names the tool in strictToolNames: the provider
+    ** compiles every strict schema of a request into one grammar, which it
+    ** refuses when it grows too large.
     *******************************************************************************/
-   boolean isStrict(AiToolDefinition definition)
+   boolean isStrict(String toolName, boolean strictCapable)
    {
-      return (!Boolean.FALSE.equals(definition.getStrict()) && config.getStrictToolNames() != null && config.getStrictToolNames().contains(definition.getName()));
+      return (strictCapable && config.getStrictToolNames() != null && config.getStrictToolNames().contains(toolName));
    }
 
 
 
    /*******************************************************************************
-    ** Names of the phase-1 tools.
+    ** Names of the tools a policy allows.
+    *******************************************************************************/
+   public Set<String> toolNames(PolicyService.ToolPolicy policy)
+   {
+      Set<String> names = new HashSet<>();
+      tools(policy).forEach(t -> names.add(t.getName()));
+      return (names);
+   }
+
+
+
+   /*******************************************************************************
+    ** Names of the tools with the default policy.
     *******************************************************************************/
    public Set<String> toolNames()
    {
-      Set<String> names = new java.util.HashSet<>();
-      tools().forEach(t -> names.add(t.getName()));
-      return (names);
+      return (toolNames(PolicyService.ToolPolicy.defaults()));
    }
 
 
@@ -139,11 +176,21 @@ public class ContextBuilder
     *******************************************************************************/
    public ModelRequest build(QSession session, String model, String effort, List<AssistantMessage> history, String userText, Map<String, Object> pageContext)
    {
+      return (build(session, model, effort, history, userText, pageContext, PolicyService.ToolPolicy.defaults()));
+   }
+
+
+
+   /*******************************************************************************
+    ** The request, with the tools the policy allows.
+    *******************************************************************************/
+   public ModelRequest build(QSession session, String model, String effort, List<AssistantMessage> history, String userText, Map<String, Object> pageContext, PolicyService.ToolPolicy toolPolicy)
+   {
       ModelRequest request = new ModelRequest()
          .withModel(model)
          .withEffort(effort)
          .withMaxTokens(config.getModels().getMainMaxOutputTokens())
-         .withTools(tools());
+         .withTools(tools(toolPolicy));
 
       request.getSystem().add(new SystemBlock(SystemPrompt.staticBlock(appDigest()), CacheHint.LONG));
       request.getSystem().add(new SystemBlock(userBlock(session), CacheHint.SHORT));

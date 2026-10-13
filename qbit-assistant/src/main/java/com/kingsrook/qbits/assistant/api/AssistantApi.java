@@ -19,9 +19,11 @@ package com.kingsrook.qbits.assistant.api;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
 import com.kingsrook.qbits.assistant.AssistantSecurity;
@@ -35,9 +37,15 @@ import com.kingsrook.qbits.assistant.engine.TurnEvent;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantFeedback;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
+import com.kingsrook.qbits.assistant.model.AssistantPendingAction;
+import com.kingsrook.qbits.assistant.model.AssistantToolCall;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
 import com.kingsrook.qbits.assistant.model.AssistantTurnEvent;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
+import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
+import com.kingsrook.qqq.backend.core.actions.ai.AiToolOutcome;
+import com.kingsrook.qqq.backend.core.actions.ai.AiToolResult;
+import com.kingsrook.qqq.backend.core.actions.ai.output.AiRedactor;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
@@ -114,7 +122,7 @@ public class AssistantApi
       result.put("shortcut", config.getShortcut());
       result.put("model", reason == null ? activeProvider().model() : config.getModels().getMainModel());
       result.put("limits", Map.of("maxTurnSeconds", config.getMaxTurnSeconds(), "maxToolCallsPerTurn", config.getMaxToolCallsPerTurn()));
-      result.put("features", Map.of("writes", false));
+      result.put("features", Map.of("writes", runtime.getToolbox().anyWritableTable(), "pendingActions", true));
       return (result);
    }
 
@@ -529,6 +537,164 @@ public class AssistantApi
          .withRating(number.intValue())
          .withReason(reason)
          .withComment(comment));
+   }
+
+
+
+   /*******************************************************************************
+    ** GET /actions/{id}: one of the user's pending actions.
+    *******************************************************************************/
+   public Map<String, Object> getAction(Integer id) throws QException, AssistantApiException
+   {
+      requireAccess();
+      return (toJson(expireIfDue(requireAction(id))));
+   }
+
+
+
+   /*******************************************************************************
+    ** POST /actions/{id}/confirm: run the proposed write through the UI API
+    ** with THIS request's session (the user's own), then record the result and
+    ** a tool-call log row. A write is never run twice.
+    *******************************************************************************/
+   public Map<String, Object> confirmAction(Integer id) throws QException, AssistantApiException
+   {
+      requireAccess();
+      AssistantPendingAction action = expireIfDue(requireAction(id));
+      if(!AssistantPendingAction.STATUS_PENDING.equals(action.getStatus()))
+      {
+         throw (new AssistantApiException(409, "This action is already " + action.getStatus().toLowerCase() + "."));
+      }
+
+      ///////////////////////////////////////////////////////////////////////
+      // claim it first, so a double click cannot run the write twice     //
+      ///////////////////////////////////////////////////////////////////////
+      Instant now = runtime.getClock().instant();
+      store.updateFields(AssistantPendingAction.TABLE_NAME, new QRecord().withValue("id", id).withValue("status", "RUNNING").withValue("decidedAt", now));
+      AssistantPendingAction claimed = store.getPendingAction(userId, id);
+      if(claimed == null || !"RUNNING".equals(claimed.getStatus()))
+      {
+         throw (new AssistantApiException(409, "This action is already being handled."));
+      }
+
+      Map<String, Object> values;
+      try
+      {
+         values = action.getParamsJson() == null ? Map.of() : JsonUtils.toObject(action.getParamsJson(), new TypeReference<Map<String, Object>>() {});
+      }
+      catch(Exception e)
+      {
+         throw (new QException("The stored values of action " + id + " are not valid JSON", e));
+      }
+      PolicyService.EffectivePolicy policy = runtime.getPolicyService().current(true);
+      UiApiToolbox.Context context = new UiApiToolbox.Context(session.getUuid(), session.getValue(QSession.VALUE_KEY_USER_TIMEZONE), runtime.getUiApiGateway(), policy.tools(), null);
+      UiApiToolbox.Outcome outcome = runtime.getToolbox().executeConfirmedWrite(context, action.getToolCallId(), action.getToolName(), action.getTableName(), action.getRecordId(), values);
+      AiToolResult result = outcome.getResult();
+      boolean ok = result.getOutcome() == AiToolOutcome.OK;
+
+      store.updateFields(AssistantPendingAction.TABLE_NAME, new QRecord()
+         .withValue("id", id)
+         .withValue("status", ok ? AssistantPendingAction.STATUS_EXECUTED : AssistantPendingAction.STATUS_FAILED)
+         .withValue("httpStatus", outcome.getHttpStatus())
+         .withValue("resultSummary", truncate(result.getSummary(), 500)));
+
+      store.insert(new AssistantToolCall()
+         .withTurnId(action.getTurnId())
+         .withConversationId(action.getConversationId())
+         .withUserId(userId)
+         .withToolCallId(action.getToolCallId())
+         .withToolName(action.getToolName())
+         .withInputJson(truncate(new AiRedactor(List.of()).redact(action.getParamsJson() == null ? "{}" : action.getParamsJson(), new HashSet<>()), 4000))
+         .withOutcome(result.getOutcome() == null ? AiToolOutcome.ERROR.name() : result.getOutcome().name())
+         .withPermissionCheck(result.getPermissionCheck())
+         .withTableName(action.getTableName())
+         .withRowCount(result.getRowCount())
+         .withDurationMs(result.getDurationMs())
+         .withResultSummary(truncate("Confirmed: " + result.getSummary(), 500))
+         .withResultJson(result.getModelContent())
+         .withUiApiOperation(outcome.getOperation())
+         .withHttpStatus(outcome.getHttpStatus())
+         .withAuditHref(outcome.getAuditHref())
+         .withPendingActionId(id));
+
+      Map<String, Object> rs = toJson(store.getPendingAction(userId, id));
+      rs.put("outcome", result.getOutcome() == null ? null : result.getOutcome().name());
+      rs.put("message", result.getModelContent());
+      if(outcome.getAuditHref() != null)
+      {
+         rs.put("href", outcome.getAuditHref());
+      }
+      return (rs);
+   }
+
+
+
+   /*******************************************************************************
+    ** POST /actions/{id}/reject: nothing runs.
+    *******************************************************************************/
+   public Map<String, Object> rejectAction(Integer id) throws QException, AssistantApiException
+   {
+      requireAccess();
+      AssistantPendingAction action = expireIfDue(requireAction(id));
+      if(!AssistantPendingAction.STATUS_PENDING.equals(action.getStatus()))
+      {
+         throw (new AssistantApiException(409, "This action is already " + action.getStatus().toLowerCase() + "."));
+      }
+      store.updateFields(AssistantPendingAction.TABLE_NAME, new QRecord().withValue("id", id).withValue("status", AssistantPendingAction.STATUS_REJECTED)
+         .withValue("decidedAt", runtime.getClock().instant()).withValue("resultSummary", "Cancelled by the user; nothing changed."));
+      return (toJson(store.getPendingAction(userId, id)));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private AssistantPendingAction requireAction(Integer id) throws QException, AssistantApiException
+   {
+      AssistantPendingAction action = id == null ? null : store.getPendingAction(userId, id);
+      if(action == null)
+      {
+         throw (new AssistantApiException(404, "Action not found."));
+      }
+      return (action);
+   }
+
+
+
+   /*******************************************************************************
+    ** Mark a pending action past its expiry as EXPIRED.
+    *******************************************************************************/
+   private AssistantPendingAction expireIfDue(AssistantPendingAction action) throws QException
+   {
+      if(AssistantPendingAction.STATUS_PENDING.equals(action.getStatus()) && action.getExpiresAt() != null && action.getExpiresAt().isBefore(runtime.getClock().instant()))
+      {
+         store.updateFields(AssistantPendingAction.TABLE_NAME, new QRecord().withValue("id", action.getId()).withValue("status", AssistantPendingAction.STATUS_EXPIRED)
+            .withValue("resultSummary", "Expired before it was confirmed; nothing changed."));
+         action.setStatus(AssistantPendingAction.STATUS_EXPIRED);
+         action.setResultSummary("Expired before it was confirmed; nothing changed.");
+      }
+      return (action);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   static Map<String, Object> toJson(AssistantPendingAction action)
+   {
+      Map<String, Object> map = new LinkedHashMap<>();
+      map.put("id", action.getId());
+      map.put("status", action.getStatus());
+      map.put("toolName", action.getToolName());
+      map.put("tableName", action.getTableName());
+      map.put("recordId", action.getRecordId());
+      map.put("summary", action.getSummary());
+      map.put("httpStatus", action.getHttpStatus());
+      map.put("resultSummary", action.getResultSummary());
+      map.put("expiresAt", action.getExpiresAt() == null ? null : action.getExpiresAt().toString());
+      return (map);
    }
 
 

@@ -104,6 +104,10 @@ public class TurnRunner
    {
       this.qInstance = qInstance;
       this.config = config;
+      if(config.getUiApiGateway() == null && config.getUiApiBaseUrl() == null)
+      {
+         UiApiTestServer.serve(qInstance, config);
+      }
    }
 
 

@@ -85,7 +85,7 @@ class AssistantQBitProducerTest extends BaseAssistantTest
       // the nav: the home plus the main tables; processes are actions    //
       //////////////////////////////////////////////////////////////////////
       assertThat(qInstance.getApp(AssistantMetaDataBuilder.APP_NAME).getChildren()).extracting(c -> c.getName())
-         .containsExactly("assistant_provider", "assistant_conversation", "assistant_model_price", "assistant_policy");
+         .containsExactly("assistant_provider", "assistant_data_access", "assistant_conversation", "assistant_model_price", "assistant_policy");
       assertThat(qInstance.getApp(AssistantMetaDataBuilder.APP_NAME).getWidgets()).containsExactly("assistantHome");
       assertThat(qInstance.getProcess(AssistantMetaDataBuilder.RETENTION_PROCESS_NAME).getTableName()).isEqualTo("assistant_conversation");
       assertThat(qInstance.getProcess(AssistantMetaDataBuilder.RETENTION_PROCESS_NAME)).isNotNull();

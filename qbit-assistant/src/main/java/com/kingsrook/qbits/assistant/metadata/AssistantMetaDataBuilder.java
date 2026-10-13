@@ -20,11 +20,13 @@ package com.kingsrook.qbits.assistant.metadata;
 import java.util.ArrayList;
 import java.util.List;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
-import com.kingsrook.qbits.assistant.model.AssistantConversation;
-import com.kingsrook.qbits.assistant.model.AssistantFeedback;
 import com.kingsrook.qbits.assistant.home.AssistantHome;
+import com.kingsrook.qbits.assistant.model.AssistantConversation;
+import com.kingsrook.qbits.assistant.model.AssistantDataAccess;
+import com.kingsrook.qbits.assistant.model.AssistantFeedback;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
 import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
+import com.kingsrook.qbits.assistant.model.AssistantPendingAction;
 import com.kingsrook.qbits.assistant.model.AssistantPolicy;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
 import com.kingsrook.qbits.assistant.model.AssistantToolCall;
@@ -97,7 +99,7 @@ public class AssistantMetaDataBuilder
     ** calls on a conversation; model calls on a provider) or reached from the
     ** home. Processes are table and record actions, never nav entries.
     *******************************************************************************/
-   public static final List<String> NAV_TABLES = List.of(AssistantProvider.TABLE_NAME, AssistantConversation.TABLE_NAME, AssistantModelPrice.TABLE_NAME, AssistantPolicy.TABLE_NAME);
+   public static final List<String> NAV_TABLES = List.of(AssistantProvider.TABLE_NAME, AssistantDataAccess.TABLE_NAME, AssistantConversation.TABLE_NAME, AssistantModelPrice.TABLE_NAME, AssistantPolicy.TABLE_NAME);
 
    private final AssistantQBitConfig config;
 
@@ -180,6 +182,14 @@ public class AssistantMetaDataBuilder
       tables.add(readOnly(owned(base(AssistantUsage.TABLE_NAME, "Assistant Model Call", "receipt_long", AssistantUsage.class), false))
          .withRecordLabelFormat("%s #%s").withRecordLabelFields("purpose", "id"));
 
+      tables.add(dataAccess(base(AssistantDataAccess.TABLE_NAME, "Assistant Data Access", "admin_panel_settings", AssistantDataAccess.class))
+         .withUniqueKey(new UniqueKey("objectType", "objectName"))
+         .withRecordLabelFormat("%s %s").withRecordLabelFields("objectType", "objectName"));
+
+      tables.add(readOnly(owned(base(AssistantPendingAction.TABLE_NAME, "Assistant Pending Action", "pending_actions", AssistantPendingAction.class), false))
+         .withRecordLabelFormat("%s #%s").withRecordLabelFields("toolName", "id"));
+      text(tables.get(tables.size() - 1), "paramsJson");
+
       tables.forEach(AssistantRecordScreens::apply);
       return (tables);
    }
@@ -195,6 +205,22 @@ public class AssistantMetaDataBuilder
       QCodeReference customizer = new QCodeReference(AssistantSettingsCustomizer.class);
       return (table
          .withCustomizer(TableCustomizers.POST_QUERY_RECORD, customizer)
+         .withCustomizer(TableCustomizers.PRE_INSERT_RECORD, customizer)
+         .withCustomizer(TableCustomizers.PRE_UPDATE_RECORD, customizer)
+         .withCustomizer(TableCustomizers.POST_INSERT_RECORD, customizer)
+         .withCustomizer(TableCustomizers.POST_UPDATE_RECORD, customizer)
+         .withCustomizer(TableCustomizers.POST_DELETE_RECORD, customizer));
+   }
+
+
+
+   /*******************************************************************************
+    ** The data access table: a change drops the runtime's cached modes.
+    *******************************************************************************/
+   private static QTableMetaData dataAccess(QTableMetaData table)
+   {
+      QCodeReference customizer = new QCodeReference(AssistantDataAccessCustomizer.class);
+      return (table
          .withCustomizer(TableCustomizers.PRE_INSERT_RECORD, customizer)
          .withCustomizer(TableCustomizers.PRE_UPDATE_RECORD, customizer)
          .withCustomizer(TableCustomizers.POST_INSERT_RECORD, customizer)

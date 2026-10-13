@@ -29,6 +29,7 @@ import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantFeedback;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
 import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
+import com.kingsrook.qbits.assistant.model.AssistantPendingAction;
 import com.kingsrook.qbits.assistant.model.AssistantPolicy;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
 import com.kingsrook.qbits.assistant.model.AssistantToolCall;
@@ -322,6 +323,16 @@ public class AssistantStore
    public AssistantTurn getTurn(String userId, Integer id) throws QException
    {
       return (first(query(AssistantTurn.TABLE_NAME, owned(userId).withCriteria("id", QCriteriaOperator.EQUALS, id), AssistantTurn.class)));
+   }
+
+
+
+   /*******************************************************************************
+    ** One of the user's own pending actions, or null.
+    *******************************************************************************/
+   public AssistantPendingAction getPendingAction(String userId, Integer id) throws QException
+   {
+      return (first(query(AssistantPendingAction.TABLE_NAME, owned(userId).withCriteria("id", QCriteriaOperator.EQUALS, id), AssistantPendingAction.class)));
    }
 
 
