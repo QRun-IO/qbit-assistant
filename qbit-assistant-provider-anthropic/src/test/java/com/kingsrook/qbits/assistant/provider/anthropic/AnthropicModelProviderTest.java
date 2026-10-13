@@ -342,4 +342,28 @@ class AnthropicModelProviderTest
          .hasMessageContaining("ANTHROPIC_API_KEY");
    }
 
+
+
+
+   /*******************************************************************************
+    ** An injected cloud-capable client wins over the key and HTTP builder options.
+    *******************************************************************************/
+   @Test
+   void injectedClientTakesPrecedence() throws Exception
+   {
+      server.thenStream("text-with-thinking.sse", 0);
+      var client = com.anthropic.client.okhttp.AnthropicOkHttpClient.builder().apiKey(TEST_KEY).baseUrl(server.baseUrl()).maxRetries(0).build();
+      var injected = AnthropicModelProvider.builder().client(client).apiKey(null).baseUrl("https://unused.invalid").build();
+      try
+      {
+         var response = injected.stream(request(), delta -> {}).await(Duration.ofSeconds(10));
+         assertThat(response.getText()).isEqualTo("There are 4 published posts.");
+         assertThat(server.getRequests()).hasSize(1);
+         assertThat(server.getRequests().getFirst().get("apiKey")).isEqualTo(TEST_KEY);
+      }
+      finally
+      {
+         injected.close();
+      }
+   }
 }

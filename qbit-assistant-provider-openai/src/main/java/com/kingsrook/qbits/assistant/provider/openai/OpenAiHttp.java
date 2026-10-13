@@ -62,6 +62,7 @@ final class OpenAiHttp
       settings = new ProviderSettings().withKind(source.getKind() == null ? "OPENAI_COMPATIBLE" : source.getKind())
          .withTlsCaBundle(source.getTlsCaBundle()).withSslContext(source.getSslContext())
          .withApiKey(source.getApiKey()).withBaseUrl(source.getBaseUrl()).withApiVersion(source.getApiVersion()).withRegion(source.getRegion())
+         .withBearerTokenSupplier(source.getBearerTokenSupplier()).withCloudProject(source.getCloudProject())
          .withConnectTimeoutSeconds(source.getConnectTimeoutSeconds()).withRequestTimeoutSeconds(source.getRequestTimeoutSeconds());
       String url = settings.getBaseUrl() == null ? new OpenAiCompatibleProviderType().getDefaultBaseUrl(settings.getKind()) : settings.getBaseUrl();
       if(url == null)
@@ -93,7 +94,16 @@ final class OpenAiHttp
             path += "?api-version=" + encode(settings.getApiVersion() == null || settings.getApiVersion().isBlank() ? "2024-10-21" : settings.getApiVersion());
          }
          HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(base + path)).timeout(Duration.ofSeconds(seconds)).header("Content-Type", "application/json");
-         if(settings.getApiKey() != null && !settings.getApiKey().isBlank())
+         if(settings.getBearerTokenSupplier() != null)
+         {
+            String token = settings.getBearerTokenSupplier().get();
+            if(token == null || token.isBlank())
+            {
+               throw (new ModelProviderException(ModelProviderException.Kind.AUTHENTICATION, null, "The provider access token is unavailable."));
+            }
+            builder.header("Authorization", "Bearer " + token);
+         }
+         else if(settings.getApiKey() != null && !settings.getApiKey().isBlank())
          {
             if("AZURE_OPENAI".equals(settings.getKind()))
             {
@@ -109,6 +119,10 @@ final class OpenAiHttp
       catch(IllegalArgumentException e)
       {
          throw (new ModelProviderException(ModelProviderException.Kind.INVALID_REQUEST, null, "The provider connection settings are invalid."));
+      }
+      catch(RuntimeException e)
+      {
+         throw (new ModelProviderException(ModelProviderException.Kind.AUTHENTICATION, null, "Could not obtain the provider access token."));
       }
    }
 
@@ -203,6 +217,12 @@ final class OpenAiHttp
     *******************************************************************************/
    private String safe(String value)
    {
+      if(settings.getBearerTokenSupplier() != null)
+      {
+         // Dynamic credentials can be echoed by a remote error. Do not retain
+         // tokens or include remote diagnostics for bearer-supplier requests.
+         return (null);
+      }
       String key = settings.getApiKey();
       return (ModelProviderException.sanitizeProviderMessage(value == null || key == null || key.isEmpty() ? value : value.replace(key, "[redacted]"), 300));
    }

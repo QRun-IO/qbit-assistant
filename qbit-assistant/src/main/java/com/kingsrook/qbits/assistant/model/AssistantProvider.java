@@ -35,6 +35,9 @@ import com.kingsrook.qqq.backend.core.model.data.QRecordEntity;
  *******************************************************************************/
 public class AssistantProvider extends QRecordEntity
 {
+   @QField(maxLength = 100)
+   private String cloudProject;
+
    @QField(maxLength = 30)
    private String kind;
 
@@ -1080,6 +1083,37 @@ public class AssistantProvider extends QRecordEntity
    public AssistantProvider withTlsCaBundle(String tlsCaBundle)
    {
       this.tlsCaBundle = tlsCaBundle;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for cloudProject
+    *******************************************************************************/
+   public String getCloudProject()
+   {
+      return (this.cloudProject);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for cloudProject
+    *******************************************************************************/
+   public void setCloudProject(String cloudProject)
+   {
+      this.cloudProject = cloudProject;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for cloudProject
+    *******************************************************************************/
+   public AssistantProvider withCloudProject(String cloudProject)
+   {
+      this.cloudProject = cloudProject;
       return (this);
    }
 }

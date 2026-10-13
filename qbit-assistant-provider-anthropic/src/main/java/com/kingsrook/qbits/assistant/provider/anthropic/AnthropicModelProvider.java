@@ -98,15 +98,16 @@ public class AnthropicModelProvider implements AssistantModelProvider
 
 
    /*******************************************************************************
-    ** Builds the provider. apiKey is required (a literal from a secret store,
-    ** or "${env.NAME}").
+    ** Builds the provider. Unless a client is supplied, apiKey is required
+    ** (a literal from a secret store, or "${env.NAME}").
     *******************************************************************************/
    public static class Builder
    {
-      private String   apiKey;
-      private String   baseUrl;
-      private Duration timeout    = Duration.ofMinutes(10);
-      private Integer  maxRetries = 2;
+      private String          apiKey;
+      private AnthropicClient client;
+      private String          baseUrl;
+      private Duration        timeout    = Duration.ofMinutes(10);
+      private Integer         maxRetries = 2;
 
 
 
@@ -116,6 +117,19 @@ public class AnthropicModelProvider implements AssistantModelProvider
       public Builder apiKey(String apiKey)
       {
          this.apiKey = apiKey;
+         return (this);
+      }
+
+
+
+      /*******************************************************************************
+       ** Use an already configured client, including a cloud backend. The provider
+       ** owns and closes this client; key, URL, timeout and retry builder options
+       ** apply only when the builder creates its own client.
+       *******************************************************************************/
+      public Builder client(AnthropicClient client)
+      {
+         this.client = client;
          return (this);
       }
 
@@ -159,6 +173,10 @@ public class AnthropicModelProvider implements AssistantModelProvider
        *******************************************************************************/
       public AnthropicModelProvider build()
       {
+         if(client != null)
+         {
+            return (new AnthropicModelProvider(client, baseUrl));
+         }
          String key = resolveSecret(apiKey);
          if(!StringUtils.hasContent(key))
          {

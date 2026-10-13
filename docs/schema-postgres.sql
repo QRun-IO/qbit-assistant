@@ -177,6 +177,7 @@ CREATE TABLE assistant_provider
    location VARCHAR(10),
    hipaa_eligible BOOLEAN DEFAULT FALSE,
    region VARCHAR(50),
+   cloud_project VARCHAR(100),
    api_version VARCHAR(30),
    connect_timeout_seconds INTEGER DEFAULT 10 CHECK (connect_timeout_seconds BETWEEN 1 AND 600),
    request_timeout_seconds INTEGER DEFAULT 120 CHECK (request_timeout_seconds BETWEEN 1 AND 600),

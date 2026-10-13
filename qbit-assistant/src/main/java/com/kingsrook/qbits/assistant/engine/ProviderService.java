@@ -214,7 +214,7 @@ public class ProviderService
          throw (new ProviderSetupException("The selected model is disabled in this provider's model registry."));
       }
       String cacheKey = row.getId() + "|" + row.getProviderType() + "|" + settings.getKind() + "|" + settings.getBaseUrl()
-         + "|" + settings.getApiVersion() + "|" + settings.getRegion() + "|" + settings.getConnectTimeoutSeconds()
+         + "|" + settings.getApiVersion() + "|" + settings.getRegion() + "|" + settings.getCloudProject() + "|" + settings.getConnectTimeoutSeconds()
          + "|" + settings.getTlsCaBundle() + "|" + settings.getRequestTimeoutSeconds() + "|" + fingerprint(settings.getApiKey());
       AssistantModelProvider provider = built.computeIfAbsent(cacheKey, k -> type.create(settings));
       return (new Active(row, row.getProviderType(), model, registry == null ? provider : new RegistryModelProvider(provider, registry)));
@@ -236,6 +236,7 @@ public class ProviderService
          return (errors);
       }
 
+      errors.addAll(type.validate(row));
       String envName = keyEnvName(row);
       if(envName != null && !AssistantQBitConfig.ENV_NAME.matcher(envName).matches())
       {
@@ -276,7 +277,7 @@ public class ProviderService
       {
          errors.add("Location must be LOCAL or CLOUD.");
       }
-      if(!StringUtils.hasContent(row.getBaseUrl()) && type.getDefaultBaseUrl(kind(row)) == null)
+      if(!StringUtils.hasContent(row.getBaseUrl()) && type.requiresBaseUrl(kind(row)))
       {
          errors.add("An allow-listed base URL is required for this provider kind.");
       }
@@ -313,7 +314,7 @@ public class ProviderService
       String envName = keyEnvName(row);
       if(envName == null)
       {
-         return ("Not needed (local, no key)");
+         return ("Not needed (no API key)");
       }
       if(!AssistantQBitConfig.ENV_NAME.matcher(envName).matches() || !config.getEffectiveAllowedApiKeyEnvNames().contains(envName))
       {
@@ -653,7 +654,7 @@ public class ProviderService
       }
       return (new ProviderSettings().withKind(kind(row)).withApiKey(key)
          .withBaseUrl(StringUtils.hasContent(row.getBaseUrl()) ? row.getBaseUrl().trim() : null)
-         .withApiVersion(row.getApiVersion()).withRegion(row.getRegion())
+         .withApiVersion(row.getApiVersion()).withRegion(row.getRegion()).withCloudProject(row.getCloudProject())
          .withTlsCaBundle(row.getTlsCaBundle()).withSslContext(StringUtils.hasContent(row.getTlsCaBundle()) ? config.getTrustedCaBundles().get(row.getTlsCaBundle()) : null)
          .withConnectTimeoutSeconds(row.getConnectTimeoutSeconds() == null ? 10 : row.getConnectTimeoutSeconds())
          .withRequestTimeoutSeconds(row.getRequestTimeoutSeconds() == null ? 120 : row.getRequestTimeoutSeconds()));

@@ -17,15 +17,22 @@
 package com.kingsrook.qbits.assistant.provider;
 
 
+import java.util.function.Supplier;
 import javax.net.ssl.SSLContext;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 
 /*******************************************************************************
- ** Resolved connection settings. The API key is never included in diagnostics.
+ ** Resolved connection settings. API keys and bearer-token suppliers are never
+ ** included in diagnostics. A supplier resolves a fresh token for each request.
  *******************************************************************************/
 public class ProviderSettings
 {
+   @JsonIgnore
+   private Supplier<String> bearerTokenSupplier;
+
+   private String cloudProject;
+
    private String tlsCaBundle;
    @JsonIgnore
    private transient SSLContext sslContext;
@@ -325,6 +332,69 @@ public class ProviderSettings
    public ProviderSettings withSslContext(SSLContext sslContext)
    {
       this.sslContext = sslContext;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for cloudProject
+    *******************************************************************************/
+   public String getCloudProject()
+   {
+      return (this.cloudProject);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for cloudProject
+    *******************************************************************************/
+   public void setCloudProject(String cloudProject)
+   {
+      this.cloudProject = cloudProject;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for cloudProject
+    *******************************************************************************/
+   public ProviderSettings withCloudProject(String cloudProject)
+   {
+      this.cloudProject = cloudProject;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for bearerTokenSupplier
+    *******************************************************************************/
+   @JsonIgnore
+   public Supplier<String> getBearerTokenSupplier()
+   {
+      return (this.bearerTokenSupplier);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for bearerTokenSupplier
+    *******************************************************************************/
+   public void setBearerTokenSupplier(Supplier<String> bearerTokenSupplier)
+   {
+      this.bearerTokenSupplier = bearerTokenSupplier;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for bearerTokenSupplier
+    *******************************************************************************/
+   public ProviderSettings withBearerTokenSupplier(Supplier<String> bearerTokenSupplier)
+   {
+      this.bearerTokenSupplier = bearerTokenSupplier;
       return (this);
    }
 }

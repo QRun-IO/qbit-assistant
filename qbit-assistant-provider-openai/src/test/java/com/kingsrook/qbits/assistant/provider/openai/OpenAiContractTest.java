@@ -458,4 +458,70 @@ class OpenAiContractTest
          assertThat(response.getToolUses().getFirst().getInput()).containsExactlyEntriesOf(Map.of("_invalid_arguments", arguments.substring(0, Math.min(200, arguments.length()))));
       }
    }
+
+
+
+   /*******************************************************************************
+    ** Supplier tokens take precedence over static keys and refresh per request.
+    *******************************************************************************/
+   @Test
+   void bearerSupplierPrecedenceAndRedaction() throws Exception
+   {
+      try(MockOpenAiServer server = new MockOpenAiServer())
+      {
+         var token = new java.util.concurrent.atomic.AtomicReference<>("first-private-token");
+         ProviderSettings settings = settings(server, "VERTEX").withBearerTokenSupplier(token::get);
+         var provider = new OpenAiCompatibleModelProvider(settings);
+         server.enqueue(200, TEXT);
+         provider.stream(request(), delta -> {}).await(Duration.ofSeconds(5));
+         assertThat(server.requests.getFirst().authorization()).isEqualTo("Bearer first-private-token");
+         token.set("next-private-token");
+         server.enqueue(403, "{\"error\":{\"type\":\"next-private-token\",\"message\":\"next-private-token\"}}");
+         assertThatThrownBy(() -> provider.stream(request(), delta -> {}).await(Duration.ofSeconds(5)))
+            .isInstanceOfSatisfying(ModelProviderException.class, error ->
+            {
+               assertThat(error.getKind()).isEqualTo(ModelProviderException.Kind.AUTHENTICATION);
+               assertThat(error.getProviderMessage()).isNull();
+               assertThat(error.getProviderErrorType()).isNull();
+               assertThat(error.toString()).doesNotContain("private-token");
+            });
+         assertThat(server.requests.get(1).authorization()).isEqualTo("Bearer next-private-token");
+         assertThat(settings.toString()).doesNotContain("private-token");
+         assertThat(OpenAiHttp.JSON.writeValueAsString(settings)).doesNotContain("bearerTokenSupplier", "private-token");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Missing or failed dynamic credentials never fall back to a static secret.
+    *******************************************************************************/
+   @Test
+   void unavailableBearerSupplier() throws Exception
+   {
+      try(MockOpenAiServer server = new MockOpenAiServer())
+      {
+         ProviderSettings settings = settings(server, "VERTEX");
+         for(String value : java.util.Arrays.asList(null, "", " "))
+         {
+            settings.setBearerTokenSupplier(() -> value);
+            var provider = new OpenAiCompatibleModelProvider(settings);
+            assertThatThrownBy(() -> provider.stream(request(), delta -> {}).await(Duration.ofSeconds(5)))
+               .isInstanceOfSatisfying(ModelProviderException.class, error -> assertThat(error.getKind()).isEqualTo(ModelProviderException.Kind.AUTHENTICATION));
+         }
+         settings.withBearerTokenSupplier(() ->
+         {
+            throw (new IllegalStateException("private-token"));
+         });
+         var provider = new OpenAiCompatibleModelProvider(settings);
+         assertThatThrownBy(() -> provider.stream(request(), delta -> {}).await(Duration.ofSeconds(5)))
+            .isInstanceOfSatisfying(ModelProviderException.class, error ->
+            {
+               assertThat(error.getKind()).isEqualTo(ModelProviderException.Kind.AUTHENTICATION);
+               assertThat(error.toString()).doesNotContain("private-token");
+               assertThat(error.getCause()).isNull();
+            });
+         assertThat(server.requests).isEmpty();
+      }
+   }
 }

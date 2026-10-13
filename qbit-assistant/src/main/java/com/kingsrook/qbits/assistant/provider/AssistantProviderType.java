@@ -18,6 +18,7 @@ package com.kingsrook.qbits.assistant.provider;
 
 
 import java.util.List;
+import com.kingsrook.qbits.assistant.model.AssistantProvider;
 
 
 /*******************************************************************************
@@ -133,6 +134,27 @@ public interface AssistantProviderType
    default HealthResult checkHealth(ProviderSettings settings)
    {
       return (new HealthResult(null, null, "Health check not supported"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Additional settings errors, without resolving credentials or doing I/O.
+    *******************************************************************************/
+   default List<String> validate(AssistantProvider row)
+   {
+      return (List.of());
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether this kind needs an explicit URL when it has no fixed default.
+    ** Cloud SDKs can instead derive their endpoint from region and project.
+    *******************************************************************************/
+   default boolean requiresBaseUrl(String kind)
+   {
+      return (getDefaultBaseUrl(kind) == null);
    }
 
 }

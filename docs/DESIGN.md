@@ -333,6 +333,25 @@ AI exposure NONE is not enough, because the assistant acts as the user and an ad
   errors, timeouts, cancellation, discovery and a golden tool round trip. The live
   smoke is environment-driven and excluded by default.
 
+### P-b as built
+
+- Optional Bedrock and Vertex modules reuse the Anthropic mapping and streaming
+  adapter through an injected SDK client. Bedrock retains SDK SigV4 and binary
+  event-stream decoding; a small Backend delegate supplies allow-listed endpoints
+  because SDK 2.71.0 has no Bedrock endpoint setter.
+- Bedrock uses the server's AWS default credential chain; IRSA/web-identity hosts
+  supply STS on their runtime classpath. No STS or control-plane SDK is bundled.
+- Vertex uses scoped Google ADC. `claude-*` routes to the Anthropic backend; other
+  ids route to the OpenAI-compatible endpoint with a per-request token supplier,
+  `google/` for unprefixed ids, and no strict tools.
+- Both types require region, reject key references and default to CLOUD. Vertex
+  additionally requires `cloudProject` (`cloud_project VARCHAR(100)`); it is part
+  of resolved settings and the provider cache key. Type hooks own validation.
+- Discovery is a static catalog, health is unsupported, and Test connection uses
+  the existing completion. HIPAA eligibility remains an admin fact, not a BAA.
+- Localhost contract tests cover wire paths, authentication, text/tools/usage,
+  expired-token refresh, errors, allowlists and golden turns for all three routes.
+
 ### Phases (each a green PR)
 | | Scope | Depends on |
 |---|---|---|
