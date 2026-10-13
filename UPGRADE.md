@@ -107,3 +107,14 @@ QQQ stores table names, permission names and key names outside this qbit. Update
 ### Order
 
 Deploy RC.3 and run the statements above in the same maintenance window. Until the update runs, saved views and reports on the assistant tables do not open, and admins who get the all-access key from their own customizer only see their own rows.
+
+## 0.1.0-RC.6: tools through the UI API
+
+Database (see `docs/schema-postgres.sql`):
+- new tables `assistant_data_access` and `assistant_pending_action`;
+- new columns `assistant_tool_call.ui_api_operation`, `http_status`, `audit_href`, `pending_action_id`;
+- new columns `assistant_policy.writes_require_confirmation`, `allowed_tools`, `max_rows_per_call`, `redact_pii`.
+
+Runtime: the tools call this server's own `/qqq/v1` on `127.0.0.1` and the port the first assistant request arrived on. If the server is not reachable that way (a different bind address, a TLS-only listener), set `withUiApiBaseUrl(...)`. Grant `assistant.admin` holders the new tables through the qbit's existing admin permission (no new permission names).
+
+Behavior: nothing is writable until an admin adds a READ_WRITE data access row; before that the assistant reads exactly what it did before, now through the UI API.

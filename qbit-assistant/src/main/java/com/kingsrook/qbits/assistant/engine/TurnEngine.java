@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +36,7 @@ import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
+import com.kingsrook.qbits.assistant.model.AssistantPendingAction;
 import com.kingsrook.qbits.assistant.model.AssistantToolCall;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
@@ -49,10 +51,12 @@ import com.kingsrook.qbits.assistant.provider.ModelRequest;
 import com.kingsrook.qbits.assistant.provider.ModelResponse;
 import com.kingsrook.qbits.assistant.provider.ModelUsage;
 import com.kingsrook.qbits.assistant.provider.StreamHandle;
+import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
 import com.kingsrook.qqq.backend.core.actions.ai.AiRecordRef;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolCall;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolOutcome;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolResult;
+import com.kingsrook.qqq.backend.core.actions.ai.output.AiRedactor;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -89,6 +93,8 @@ public class TurnEngine implements Runnable
    private static final QLogger LOG = QLogger.getLogger(TurnEngine.class);
 
    private static final int MAX_INPUT_JSON_CHARS  = 4000;
+
+   private static final AiRedactor INPUT_REDACTOR = new AiRedactor(List.of());
    private static final int MAX_RESULT_JSON_CHARS = 64_000;
    private static final int TEXT_FLUSH_CHARS      = 48;
    private static final long TEXT_FLUSH_MILLIS    = 120;
@@ -206,7 +212,7 @@ public class TurnEngine implements Runnable
             }
          }
 
-         ModelRequest request = runtime.getContextBuilder().build(session, model, policy.mainEffort(), history, userText, pageContext);
+         ModelRequest request = runtime.getContextBuilder().build(session, model, policy.mainEffort(), history, userText, pageContext, policy.tools());
          Integer maxPerRequest = active.row() == null ? null : active.row().getMaxOutputTokensPerRequest();
          if(maxPerRequest != null && (request.getMaxTokens() == null || request.getMaxTokens() > maxPerRequest))
          {
@@ -216,7 +222,7 @@ public class TurnEngine implements Runnable
          {
             request.setParallelToolCalls(false);
          }
-         Set<String> allowedTools = runtime.getContextBuilder().toolNames();
+         Set<String> allowedTools = runtime.getContextBuilder().toolNames(policy.tools());
 
          boolean toolLimitReached = false;
          while(true)
@@ -588,6 +594,7 @@ public class TurnEngine implements Runnable
       int              allowed      = Math.max(0, config.getMaxToolCallsPerTurn() - toolCallCount);
       boolean          limitReached = false;
       AiToolResult[]   results      = new AiToolResult[toolUses.size()];
+      UiApiToolbox.Outcome[] outcomes = new UiApiToolbox.Outcome[toolUses.size()];
       List<Future<?>>  futures      = new ArrayList<>();
       Semaphore        permits      = new Semaphore(Math.max(1, config.getMaxParallelToolCalls()));
 
@@ -620,7 +627,29 @@ public class TurnEngine implements Runnable
                {
                   if(!running.isCancelled())
                   {
-                     results[index] = runtime.getKernel().execute(session, call);
+                     if(ContextBuilder.KERNEL_TOOLS.contains(call.getName()))
+                     {
+                        ///////////////////////////////////////////////////
+                        // navigate / search_help: no records are read  //
+                        ///////////////////////////////////////////////////
+                        results[index] = runtime.getKernel().execute(session, call);
+                     }
+                     else
+                     {
+                        ///////////////////////////////////////////////////////////
+                        // data tools: a /qqq/v1 call with the user's session   //
+                        ///////////////////////////////////////////////////////////
+                        QContext.init(runtime.getQInstance(), session);
+                        try
+                        {
+                           outcomes[index] = runtime.getToolbox().execute(toolContext(), call.getId(), call.getName(), call.getInput());
+                           results[index] = outcomes[index].getResult();
+                        }
+                        finally
+                        {
+                           QContext.clear();
+                        }
+                     }
                   }
                }
                finally
@@ -676,7 +705,7 @@ public class TurnEngine implements Runnable
                .withSummary(running.isCancelled() ? "Not run (stopped)" : "Timed out")
                .withModelContent(running.isCancelled() ? "Not run: the user stopped the answer." : "The tool did not finish in time.");
          }
-         recordToolResult(use, result);
+         recordToolResult(use, result, outcomes[i]);
 
          String content = result.getModelContent() == null ? "" : result.getModelContent();
          modelResults.add(ModelPart.toolResult(use.getToolUseId(), content, result.getOutcome() != null && ERROR_OUTCOMES.contains(result.getOutcome())));
@@ -690,7 +719,7 @@ public class TurnEngine implements Runnable
    /*******************************************************************************
     ** Audit row, events and message parts of one tool result.
     *******************************************************************************/
-   private void recordToolResult(ModelPart use, AiToolResult result)
+   private void recordToolResult(ModelPart use, AiToolResult result, UiApiToolbox.Outcome extras)
    {
       String outcome = result.getOutcome() == null ? AiToolOutcome.ERROR.name() : result.getOutcome().name();
       String summary = StringUtils.hasContent(result.getSummary()) ? result.getSummary() : ToolLabels.done(use.getToolName());
@@ -733,7 +762,7 @@ public class TurnEngine implements Runnable
             .withUserId(userId)
             .withToolCallId(use.getToolUseId())
             .withToolName(use.getToolName())
-            .withInputJson(truncate(JsonUtils.toJson(use.getInput()), MAX_INPUT_JSON_CHARS))
+            .withInputJson(truncate(redactInput(use.getInput()), MAX_INPUT_JSON_CHARS))
             .withOutcome(outcome)
             .withPermissionCheck(result.getPermissionCheck())
             .withTableName(result.getTableName())
@@ -743,12 +772,73 @@ public class TurnEngine implements Runnable
             .withDurationMs(result.getDurationMs())
             .withResultSummary(summary)
             .withResultJson(truncate(result.getModelContent(), MAX_RESULT_JSON_CHARS))
-            .withRedactionsJson(result.getRedactions() == null || result.getRedactions().isEmpty() ? null : JsonUtils.toJson(result.getRedactions())));
+            .withRedactionsJson(result.getRedactions() == null || result.getRedactions().isEmpty() ? null : JsonUtils.toJson(result.getRedactions()))
+            .withUiApiOperation(extras == null ? null : extras.getOperation())
+            .withHttpStatus(extras == null ? null : extras.getHttpStatus())
+            .withAuditHref(extras == null ? null : extras.getAuditHref())
+            .withPendingActionId(extras == null ? null : extras.getPendingActionId()));
       }
       catch(QException e)
       {
          LOG.warn("Could not record assistant tool call", e, logPair("turnId", turn.getId()), logPair("tool", use.getToolName()));
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Where a data tool runs: the user's own session (by its UUID, for the UI
+    ** API), the gateway, the policy's tool settings, and the pending-action
+    ** store for writes that need confirmation.
+    *******************************************************************************/
+   private UiApiToolbox.Context toolContext()
+   {
+      return (new UiApiToolbox.Context(session.getUuid(), userTimezone(), runtime.getUiApiGateway(), policy.tools(), this::proposeWrite));
+   }
+
+
+
+   /*******************************************************************************
+    ** The browser's timezone the session carries, if any.
+    *******************************************************************************/
+   private String userTimezone()
+   {
+      return (session.getValue(QSession.VALUE_KEY_USER_TIMEZONE));
+   }
+
+
+
+   /*******************************************************************************
+    ** Record a write the user must confirm; nothing runs until they do.
+    *******************************************************************************/
+   private Integer proposeWrite(UiApiToolbox.ProposedWrite write) throws QException
+   {
+      Instant now = runtime.getClock().instant();
+      AssistantPendingAction action = store.insert(new AssistantPendingAction()
+         .withConversationId(conversation.getId())
+         .withTurnId(turn.getId())
+         .withUserId(userId)
+         .withToolCallId(write.toolCallId())
+         .withToolName(write.toolName())
+         .withUiApiOperation(write.operation())
+         .withTableName(write.tableName())
+         .withRecordId(write.recordId())
+         .withParamsJson(JsonUtils.toJson(write.values()))
+         .withSummary(write.summary())
+         .withStatus(AssistantPendingAction.STATUS_PENDING)
+         .withExpiresAt(now.plusSeconds(config.getPendingActionTtlSeconds() == null ? 900 : config.getPendingActionTtlSeconds())));
+      return (action.getId());
+   }
+
+
+
+   /*******************************************************************************
+    ** The tool input as JSON with secrets redacted (for the tool-call log).
+    *******************************************************************************/
+   private String redactInput(Map<String, Object> input)
+   {
+      String json = JsonUtils.toJson(input);
+      return (INPUT_REDACTOR.redact(json, new HashSet<>()));
    }
 
 

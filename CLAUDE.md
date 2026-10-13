@@ -11,10 +11,10 @@ This file provides guidance to Claude Code when working with code in this reposi
 - budgets, rate limits and the kill switch
 - the model-provider SPI.
 
-The panel UI lives in `qqq-frontend-next`. Data access goes only through the **AI tool kernel in QQQ core** (`com.kingsrook.qqq.backend.core.actions.ai.AiToolKernel`).
+The panel UI lives in `qqq-frontend-next`. Data access goes only through the **QQQ UI API** (`/qqq/v1`, spec'd operations, the user's own session) via `uiapi/UiApiGateway` and `tools/UiApiToolbox`; only `navigate` and `search_help` (no records) use the core AI tool kernel.
 
 - Design spec: `QRun-IO/qqq` `docs/specs/2026-10-11-qqq-assistant-qbit-design.md`. The owner decisions D1 to D6 at its top are binding.
-- Phase 1 is read and navigate only: no write tools and no approval cards.
+- Writes (create/update/delete) are offered only for tables an admin set to READ_WRITE in `assistant_data_access`, and by default wait for the user's confirmation (pending action card).
 
 ## Build Commands
 
@@ -51,7 +51,9 @@ Always use the wrapper: Maven 3.10 cannot read the parent POM. The committed def
   - `AssistantSecurity` only ever adds the user's OWN id key, or the all-access key for `assistant.admin` holders.
 - **Data access:**
   - Only `persistence/` calls QueryAction, InsertAction and the other data actions (ArchUnit).
-  - Tools run only through `AiToolKernel.execute`.
+  - Data tools run only through `UiApiToolbox` → `UiApiGateway` (spec'd `/qqq/v1` operations with the user's `sessionUUID`); never core data actions for user data. Only `navigate` and `search_help` use `AiToolKernel.execute`.
+  - Data access (`DataAccessService`) and the policy only ever narrow what the UI API allows; a table whose AI exposure is NONE stays NONE.
+  - A write runs only after the owner confirms its pending action (unless the policy turns confirmation off), with the confirming request's session, once.
   - Panel API queries also filter `userId = me`, so an admin's all-access key never mixes other users' conversations into the panel.
 - **Caching:** the request prefix stays byte-stable. The order is tools (kernel-sorted), then system block 1 (rules + primer + app digest, LONG/1h), then system block 2 (user digest + date, SHORT/5m), then messages. Exactly one SHORT hint goes on the newest message. Don't put timestamps or ids in the system prompt.
 - **Tool results:**

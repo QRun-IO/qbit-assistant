@@ -82,6 +82,18 @@ public class AssistantPolicy extends QRecordEntity
    @QField()
    private Long instanceMonthlyCostMicrosHard;
 
+   @QField()
+   private Boolean writesRequireConfirmation;
+
+   @QField(maxLength = 1000)
+   private String allowedTools;
+
+   @QField()
+   private Integer maxRowsPerCall;
+
+   @QField()
+   private Boolean redactPii;
+
    @QField(isEditable = false)
    private Instant createDate;
 
@@ -600,6 +612,126 @@ public class AssistantPolicy extends QRecordEntity
    public AssistantPolicy withModifyDate(Instant modifyDate)
    {
       this.modifyDate = modifyDate;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for writesRequireConfirmation (whether every write waits for the user to confirm a card (default true))
+    *******************************************************************************/
+   public Boolean getWritesRequireConfirmation()
+   {
+      return (this.writesRequireConfirmation);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for writesRequireConfirmation
+    *******************************************************************************/
+   public void setWritesRequireConfirmation(Boolean writesRequireConfirmation)
+   {
+      this.writesRequireConfirmation = writesRequireConfirmation;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for writesRequireConfirmation
+    *******************************************************************************/
+   public AssistantPolicy withWritesRequireConfirmation(Boolean writesRequireConfirmation)
+   {
+      this.writesRequireConfirmation = writesRequireConfirmation;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for allowedTools (comma-separated tool names; empty allows all)
+    *******************************************************************************/
+   public String getAllowedTools()
+   {
+      return (this.allowedTools);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for allowedTools
+    *******************************************************************************/
+   public void setAllowedTools(String allowedTools)
+   {
+      this.allowedTools = allowedTools;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for allowedTools
+    *******************************************************************************/
+   public AssistantPolicy withAllowedTools(String allowedTools)
+   {
+      this.allowedTools = allowedTools;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for maxRowsPerCall (most rows one tool call may return to the model)
+    *******************************************************************************/
+   public Integer getMaxRowsPerCall()
+   {
+      return (this.maxRowsPerCall);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for maxRowsPerCall
+    *******************************************************************************/
+   public void setMaxRowsPerCall(Integer maxRowsPerCall)
+   {
+      this.maxRowsPerCall = maxRowsPerCall;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for maxRowsPerCall
+    *******************************************************************************/
+   public AssistantPolicy withMaxRowsPerCall(Integer maxRowsPerCall)
+   {
+      this.maxRowsPerCall = maxRowsPerCall;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for redactPii (whether secrets and personal identifiers are redacted from tool results (default true))
+    *******************************************************************************/
+   public Boolean getRedactPii()
+   {
+      return (this.redactPii);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for redactPii
+    *******************************************************************************/
+   public void setRedactPii(Boolean redactPii)
+   {
+      this.redactPii = redactPii;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for redactPii
+    *******************************************************************************/
+   public AssistantPolicy withRedactPii(Boolean redactPii)
+   {
+      this.redactPii = redactPii;
       return (this);
    }
 

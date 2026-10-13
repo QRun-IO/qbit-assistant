@@ -8,6 +8,17 @@ Phase 0/1 of the QQQ Assistant: read-only Q&A and navigation. Requires QQQ 4.1 w
 - the AI tool kernel (`qqq-backend-core` `actions.ai`, QRun-IO/qqq#1078)
 - the developer-panel contract (QRun-IO/qqq#1076).
 
+### Changed (0.1.0-RC.6): tools go through the UI API (owner decision 2026-10-13)
+- **Every data tool runs a spec'd `/qqq/v1` operation with the user's own session** (`UiApiGateway`, loopback HTTP with the `sessionUUID` cookie): the same authentication, permissions, record locks, validation, audit and errors as the UI. A user without a permission gets the identical denial through the assistant. `navigate` and `search_help` (no records) stay on the core kernel. `LoopbackUiApiGateway` is a stand-in for core's `UiApiInvoker` (QRun-IO/qqq#1128).
+- Tools: `list_tables`, `describe_table`, `query_records`, `count_records`, `get_record`, `search_records`, `render_widget`, `get_record_history`, and new **`create_record`, `update_record`, `delete_record`**.
+
+### Added (0.1.0-RC.6)
+- **Data access** (`assistant_data_access`, nav table "Data access"): NONE / READ / READ_WRITE per table or process. Default: NONE for sensitive tables (AI exposure NONE; cannot be raised), READ for other tables, NONE for processes. It only narrows the UI API.
+- **Pending actions** (`assistant_pending_action`): with confirmation on (the default), a write only proposes; `POST /qqq/v1/assistant/actions/{id}/confirm` runs it through the UI API with the confirming user's session, once; `.../reject`; `GET .../actions/{id}`. Child list on conversations.
+- **Policy columns** on `assistant_policy`: `writesRequireConfirmation`, `allowedTools`, `maxRowsPerCall`, `redactPii`.
+- **Tool-call log columns** on `assistant_tool_call`: `uiApiOperation`, `httpStatus`, `auditHref`, `pendingActionId`; tool inputs are stored with secrets redacted.
+- Config: `uiApiBaseUrl`, `withUiApiGateway`, `pendingActionTtlSeconds`. `/assistant/config` reports `features.writes` (some table is READ_WRITE) and `features.pendingActions`.
+
 ### Fixed (0.1.0-RC.5)
 - **Every turn failed with "The AI service could not answer this request."** Anthropic refused the request with 400 `invalid_request_error` "The compiled grammar is too large ... reduce the number of strict tools": all ten read tools were sent with `strict: true`, and the API compiles every strict schema of a request into one grammar. Tools are now **not strict by default**. The kernel already validates every tool input and answers `INVALID_INPUT`. A host can opt individual tools in with `withStrictToolNames(...)`.
 - If a provider still refuses the strict schemas, the turn **retries once without strict tools** and logs a warning (`ModelProviderException.isStrictSchemaRejected`).

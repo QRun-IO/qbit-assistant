@@ -91,6 +91,18 @@ public class AssistantToolCall extends QRecordEntity
    @QField(isEditable = false)
    private String redactionsJson;
 
+   @QField(isEditable = false, maxLength = 255)
+   private String uiApiOperation;
+
+   @QField(isEditable = false)
+   private Integer httpStatus;
+
+   @QField(isEditable = false, maxLength = 500)
+   private String auditHref;
+
+   @QField(isEditable = false, possibleValueSourceName = AssistantPendingAction.TABLE_NAME)
+   private Integer pendingActionId;
+
    @QField(isEditable = false)
    private Instant createDate;
 
@@ -668,6 +680,126 @@ public class AssistantToolCall extends QRecordEntity
    public AssistantToolCall withCreateDate(Instant createDate)
    {
       this.createDate = createDate;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for uiApiOperation (the /qqq/v1 operation the tool ran, e.g. POST /table/{tableName}/query)
+    *******************************************************************************/
+   public String getUiApiOperation()
+   {
+      return (this.uiApiOperation);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for uiApiOperation
+    *******************************************************************************/
+   public void setUiApiOperation(String uiApiOperation)
+   {
+      this.uiApiOperation = uiApiOperation;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for uiApiOperation
+    *******************************************************************************/
+   public AssistantToolCall withUiApiOperation(String uiApiOperation)
+   {
+      this.uiApiOperation = uiApiOperation;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for httpStatus (the operation's HTTP status, as the UI would have seen it)
+    *******************************************************************************/
+   public Integer getHttpStatus()
+   {
+      return (this.httpStatus);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for httpStatus
+    *******************************************************************************/
+   public void setHttpStatus(Integer httpStatus)
+   {
+      this.httpStatus = httpStatus;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for httpStatus
+    *******************************************************************************/
+   public AssistantToolCall withHttpStatus(Integer httpStatus)
+   {
+      this.httpStatus = httpStatus;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for auditHref (an in-app link to the audit entries of the records a write touched)
+    *******************************************************************************/
+   public String getAuditHref()
+   {
+      return (this.auditHref);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for auditHref
+    *******************************************************************************/
+   public void setAuditHref(String auditHref)
+   {
+      this.auditHref = auditHref;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for auditHref
+    *******************************************************************************/
+   public AssistantToolCall withAuditHref(String auditHref)
+   {
+      this.auditHref = auditHref;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for pendingActionId
+    *******************************************************************************/
+   public Integer getPendingActionId()
+   {
+      return (this.pendingActionId);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for pendingActionId
+    *******************************************************************************/
+   public void setPendingActionId(Integer pendingActionId)
+   {
+      this.pendingActionId = pendingActionId;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for pendingActionId
+    *******************************************************************************/
+   public AssistantToolCall withPendingActionId(Integer pendingActionId)
+   {
+      this.pendingActionId = pendingActionId;
       return (this);
    }
 

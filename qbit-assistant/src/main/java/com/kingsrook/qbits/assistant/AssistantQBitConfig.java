@@ -29,6 +29,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.kingsrook.qbits.assistant.engine.ModelPricing;
 import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
 import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
+import com.kingsrook.qbits.assistant.uiapi.UiApiGateway;
 import com.kingsrook.qqq.backend.core.actions.ai.AiExposure;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.producers.MetaDataCustomizerInterface;
@@ -103,6 +104,16 @@ public class AssistantQBitConfig implements QBitConfig
    // The kernel validates every input anyway (INVALID_INPUT results).      //
    ////////////////////////////////////////////////////////////////////////////
    private Set<String>               strictToolNames          = new LinkedHashSet<>();
+
+   //////////////////////////////////////////////////////////////////////////
+   // UI API: the data tools call /qqq/v1 on this server with the user's   //
+   // session. The base URL defaults to 127.0.0.1 and the port the first   //
+   // assistant request arrived on. A gateway can be injected (core's      //
+   // UiApiInvoker adapter, tests).                                        //
+   //////////////////////////////////////////////////////////////////////////
+   private String                    uiApiBaseUrl;
+   private UiApiGateway              uiApiGateway;
+   private Integer                   pendingActionTtlSeconds  = 900;
    private List<String>              customRedactionPatterns  = new ArrayList<>();
    private Integer                   killSwitchPollMillis     = 2000;
    private Set<String>               allowedApiKeyEnvNames    = new LinkedHashSet<>();
@@ -1131,6 +1142,99 @@ public class AssistantQBitConfig implements QBitConfig
    public AssistantQBitConfig withHiddenWidgetNames(Set<String> hiddenWidgetNames)
    {
       this.hiddenWidgetNames = hiddenWidgetNames;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for uiApiBaseUrl (this server's root URL for loopback UI API calls)
+    *******************************************************************************/
+   public String getUiApiBaseUrl()
+   {
+      return (this.uiApiBaseUrl);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for uiApiBaseUrl
+    *******************************************************************************/
+   public void setUiApiBaseUrl(String uiApiBaseUrl)
+   {
+      this.uiApiBaseUrl = uiApiBaseUrl;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for uiApiBaseUrl
+    *******************************************************************************/
+   public AssistantQBitConfig withUiApiBaseUrl(String uiApiBaseUrl)
+   {
+      this.uiApiBaseUrl = uiApiBaseUrl;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for uiApiGateway (null: the loopback stand-in)
+    *******************************************************************************/
+   public UiApiGateway getUiApiGateway()
+   {
+      return (this.uiApiGateway);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for uiApiGateway
+    *******************************************************************************/
+   public void setUiApiGateway(UiApiGateway uiApiGateway)
+   {
+      this.uiApiGateway = uiApiGateway;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for uiApiGateway
+    *******************************************************************************/
+   public AssistantQBitConfig withUiApiGateway(UiApiGateway uiApiGateway)
+   {
+      this.uiApiGateway = uiApiGateway;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for pendingActionTtlSeconds (how long a proposed write waits for confirmation)
+    *******************************************************************************/
+   public Integer getPendingActionTtlSeconds()
+   {
+      return (this.pendingActionTtlSeconds);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for pendingActionTtlSeconds
+    *******************************************************************************/
+   public void setPendingActionTtlSeconds(Integer pendingActionTtlSeconds)
+   {
+      this.pendingActionTtlSeconds = pendingActionTtlSeconds;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for pendingActionTtlSeconds
+    *******************************************************************************/
+   public AssistantQBitConfig withPendingActionTtlSeconds(Integer pendingActionTtlSeconds)
+   {
+      this.pendingActionTtlSeconds = pendingActionTtlSeconds;
       return (this);
    }
 

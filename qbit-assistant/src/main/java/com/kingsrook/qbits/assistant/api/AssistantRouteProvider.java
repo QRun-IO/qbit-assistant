@@ -127,6 +127,9 @@ public class AssistantRouteProvider implements QJavalinRouteProviderInterface
          ctx.status(202);
          return (api.cancelTurn(pathInt(ctx, "turnId")));
       }));
+      config.routes.get(BASE_PATH + "/actions/{id}", ctx -> json(ctx, false, (api, body) -> api.getAction(pathInt(ctx, "id"))));
+      config.routes.post(BASE_PATH + "/actions/{id}/confirm", ctx -> json(ctx, true, (api, body) -> api.confirmAction(pathInt(ctx, "id"))));
+      config.routes.post(BASE_PATH + "/actions/{id}/reject", ctx -> json(ctx, true, (api, body) -> api.rejectAction(pathInt(ctx, "id"))));
       config.routes.post(BASE_PATH + "/messages/{id}/feedback", ctx -> json(ctx, true, (api, body) ->
       {
          api.feedback(pathInt(ctx, "id"), body);
@@ -382,6 +385,17 @@ public class AssistantRouteProvider implements QJavalinRouteProviderInterface
       if(runtime == null)
       {
          throw (new AssistantApiException(404, "The assistant is not installed."));
+      }
+      ////////////////////////////////////////////////////////////////////
+      // the tools call /qqq/v1 on this server: remember its local port //
+      ////////////////////////////////////////////////////////////////////
+      try
+      {
+         runtime.learnLocalPort(context.req().getLocalPort());
+      }
+      catch(RuntimeException e)
+      {
+         LOG.debug("Could not read the local port", e);
       }
       QSession session = ExecutorSessionUtils.setupSession(context, qInstance);
       return (new AssistantApi(runtime, session));
