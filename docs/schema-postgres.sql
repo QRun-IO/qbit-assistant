@@ -286,3 +286,44 @@ CREATE TABLE assistant_pending_action
 );
 CREATE INDEX assistant_pending_action_user_id ON assistant_pending_action (user_id);
 CREATE INDEX assistant_pending_action_conversation_id ON assistant_pending_action (conversation_id);
+
+-- 0.1.0-RC.6: profiles (persona) and skills. Text the model reads; never tools or access.
+CREATE TABLE assistant_profile
+(
+   id SERIAL PRIMARY KEY,
+   name VARCHAR(64) NOT NULL UNIQUE,
+   display_name VARCHAR(64) NOT NULL,
+   icon VARCHAR(64),
+   personality TEXT,
+   greeting VARCHAR(500),
+   starter_prompts TEXT,
+   is_default BOOLEAN,
+   enabled BOOLEAN,
+   app_name VARCHAR(128),
+   permission_name VARCHAR(128),
+   create_date TIMESTAMP WITH TIME ZONE,
+   modify_date TIMESTAMP WITH TIME ZONE
+);
+
+CREATE TABLE assistant_skill
+(
+   id SERIAL PRIMARY KEY,
+   name VARCHAR(64) NOT NULL UNIQUE,
+   description VARCHAR(500),
+   instructions TEXT NOT NULL,
+   enabled BOOLEAN,
+   trigger_keywords VARCHAR(500),
+   app_names VARCHAR(500),
+   create_date TIMESTAMP WITH TIME ZONE,
+   modify_date TIMESTAMP WITH TIME ZONE
+);
+
+CREATE TABLE assistant_profile_skill
+(
+   id SERIAL PRIMARY KEY,
+   profile_id INTEGER NOT NULL,
+   skill_id INTEGER NOT NULL,
+   create_date TIMESTAMP WITH TIME ZONE,
+   modify_date TIMESTAMP WITH TIME ZONE,
+   CONSTRAINT assistant_profile_skill_pair UNIQUE (profile_id, skill_id)
+);

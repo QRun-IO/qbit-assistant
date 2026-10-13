@@ -23,9 +23,11 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.regex.Pattern;
+import com.kingsrook.qbits.assistant.access.AccessExplainer;
 import com.kingsrook.qbits.assistant.access.DataAccessService;
 import com.kingsrook.qbits.assistant.engine.ContextBuilder;
 import com.kingsrook.qbits.assistant.engine.PolicyService;
+import com.kingsrook.qbits.assistant.engine.ProfileService;
 import com.kingsrook.qbits.assistant.engine.ProviderService;
 import com.kingsrook.qbits.assistant.engine.RateLimiter;
 import com.kingsrook.qbits.assistant.engine.RunningTurn;
@@ -59,6 +61,8 @@ public class AssistantRuntime
    private final AiToolKernel                     kernel;
    private final ContextBuilder                   contextBuilder;
    private final DataAccessService                dataAccessService;
+   private final ProfileService                   profileService;
+   private final AccessExplainer                  accessExplainer;
    private final UiApiToolbox                     toolbox;
    private final UiApiGateway                     uiApiGateway;
    private volatile String                        localBaseUrl;
@@ -93,6 +97,8 @@ public class AssistantRuntime
       this.kernel = new AiToolKernel(qInstance, settings);
       AiExposurePolicy exposurePolicy = new AiExposurePolicy(settings);
       this.dataAccessService = new DataAccessService(qInstance, config, store, exposurePolicy, clock);
+      this.profileService = new ProfileService(config, store, clock);
+      this.accessExplainer = new AccessExplainer(qInstance, dataAccessService);
       this.toolbox = new UiApiToolbox(qInstance, dataAccessService, exposurePolicy, new AiRedactor(settings.getCustomRedactionPatterns()),
          config.getMaxCellChars() == null ? AiToolKernelSettings.DEFAULT_MAX_CELL_CHARS : config.getMaxCellChars());
       this.uiApiGateway = config.getUiApiGateway() != null ? config.getUiApiGateway() : new LoopbackUiApiGateway(this::uiApiBaseUrl, qInstance);
@@ -132,6 +138,49 @@ public class AssistantRuntime
    public DataAccessService getDataAccessService()
    {
       return (dataAccessService);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for accessExplainer
+    *******************************************************************************/
+   public AccessExplainer getAccessExplainer()
+   {
+      return (accessExplainer);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for profileService (personas and skills: text only, never tools)
+    *******************************************************************************/
+   public ProfileService getProfileService()
+   {
+      return (profileService);
+   }
+
+
+
+   /*******************************************************************************
+    ** The app a page context is in: the deepest /app/... route segment that is
+    ** an app of this instance (null when none).
+    *******************************************************************************/
+   public String appNameFor(Map<String, Object> pageContext)
+   {
+      Object route = pageContext == null ? null : pageContext.get("route");
+      String found = null;
+      if(route instanceof String path)
+      {
+         for(String segment : path.split("[/?#]"))
+         {
+            if(StringUtils.hasContent(segment) && qInstance.getApp(segment) != null)
+            {
+               found = segment;
+            }
+         }
+      }
+      return (found);
    }
 
 

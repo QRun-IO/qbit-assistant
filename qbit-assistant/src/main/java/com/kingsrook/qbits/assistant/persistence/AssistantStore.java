@@ -71,6 +71,8 @@ public class AssistantStore
    public static final String SCOPE_USER     = "USER";
    public static final String SCOPE_INSTANCE = "INSTANCE";
 
+   public static final String OWN_TABLE_PREFIX = "assistant_";
+
    public static final int MAX_CONVERSATIONS = 200;
    public static final int MAX_RUNNING_TURNS = 50;
    public static final int EVENT_PAGE_SIZE   = 500;
@@ -87,10 +89,25 @@ public class AssistantStore
    /////////////////////////////////////////////////////////////////////////////
 
    /*******************************************************************************
+    ** The store only ever touches the QBit's own tables (assistant_*): the
+    ** user's application data is reached only through the UI API.
+    *******************************************************************************/
+   public static void requireOwnTable(String tableName) throws QException
+   {
+      if(tableName == null || !tableName.startsWith(OWN_TABLE_PREFIX))
+      {
+         throw (new QException("The assistant store only touches its own tables, not " + tableName + "; application data goes through the UI API."));
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Query into entities.
     *******************************************************************************/
    public <T extends QRecordEntity> List<T> query(String tableName, QQueryFilter filter, Class<T> entityClass) throws QException
    {
+      requireOwnTable(tableName);
       List<QRecord> records = new QueryAction().execute(new QueryInput(tableName).withFilter(filter)).getRecords();
       List<T>       result  = new ArrayList<>();
       for(QRecord record : CollectionUtils.nonNullList(records))
@@ -108,6 +125,7 @@ public class AssistantStore
    @SuppressWarnings("unchecked")
    public <T extends QRecordEntity> T insert(T entity) throws QException
    {
+      requireOwnTable(entity.tableName());
       InsertOutput output = new InsertAction().execute(new InsertInput(entity.tableName()).withRecordEntity(entity));
       QRecord      record = output.getRecords().get(0);
       if(CollectionUtils.nullSafeHasContents(record.getErrors()))
@@ -124,6 +142,7 @@ public class AssistantStore
     *******************************************************************************/
    public void update(QRecordEntity entity) throws QException
    {
+      requireOwnTable(entity.tableName());
       UpdateOutput output = new UpdateAction().execute(new UpdateInput(entity.tableName()).withRecordEntity(entity));
       QRecord      record = output.getRecords().get(0);
       if(CollectionUtils.nullSafeHasContents(record.getErrors()))
@@ -139,6 +158,7 @@ public class AssistantStore
     *******************************************************************************/
    public void updateFields(String tableName, QRecord record) throws QException
    {
+      requireOwnTable(tableName);
       UpdateOutput output = new UpdateAction().execute(new UpdateInput(tableName).withRecord(record));
       QRecord      result = output.getRecords().get(0);
       if(CollectionUtils.nullSafeHasContents(result.getErrors()))
@@ -154,6 +174,7 @@ public class AssistantStore
     *******************************************************************************/
    public void delete(String tableName, QQueryFilter filter) throws QException
    {
+      requireOwnTable(tableName);
       new DeleteAction().execute(new DeleteInput(tableName).withQueryFilter(filter));
    }
 
@@ -702,6 +723,7 @@ public class AssistantStore
     *******************************************************************************/
    public List<QRecord> queryRecords(String tableName, QQueryFilter filter, int limit) throws QException
    {
+      requireOwnTable(tableName);
       List<QRecord> records = new QueryAction().execute(new QueryInput(tableName).withFilter(filter.withLimit(limit))).getRecords();
       return (records == null ? List.of() : records);
    }

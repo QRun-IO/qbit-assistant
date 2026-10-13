@@ -253,13 +253,13 @@ class UiApiToolsSecurityTest extends BaseAssistantTest
 
       QContext.init(qInstance, AssistantTestFixture.sessionFor(AssistantTestFixture.ADMIN));
       AssistantApi api = new AssistantApi(config.getRuntime(), QContext.getQSession());
-      assertThat(config.getRuntime().getStore().queryRecords("blog_post", new QQueryFilter().withCriteria("title", QCriteriaOperator.EQUALS, "Proposed by the assistant"), 10)).isEmpty();
+      String byTitle = "{\"filter\":{\"booleanOperator\":\"AND\",\"criteria\":[{\"fieldName\":\"title\",\"operator\":\"EQUALS\",\"values\":[\"Proposed by the assistant\"]}]}}";
+      assertThat(ui("POST", "/table/blog_post/count", AssistantTestFixture.ADMIN, byTitle).body()).contains("\"count\":0");
 
       Map<String, Object> confirmed = api.confirmAction(proposed.getPendingActionId());
       assertThat(confirmed.get("status")).isEqualTo(AssistantPendingAction.STATUS_EXECUTED);
       assertThat(confirmed.get("outcome")).isEqualTo("OK");
-      List<QRecord> created = config.getRuntime().getStore().queryRecords("blog_post", new QQueryFilter().withCriteria("title", QCriteriaOperator.EQUALS, "Proposed by the assistant"), 10);
-      assertThat(created).hasSize(1);
+      assertThat(ui("POST", "/table/blog_post/count", AssistantTestFixture.ADMIN, byTitle).body()).contains("\"count\":1");
 
       assertThatThrownBy(() -> api.confirmAction(proposed.getPendingActionId())).hasMessageContaining("already");
 
@@ -335,6 +335,56 @@ class UiApiToolsSecurityTest extends BaseAssistantTest
       UiApiToolbox.Outcome     capped  = tool(AssistantTestFixture.EDITOR, twoRows, UiApiToolbox.QUERY_RECORDS, input("table", "blog_post", "filter", filter("AND"), "limit", 50));
       assertThat(capped.getResult().getRowCount()).isEqualTo(2);
       assertThat(capped.getResult().getModelContent()).contains("\"hasMore\":true").doesNotContain(AssistantTestFixture.HIDDEN_SENTINEL).doesNotContain(AssistantTestFixture.PASSWORD_SENTINEL);
+   }
+
+
+
+   /*******************************************************************************
+    ** The owner's matrix: a user without permission on a table gets the
+    ** identical denial (status and message) from the UI API and through the
+    ** assistant, for query, get, insert, update and delete. The table is
+    ** READ_WRITE and confirmation is off, so nothing on the assistant's side
+    ** stops the call first: the UI API decides. Processes: the assistant has
+    ** no process tool and process data access defaults to NONE, so it can run
+    ** none (the matrix row asserts that).
+    *******************************************************************************/
+   @Test
+   void testDenialMatrix() throws Exception
+   {
+      setAccess("blog_post", DataAccessMode.READ_WRITE);
+      String user   = AssistantTestFixture.ANALYST;
+      String filter = "{\"filter\":{\"criteria\":[],\"booleanOperator\":\"AND\"}}";
+
+      Object[][] matrix = {
+         {"query", ui("POST", "/table/blog_post/query", user, filter), UiApiToolbox.QUERY_RECORDS, input("table", "blog_post", "filter", filter("AND"))},
+         {"get", ui("GET", "/table/blog_post/1", user, null), UiApiToolbox.GET_RECORD, input("table", "blog_post", "id", "1")},
+         {"insert", ui("POST", "/table/blog_post", user, "{\"title\":\"x\"}"), UiApiToolbox.CREATE_RECORD, input("table", "blog_post", "values", Map.of("title", "x"))},
+         {"update", ui("PATCH", "/table/blog_post/1", user, "{\"title\":\"x\"}"), UiApiToolbox.UPDATE_RECORD, input("table", "blog_post", "id", "1", "values", Map.of("title", "x"))},
+         {"delete", ui("DELETE", "/table/blog_post/1", user, null), UiApiToolbox.DELETE_RECORD, input("table", "blog_post", "id", "1")},
+      };
+      for(Object[] row : matrix)
+      {
+         @SuppressWarnings("unchecked")
+         HttpResponse<String> direct    = (HttpResponse<String>) row[1];
+         UiApiToolbox.Outcome assistant = tool(user, noConfirmation(), (String) row[2], (Map<String, Object>) row[3]);
+         assertThat(direct.statusCode()).as(row[0] + " via the UI").isBetween(400, 499);
+         assertThat(assistant.getHttpStatus()).as(row[0] + " via the assistant").isEqualTo(direct.statusCode());
+         assertThat(assistant.getResult().getOutcome()).as(String.valueOf(row[0])).isIn(AiToolOutcome.DENIED, AiToolOutcome.NOT_FOUND);
+         String message = new UiApiResult(direct.statusCode(), direct.body()).errorMessage();
+         if(message != null)
+         {
+            assertThat(assistant.getResult().getModelContent()).as(row[0] + " message").contains(message);
+         }
+      }
+
+      //////////////////////////////////////////////////////////////////
+      // process: no tool, and no process has data access by default  //
+      //////////////////////////////////////////////////////////////////
+      assertThat(config.getRuntime().getContextBuilder().toolNames()).noneMatch(name -> name.contains("process") || name.contains("report"));
+      for(String processName : qInstance.getProcesses().keySet())
+      {
+         assertThat(config.getRuntime().getDataAccessService().forProcess(processName).mode()).as(processName).isEqualTo(DataAccessMode.NONE);
+      }
    }
 
 }

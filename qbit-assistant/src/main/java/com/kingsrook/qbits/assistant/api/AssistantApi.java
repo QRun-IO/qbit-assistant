@@ -27,9 +27,12 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
 import com.kingsrook.qbits.assistant.AssistantSecurity;
+import com.kingsrook.qbits.assistant.access.AccessExplainer;
+import com.kingsrook.qbits.assistant.access.DataAccessMode;
 import com.kingsrook.qbits.assistant.engine.ContextBuilder;
 import com.kingsrook.qbits.assistant.engine.MessageParts;
 import com.kingsrook.qbits.assistant.engine.PolicyService;
+import com.kingsrook.qbits.assistant.engine.ProfileService;
 import com.kingsrook.qbits.assistant.engine.ProviderService;
 import com.kingsrook.qbits.assistant.engine.RunningTurn;
 import com.kingsrook.qbits.assistant.engine.TurnEngine;
@@ -123,6 +126,13 @@ public class AssistantApi
       result.put("model", reason == null ? activeProvider().model() : config.getModels().getMainModel());
       result.put("limits", Map.of("maxTurnSeconds", config.getMaxTurnSeconds(), "maxToolCallsPerTurn", config.getMaxToolCallsPerTurn()));
       result.put("features", Map.of("writes", runtime.getToolbox().anyWritableTable(), "pendingActions", true));
+      ProfileService.Persona persona = runtime.getProfileService().persona(session, null);
+      Map<String, Object>    profile = new LinkedHashMap<>();
+      profile.put("displayName", persona.displayName());
+      profile.put("icon", persona.icon());
+      profile.put("greeting", persona.greeting());
+      profile.put("starterPrompts", persona.starterPrompts());
+      result.put("profile", profile);
       return (result);
    }
 
@@ -695,6 +705,41 @@ public class AssistantApi
       map.put("resultSummary", action.getResultSummary());
       map.put("expiresAt", action.getExpiresAt() == null ? null : action.getExpiresAt().toString());
       return (map);
+   }
+
+
+
+   /*******************************************************************************
+    ** GET /access?table=&prompt=: "explain access" for the calling user: per
+    ** table, the user's UI permissions (GET /qqq/v1/metaData with their own
+    ** session), the assistant's data access, and each tool's verdict with the
+    ** reason.
+    *******************************************************************************/
+   public Map<String, Object> access(String table, String prompt) throws QException, AssistantApiException
+   {
+      requireAccess();
+      List<Map<String, Object>> tables = new ArrayList<>();
+      for(AccessExplainer.TableAccess access : runtime.getAccessExplainer().explain(runtime.getUiApiGateway(), session.getUuid(), runtime.getPolicyService().current(false).tools(), table, prompt))
+      {
+         if(!access.uiVisible() && access.mode() == DataAccessMode.NONE)
+         {
+            continue;
+         }
+         Map<String, Object> row = new LinkedHashMap<>();
+         row.put("table", access.table());
+         row.put("label", access.label());
+         row.put("dataAccess", access.mode().name());
+         row.put("dataAccessSource", access.modeSource());
+         row.put("ui", Map.of("visible", access.uiVisible(), "read", access.uiRead(), "insert", access.uiInsert(), "edit", access.uiEdit(), "delete", access.uiDelete()));
+         List<Map<String, Object>> operations = new ArrayList<>();
+         for(AccessExplainer.OperationCheck check : access.operations())
+         {
+            operations.add(Map.of("tool", check.tool(), "operation", check.operation(), "allowed", check.allowed(), "reason", check.reason()));
+         }
+         row.put("operations", operations);
+         tables.add(row);
+      }
+      return (Map.of("tables", tables));
    }
 
 

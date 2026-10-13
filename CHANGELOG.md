@@ -13,6 +13,11 @@ Phase 0/1 of the QQQ Assistant: read-only Q&A and navigation. Requires QQQ 4.1 w
 - Tools: `list_tables`, `describe_table`, `query_records`, `count_records`, `get_record`, `search_records`, `render_widget`, `get_record_history`, and new **`create_record`, `update_record`, `delete_record`**.
 
 ### Added (0.1.0-RC.6)
+- **Profiles** (`assistant_profile`, nav "Profiles"): display name, icon, personality (≤ 2,000 chars, appended to the per-user system block), greeting, starter prompts; one default, optional app / permission scope. `/assistant/config` returns `profile`.
+- **Skills** (`assistant_skill`, nav "Skills", linked through `assistant_profile_skill`, a child list on profiles): admin-written Markdown instructions read only when relevant (keywords / apps), ≤ 6,000 chars each and 12,000 per question. Instructions only: they never grant tools, endpoints or access (ArchUnit-enforced).
+- **Explain access**: `GET /qqq/v1/assistant/access?table=&prompt=` and the `assistantAccess` home widget: per table and tool, allowed or the reason.
+- **Recent denials** card on the Assistant home.
+- `AssistantStore` refuses any table that is not `assistant_*`; ArchUnit forbids the tool / UI API / access packages from using QQQ actions, the AI kernel or the profile and skill classes.
 - **Data access** (`assistant_data_access`, nav table "Data access"): NONE / READ / READ_WRITE per table or process. Default: NONE for sensitive tables (AI exposure NONE; cannot be raised), READ for other tables, NONE for processes. It only narrows the UI API.
 - **Pending actions** (`assistant_pending_action`): with confirmation on (the default), a write only proposes; `POST /qqq/v1/assistant/actions/{id}/confirm` runs it through the UI API with the confirming user's session, once; `.../reject`; `GET .../actions/{id}`. Child list on conversations.
 - **Policy columns** on `assistant_policy`: `writesRequireConfirmation`, `allowedTools`, `maxRowsPerCall`, `redactPii`.

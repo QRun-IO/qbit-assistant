@@ -111,7 +111,7 @@ Deploy RC.3 and run the statements above in the same maintenance window. Until t
 ## 0.1.0-RC.6: tools through the UI API
 
 Database (see `docs/schema-postgres.sql`):
-- new tables `assistant_data_access` and `assistant_pending_action`;
+- new tables `assistant_data_access`, `assistant_pending_action`, `assistant_profile`, `assistant_skill` and `assistant_profile_skill`;
 - new columns `assistant_tool_call.ui_api_operation`, `http_status`, `audit_href`, `pending_action_id`;
 - new columns `assistant_policy.writes_require_confirmation`, `allowed_tools`, `max_rows_per_call`, `redact_pii`.
 

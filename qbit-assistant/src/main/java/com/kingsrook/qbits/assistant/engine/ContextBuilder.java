@@ -186,6 +186,18 @@ public class ContextBuilder
     *******************************************************************************/
    public ModelRequest build(QSession session, String model, String effort, List<AssistantMessage> history, String userText, Map<String, Object> pageContext, PolicyService.ToolPolicy toolPolicy)
    {
+      return (build(session, model, effort, history, userText, pageContext, toolPolicy, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** The request, with the tools the policy allows and the persona / skill
+    ** text (instructions only) after the user context.
+    *******************************************************************************/
+   public ModelRequest build(QSession session, String model, String effort, List<AssistantMessage> history, String userText, Map<String, Object> pageContext, PolicyService.ToolPolicy toolPolicy,
+      String profileInstructions)
+   {
       ModelRequest request = new ModelRequest()
          .withModel(model)
          .withEffort(effort)
@@ -193,7 +205,7 @@ public class ContextBuilder
          .withTools(tools(toolPolicy));
 
       request.getSystem().add(new SystemBlock(SystemPrompt.staticBlock(appDigest()), CacheHint.LONG));
-      request.getSystem().add(new SystemBlock(userBlock(session), CacheHint.SHORT));
+      request.getSystem().add(new SystemBlock(userBlock(session) + (StringUtils.hasContent(profileInstructions) ? "\n" + profileInstructions : ""), CacheHint.SHORT));
 
       List<ModelMessage> messages = new ArrayList<>();
       for(AssistantMessage message : history)

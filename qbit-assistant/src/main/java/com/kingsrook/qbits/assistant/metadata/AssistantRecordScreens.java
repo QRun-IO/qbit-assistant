@@ -24,6 +24,7 @@ import java.util.Set;
 import com.kingsrook.qbits.assistant.AssistantModelRouting;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.access.DataAccessMode;
+import com.kingsrook.qbits.assistant.engine.ProfileService;
 import com.kingsrook.qbits.assistant.engine.ProviderService;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantDataAccess;
@@ -32,7 +33,10 @@ import com.kingsrook.qbits.assistant.model.AssistantMessage;
 import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
 import com.kingsrook.qbits.assistant.model.AssistantPendingAction;
 import com.kingsrook.qbits.assistant.model.AssistantPolicy;
+import com.kingsrook.qbits.assistant.model.AssistantProfile;
+import com.kingsrook.qbits.assistant.model.AssistantProfileSkill;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
+import com.kingsrook.qbits.assistant.model.AssistantSkill;
 import com.kingsrook.qbits.assistant.model.AssistantToolCall;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
 import com.kingsrook.qbits.assistant.model.AssistantTurnEvent;
@@ -123,6 +127,8 @@ public final class AssistantRecordScreens
          QPossibleValueSource.newForTable(AssistantTurn.TABLE_NAME),
          QPossibleValueSource.newForTable(AssistantMessage.TABLE_NAME),
          QPossibleValueSource.newForTable(AssistantPendingAction.TABLE_NAME),
+         QPossibleValueSource.newForTable(AssistantProfile.TABLE_NAME),
+         QPossibleValueSource.newForTable(AssistantSkill.TABLE_NAME),
          enumSource(OBJECT_TYPE_PVS_NAME, List.of(new QPossibleValue<>(AssistantDataAccess.TYPE_TABLE, "Table"), new QPossibleValue<>(AssistantDataAccess.TYPE_PROCESS, "Process"))),
          enumSource(DATA_ACCESS_MODE_PVS_NAME, List.of(
             new QPossibleValue<>(DataAccessMode.NONE.name(), DataAccessMode.NONE.getLabel()),
@@ -162,6 +168,9 @@ public final class AssistantRecordScreens
          case AssistantModelPrice.TABLE_NAME -> price(table);
          case AssistantUsage.TABLE_NAME -> usage(table);
          case AssistantDataAccess.TABLE_NAME -> dataAccess(table);
+         case AssistantProfile.TABLE_NAME -> profile(table);
+         case AssistantSkill.TABLE_NAME -> skill(table);
+         case AssistantProfileSkill.TABLE_NAME -> profileSkill(table);
          case AssistantPendingAction.TABLE_NAME -> pendingAction(table);
          default ->
          {
@@ -190,6 +199,20 @@ public final class AssistantRecordScreens
       childList(qInstance, conversation, AssistantPendingAction.TABLE_NAME, "Pending Actions", "pending_actions", List.of("toolName", "tableName", "recordId", "status", "httpStatus", "createDate"));
       childList(qInstance, conversation, AssistantFeedback.TABLE_NAME, "Feedback", "thumbs_up_down", List.of("rating", "reason", "createDate"));
       childList(qInstance, conversation, AssistantUsage.TABLE_NAME, "Model Calls", "receipt_long", USAGE_LIST_FIELDS);
+
+      QTableMetaData profile = qInstance.getTable(AssistantProfile.TABLE_NAME);
+      if(profile != null)
+      {
+         childList(qInstance, profile, AssistantProfileSkill.TABLE_NAME, "Skills", "school", List.of("skillId", "createDate"), "profileId", "profile");
+         QJoinMetaData join = qInstance.getJoin(AssistantProfile.TABLE_NAME + "Join" + AssistantProfileSkill.TABLE_NAME.substring(0, 1).toUpperCase() + AssistantProfileSkill.TABLE_NAME.substring(1));
+         if(join != null && qInstance.getWidget(join.getName()) != null && qInstance.getWidget(join.getName()).getDefaultValues() != null)
+         {
+            ///////////////////////////////////////////////////////
+            // admins link skills from the profile's own screen  //
+            ///////////////////////////////////////////////////////
+            qInstance.getWidget(join.getName()).getDefaultValues().put("canAddChildRecord", true);
+         }
+      }
 
       QTableMetaData provider = qInstance.getTable(AssistantProvider.TABLE_NAME);
       if(provider != null)
@@ -409,6 +432,58 @@ public final class AssistantRecordScreens
       sections(table,
          section("access", "Data Access", "admin_panel_settings", Tier.T1, "id", "objectType", "objectName", "mode"),
          section("notes", "Notes", "notes", Tier.T2, "notes"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Profile: how the assistant presents itself, and where it applies.
+    *******************************************************************************/
+   private static void profile(QTableMetaData table)
+   {
+      help(table, "name", "An internal name for this profile.");
+      help(table, "displayName", "The assistant's name in the panel header and its messages, e.g. Ada.");
+      help(table, "icon", "A Material icon name for the panel, e.g. auto_awesome, support_agent, school.");
+      help(table, "personality", "Tone and style instructions, at most " + ProfileService.MAX_PERSONALITY_CHARS + " characters, e.g. \"Friendly and brief. Use the user's first name.\" Added to the assistant's instructions; it never changes its rules, tools or what the user may do.");
+      help(table, "greeting", "Shown when a new conversation opens.");
+      help(table, "starterPrompts", "Suggested first questions, one per line (at most " + ProfileService.MAX_STARTER_PROMPTS + ").");
+      help(table, "isDefault", "The profile used when no app- or permission-scoped profile applies. Marking one unmarks the others.");
+      help(table, "appName", "Optional: use this profile only inside this app (its name, e.g. cms).");
+      help(table, "permissionName", "Optional: use this profile only for users who hold this permission (a role).");
+      sections(table,
+         section("profile", "Profile", "face", Tier.T1, "id", "name", "displayName", "icon", "enabled", "isDefault"),
+         section("voice", "Personality", "record_voice_over", Tier.T2, "personality", "greeting", "starterPrompts"),
+         section("scope", "Where it applies", "filter_alt", Tier.T2, "appName", "permissionName"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Skill: an instruction pack, and when it is relevant.
+    *******************************************************************************/
+   private static void skill(QTableMetaData table)
+   {
+      help(table, "name", "A short name, e.g. blog-style-guide.");
+      help(table, "description", "What the skill is for (admins only; the assistant reads the instructions).");
+      help(table, "instructions", "Markdown instructions, at most " + ProfileService.MAX_SKILL_CHARS + " characters. Instructions only: a skill never grants tools, endpoints, data access or permissions.");
+      help(table, "triggerKeywords", "Comma-separated words; the skill is read when one appears in the question. With no keywords and no apps it is always read.");
+      help(table, "appNames", "Comma-separated app names; the skill is read while the user is in one of them.");
+      sections(table,
+         section("skill", "Skill", "school", Tier.T1, "id", "name", "description", "enabled"),
+         section("instructions", "Instructions", "description", Tier.T2, "instructions"),
+         section("relevance", "When it is used", "filter_alt", Tier.T2, "triggerKeywords", "appNames"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Profile skill link.
+    *******************************************************************************/
+   private static void profileSkill(QTableMetaData table)
+   {
+      link(table, "profileId", AssistantProfile.TABLE_NAME, "Profile");
+      link(table, "skillId", AssistantSkill.TABLE_NAME, "Skill");
+      sections(table, section("link", "Profile Skill", "link", Tier.T1, "id", "profileId", "skillId"));
    }
 
 

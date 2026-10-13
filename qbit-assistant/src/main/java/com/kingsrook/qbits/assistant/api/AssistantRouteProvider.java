@@ -127,6 +127,7 @@ public class AssistantRouteProvider implements QJavalinRouteProviderInterface
          ctx.status(202);
          return (api.cancelTurn(pathInt(ctx, "turnId")));
       }));
+      config.routes.get(BASE_PATH + "/access", ctx -> json(ctx, false, (api, body) -> api.access(ctx.queryParam("table"), ctx.queryParam("prompt"))));
       config.routes.get(BASE_PATH + "/actions/{id}", ctx -> json(ctx, false, (api, body) -> api.getAction(pathInt(ctx, "id"))));
       config.routes.post(BASE_PATH + "/actions/{id}/confirm", ctx -> json(ctx, true, (api, body) -> api.confirmAction(pathInt(ctx, "id"))));
       config.routes.post(BASE_PATH + "/actions/{id}/reject", ctx -> json(ctx, true, (api, body) -> api.rejectAction(pathInt(ctx, "id"))));
