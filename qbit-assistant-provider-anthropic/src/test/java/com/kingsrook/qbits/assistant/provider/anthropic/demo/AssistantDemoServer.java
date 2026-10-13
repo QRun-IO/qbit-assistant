@@ -129,6 +129,22 @@ public class AssistantDemoServer extends AbstractQQQApplication
             "cacheWrite1hUsdPerMTok", BigDecimal.valueOf(p.getCacheWrite1hUsdPerMTok()), "notes", "Anthropic list price, 2026-10"));
       }
 
+      ////////////////////////////////////////////////////////////////////
+      // persona, a skill, and data access (page READ_WRITE, media NONE) //
+      ////////////////////////////////////////////////////////////////////
+      Integer ada = insert("assistant_profile", Map.of("name", "default", "displayName", "Ada", "icon", "school", "isDefault", true,
+         "personality", "Friendly and brief. Use plain words and short lists.", "greeting", "Hi, I'm Ada. Ask me about your posts and pages.",
+         "starterPrompts", "How many published posts are there?\nWhat changed on page 12 this week?\nWhich posts have no excerpt?"));
+      insert("assistant_profile", Map.of("name", "analysts", "displayName", "Ada (analytics)", "icon", "insights", "permissionName", "analytics_daily_stat.read",
+         "personality", "Lead with the number, then one sentence of context."));
+      Integer style = insert("assistant_skill", Map.of("name", "blog-style-guide", "description", "House style for titles and excerpts",
+         "instructions", "## Blog style\n- Titles: sentence case, at most 60 characters.\n- Excerpts: one sentence, no links.", "triggerKeywords", "title, excerpt, headline"));
+      insert("assistant_skill", Map.of("name", "seo-basics", "description", "Meta description rules", "instructions", "Meta descriptions are 120 to 155 characters.",
+         "triggerKeywords", "seo, meta description", "enabled", true));
+      insert("assistant_profile_skill", Map.of("profileId", ada, "skillId", style));
+      insert("assistant_data_access", Map.of("objectType", "TABLE", "objectName", "page", "mode", "READ_WRITE", "notes", "Editors may let the assistant draft page changes (confirmed in the panel)."));
+      insert("assistant_data_access", Map.of("objectType", "TABLE", "objectName", "media", "mode", "NONE", "notes", "Not needed for content questions."));
+
       api.thenStream("text-with-thinking.sse", 0);
       ConnectionTest.run(config.getRuntime(), config.getRuntime().getStore().getProvider(production), "admin-1");
       ConnectionTest.run(config.getRuntime(), config.getRuntime().getStore().getProvider(staging), "admin-1");
