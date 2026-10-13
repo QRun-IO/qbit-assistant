@@ -37,14 +37,15 @@ The data access itself is done by the AI tool kernel in QQQ core (`com.kingsrook
 AssistantQBitConfig config = new AssistantQBitConfig()
    .withBackendName("rdbms")                                     // where the assistant_* tables live
    .withTableMetaDataCustomizer(snakeCaseCustomizer)             // optional: backend names for your schema
-   .withModelProvider(AnthropicModelProvider.fromEnvironment()); // key from ANTHROPIC_API_KEY
+   .withModelProvider(AnthropicModelProvider.fromEnvironment())  // fallback while no provider row exists
+   .withProviderType(new AnthropicProviderType());               // offered on the Providers settings screen
 
 new AssistantQBitProducer().withQBitConfig(config).produce(qInstance);
 ```
 
 `produce` does the following:
 - Registers the QBit.
-- Adds the tables, the `assistant_user_id` security key type, the `assistantRetention` process and the **Assistant Admin** app.
+- Adds the tables, the `assistant_user_id` security key type, the `assistantRetention` and **Test connection** processes, and the **Assistant** app with its home.
 - Builds the runtime.
 - Registers the `/qqq/v1/assistant/*` routes when Javalin is on the classpath.
 - Registers the record Developer-screen panel when QQQ core has the developer-panel contract.
@@ -53,11 +54,47 @@ Create the tables in your database: see [Tables](#tables). Then grant the permis
 
 ### The API key
 
-The key never goes in config, tables or logs. There are two ways to supply it:
-- `AnthropicModelProvider.fromEnvironment()` reads `ANTHROPIC_API_KEY`.
-- `AnthropicModelProvider.builder().apiKey(valueFromYourSecretStore).build()` takes the key from your own secret store. It also accepts the reference form `"${env.NAME}"`.
+The key never goes in config, tables or logs. It lives in the application's secret store and reaches the server as an environment variable (for kof22: Infisical, then an ExternalSecret, then the pod env).
+
+- **Provider settings rows** (recommended) name the variable: `assistant_provider.apiKeyEnvName`, default the type's own (`ANTHROPIC_API_KEY`). The server reads the variable when it builds the client.
+- Without a row, the provider registered in code is used: `AnthropicModelProvider.fromEnvironment()` reads `ANTHROPIC_API_KEY`, and `AnthropicModelProvider.builder().apiKey(valueFromYourSecretStore).build()` takes the key from your own secret store (it also accepts `"${env.NAME}"`).
 
 The provider's `toString` never contains the key. Its errors carry only the HTTP status and the API error type.
+
+## Provider settings (the Providers table)
+
+Admins set up providers on the **Providers** screen (`assistant_provider`), a standard QQQ table:
+
+| Field | Meaning |
+|---|---|
+| Name, Type, Model | The type is one of the registered provider types (`withProviderType`; Anthropic now, others plug in the same way). The model list comes from the type and the price table. An empty model uses the policy's main model. |
+| Enabled, Default | The assistant uses the default enabled provider, else the first enabled one. Marking one default unmarks the others. With no enabled row, the provider registered in code is used. |
+| API Key Variable | The **name** of the environment variable that holds the key, never the key. Only allowed names are accepted: each registered type's default plus `allowedApiKeyEnvNames`. A pasted key (or `DATABASE_PASSWORD`) is refused and nothing is stored. |
+| API Key | Read-only, computed on every read: `Set • …abcd (from ANTHROPIC_API_KEY)` or `Not set (...)`. It shows the last four characters at most. No read path (screen, API, query, export) returns the key. |
+| Base URL Override | Empty uses the provider's own API. Any other URL must be listed in `allowedBaseUrls`, so a row cannot send the key to a host of an admin's choosing. |
+| Monthly Cost Cap (USD) | When this provider's cost this month (UTC) reaches the cap, new requests are refused (429 `BUDGET`) and a running answer stops before its next model call. |
+| Max Output Tokens Per Request, Max Concurrent Requests | Caps one model call's output, and how many calls run at once on this server. |
+| Last test | Status, time, latency, the model that answered, and the error text, from **Test connection**. |
+
+**Why a reference and not an encrypted column.** QQQ core has no encrypted or secret field type. The key-provider and cipher work in the QQQ 4.1.0-RC.6 batch (QRun-IO/qqq#1123, #1107) encrypts backup artifacts, not table columns, and is not released. The design spec (§2.8) also says keys never go in tables. A reference keeps the key in the secret store that already holds it, so rotating it there is the "replace key" step, and the database never holds one.
+
+**Test connection** is a record action on a provider (select one or more). It is a standard streamed ETL: Review lists what will be called and anything wrong with the row (missing key, disallowed variable or URL) before any call. Result has one line per provider: `connected to claude-sonnet-5-5 in 812 ms`, or the error with its kind and HTTP status. It makes one short live call (a 1-sentence prompt, at most 32 output tokens, effort low), saves the result on the row, and records the call in `assistant_usage` with purpose `TEST`.
+
+## The app home
+
+The **Assistant** app's home is the one place for the assistant's health, usage and cost (no other dashboard repeats it). All of it comes from the tables below, read as the viewing admin; an empty table gives an empty state, never sample data.
+
+- **Health:** is it answering (kill switch, default provider, key present, last test), the 7-day error rate of model calls, cost and requests this month against the instance's monthly limit.
+- **Providers:** one row per provider: type, model, masked key status, last test, cost this month against its cap, limits, and any problem with its settings.
+- **Usage, last 30 days:** bars of model requests per day, totals (conversations, requests, tokens in and out, cost) and the last 7 days in words.
+- **Costs this month:** month to date against the policy limit and each provider cap, then by model. Cost is tokens times the model's price from **Model prices**.
+- **By user, this month**, **Top tools** (calls, failures, average time) and **Recent failures** (model calls and tool calls, linked).
+
+The nav lists the home and the main tables: **Providers**, **Conversations**, **Model prices** and **Policy**. Messages, turns, tool calls, feedback and model calls are child lists on a conversation; model calls are also listed on their provider. Retention and Test connection are table and record actions, never nav entries.
+
+## Model prices
+
+`assistant_model_price` holds USD per million tokens per provider type and model: input, output, cache read, and cache writes (5 minute and 1 hour). Empty cache prices default to 0.1x, 1.25x and 2x the input price. The reference DDL seeds the Anthropic list prices of 2026-10. Edit a row to change what later calls cost; past rows keep the cost they were recorded with. A model with no row uses the `pricing` config map, else costs 0.
 
 ## Configuration
 
@@ -82,6 +119,13 @@ The provider's `toString` never contains the key. Its errors carry only the HTTP
 | `hiddenWidgetNames` | none | Widgets that are never rendered, even when allowed. |
 | `customRedactionPatterns` | none | Extra regular expressions the kernel redacts from tool results. |
 | `killSwitchPollMillis` | 2000 | How often a running turn re-checks the kill switch while it waits on the model. |
+| `providerTypes` | none | `withProviderType(...)`: the types the Providers screen offers (`AnthropicProviderType`). |
+| `allowedApiKeyEnvNames` | none | Extra environment variable names a provider row may name as its key. Each type's default is always allowed. |
+| `allowedBaseUrls` | none | Base URL overrides a provider row may use. The type's own URL is always allowed. |
+| `secretResolver` | `System::getenv` | How a key variable name becomes the key (a host secret store, or tests). |
+| `providerTestTimeoutSeconds` | 30 | How long Test connection waits for the model. |
+| `homeMaxRows` | 20000 | Rows per table the app home reads for its period; it says when totals are partial. |
+| `tablePathPrefix` | `/app` | The front of the links the app home makes to tables and records. |
 
 At runtime, an admin can override the kill switch, the main model and effort, and the budgets in the single **`assistant_policy`** row.
 
@@ -96,7 +140,7 @@ When a turn sees the switch on, it cancels every turn running on that replica. I
 | Permission | Grants |
 |---|---|
 | `assistant.hasAccess` | Use the panel. It grants **no data access**: the assistant reads only what the user can read anyway. |
-| `assistant.admin` | The Assistant Admin app, its tables and the retention process. |
+| `assistant.admin` | The Assistant app (home, settings and audit tables), Test connection and the retention process. |
 
 There is no assistant-specific data permission. Everything the kernel reads is checked against the user's normal table permissions and record locks. The QBit never uses a system session (an ArchUnit test enforces this).
 
@@ -106,7 +150,7 @@ When the QBit is enabled, it registers the supplemental instance meta-data `assi
 
 Conversation data belongs to its user. Every user-owned table has a record lock on `userId` with key type `assistant_user_id`:
 - The panel routes add the user's own id to their session, so users only ever see their own rows.
-- Admins see everyone's rows in the Assistant Admin app through the key type's all-access key, `assistant_user_id_all_access`. Grant that key to `assistant.admin` holders from your authentication customizer:
+- Admins see everyone's rows in the Assistant app through the key type's all-access key, `assistant_user_id_all_access`. Grant that key to `assistant.admin` holders from your authentication customizer:
 
 ```java
 // in your QAuthenticationModuleCustomizerInterface.customizeSession(...)
@@ -174,7 +218,7 @@ The stream ends after `message.end`. Thinking is never streamed.
 
 ## Tables
 
-All of these are standard, visible QQQ tables in the Assistant Admin app:
+All of these are standard, visible QQQ tables in the Assistant app. The model never reads any of them (AI exposure `NONE`).
 
 | Table | Holds |
 |---|---|
@@ -186,6 +230,9 @@ All of these are standard, visible QQQ tables in the Assistant Admin app:
 | `assistant_feedback` | Feedback on answers. |
 | `assistant_policy` | The kill switch and overrides. |
 | `assistant_usage_daily` | Usage rollups: per user per day, plus an instance row whose `userId` is null. |
+| `assistant_provider` | Provider settings: type, model, key variable (never the key), limits, last connection test. |
+| `assistant_model_price` | USD per million tokens per model, used for every call's cost. |
+| `assistant_usage` | One row per model call (a turn step or a connection test): user, conversation, turn, provider, model, status, latency, tokens, cost. Locked to its user like the other audit tables. |
 
 Table names follow the QRun-IO naming rule: lowercase snake_case with the `assistant_` prefix, the same as the physical tables in `docs/schema-postgres.sql` (the reference DDL). Field names are camelCase. Map them to your columns with a table customizer. Upgrading from 0.1.0-RC.1, which used camelCase table names and the `assistantUserId` key type: see [UPGRADE.md](UPGRADE.md).
 

@@ -123,6 +123,11 @@ public class TurnEngine implements Runnable
    private int     modelCallCount = 0;
    private long    costMicros     = 0;
 
+   private ProviderService.Active active;
+   private String                 model;
+   private Long                   capMicros;
+   private long                   monthCostAtStart = 0;
+
    private volatile boolean finished = false;
 
 
@@ -177,8 +182,20 @@ public class TurnEngine implements Runnable
          }
          persistPendingEvents();
 
-         AssistantModelProvider provider = config.getActiveModelProvider();
-         ModelCapabilities      caps     = provider.getCapabilities(policy.mainModel());
+         model = policy.mainModel();
+         active = runtime.getProviderService().resolve(policy.mainModel());
+         if(active == null)
+         {
+            throw (new ModelProviderException(ModelProviderException.Kind.AUTHENTICATION, null, "No usable assistant provider is configured."));
+         }
+         model = active.model();
+         capMicros = ProviderService.capMicros(active.row());
+         if(capMicros != null)
+         {
+            monthCostAtStart = runtime.getProviderService().monthToDateCostMicros(active.providerId());
+         }
+         AssistantModelProvider provider = active.provider();
+         ModelCapabilities      caps     = provider.getCapabilities(model);
 
          List<AssistantMessage> history = new ArrayList<>();
          for(AssistantMessage message : store.listMessages(userId, conversation.getId(), userMessage.getId(), config.getHistoryMessageLimit()))
@@ -189,7 +206,12 @@ public class TurnEngine implements Runnable
             }
          }
 
-         ModelRequest request = runtime.getContextBuilder().build(session, policy.mainModel(), policy.mainEffort(), history, userText, pageContext);
+         ModelRequest request = runtime.getContextBuilder().build(session, model, policy.mainEffort(), history, userText, pageContext);
+         Integer maxPerRequest = active.row() == null ? null : active.row().getMaxOutputTokensPerRequest();
+         if(maxPerRequest != null && (request.getMaxTokens() == null || request.getMaxTokens() > maxPerRequest))
+         {
+            request.setMaxTokens(maxPerRequest);
+         }
          if(caps != null && Boolean.FALSE.equals(caps.getParallelToolCalls()))
          {
             request.setParallelToolCalls(false);
@@ -206,6 +228,14 @@ public class TurnEngine implements Runnable
                errorCode = stop.errorCode;
                errorText = stop.message;
                stopReason = stop.stopReason;
+               break;
+            }
+
+            if(capMicros != null && monthCostAtStart + costMicros >= capMicros)
+            {
+               status = "ERROR";
+               errorCode = "BUDGET";
+               errorText = "The assistant has reached this provider's monthly cost cap. Ask an administrator.";
                break;
             }
 
@@ -297,7 +327,7 @@ public class TurnEngine implements Runnable
          if(e.getPartialUsage() != null)
          {
             usage.add(e.getPartialUsage());
-            costMicros += pricing(policy.mainModel()).costMicros(e.getPartialUsage());
+            costMicros += pricing().costMicros(e.getPartialUsage());
          }
          status = "ERROR";
          errorCode = e.getKind() == ModelProviderException.Kind.TIMEOUT ? "TIMEOUT" : "PROVIDER";
@@ -455,24 +485,51 @@ public class TurnEngine implements Runnable
          }
       };
 
-      StreamHandle handle = provider.stream(request.copy(), listener);
-      running.setCurrentHandle(handle);
-      ModelResponse response;
+      Semaphore gate = runtime.getProviderService().gate(active.row());
+      if(gate != null)
+      {
+         Duration wait = Duration.between(runtime.getClock().instant(), deadline);
+         if(!gate.tryAcquire(Math.max(1, wait.toMillis()), TimeUnit.MILLISECONDS))
+         {
+            throw (new ModelProviderException(ModelProviderException.Kind.RATE_LIMITED, null, "The provider's concurrency limit was reached."));
+         }
+      }
+
+      long          started  = System.nanoTime();
+      ModelResponse response = null;
       try
       {
-         Duration remaining = Duration.between(runtime.getClock().instant(), deadline);
-         response = handle.await(remaining.isNegative() ? Duration.ofMillis(1) : remaining);
+         StreamHandle handle = provider.stream(request.copy(), listener);
+         running.setCurrentHandle(handle);
+         try
+         {
+            Duration remaining = Duration.between(runtime.getClock().instant(), deadline);
+            response = handle.await(remaining.isNegative() ? Duration.ofMillis(1) : remaining);
+         }
+         finally
+         {
+            running.setCurrentHandle(null);
+            flushText(true);
+         }
+      }
+      catch(ModelProviderException e)
+      {
+         recordUsage(null, e, started);
+         throw (e);
       }
       finally
       {
-         running.setCurrentHandle(null);
-         flushText(true);
+         if(gate != null)
+         {
+            gate.release();
+         }
       }
+      recordUsage(response, null, started);
 
       if(response.getUsage() != null)
       {
          usage.add(response.getUsage());
-         costMicros += pricing(policy.mainModel()).costMicros(response.getUsage());
+         costMicros += pricing().costMicros(response.getUsage());
       }
       if(response.getRequestId() != null)
       {
@@ -682,7 +739,7 @@ public class TurnEngine implements Runnable
             parts.addNotice("error", errorText);
          }
 
-         String model = policy == null ? null : policy.mainModel();
+         String model = this.model != null ? this.model : (policy == null ? null : policy.mainModel());
          try
          {
             store.updateFields(AssistantMessage.TABLE_NAME, new QRecord()
@@ -866,10 +923,21 @@ public class TurnEngine implements Runnable
    /*******************************************************************************
     **
     *******************************************************************************/
-   private ModelPricing pricing(String model)
+   private ModelPricing pricing()
    {
-      ModelPricing pricing = config.getPricing() == null ? null : config.getPricing().get(model);
-      return (pricing == null ? new ModelPricing() : pricing);
+      return (runtime.getProviderService().pricing(active == null ? null : active.providerType(), model));
+   }
+
+
+
+   /*******************************************************************************
+    ** One assistant_usage row for a model call of this turn.
+    *******************************************************************************/
+   private void recordUsage(ModelResponse response, ModelProviderException error, long startedNanos)
+   {
+      long latencyMs = (System.nanoTime() - startedNanos) / 1_000_000;
+      UsageRecorder.save(store, UsageRecorder.row(new UsageRecorder.Call(userId, conversation.getId(), turn.getId(), active, UsageRecorder.PURPOSE_TURN),
+         response, error, latencyMs, pricing()));
    }
 
 

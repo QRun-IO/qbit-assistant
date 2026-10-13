@@ -23,10 +23,12 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.kingsrook.qbits.assistant.engine.ModelPricing;
 import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
+import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
 import com.kingsrook.qqq.backend.core.actions.ai.AiExposure;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.producers.MetaDataCustomizerInterface;
@@ -54,6 +56,11 @@ public class AssistantQBitConfig implements QBitConfig
    public static final String ENABLED_ENV_VAR          = "QQQ_ASSISTANT_ENABLED";
    public static final String DEFAULT_SHORTCUT         = "mod+j";
    public static final String DEFAULT_PROVIDER_NAME    = "anthropic";
+
+   /*******************************************************************************
+    ** What an API key reference must look like: an environment variable name.
+    *******************************************************************************/
+   public static final Pattern ENV_NAME = Pattern.compile("^[A-Z_][A-Z0-9_]{0,99}$");
 
    /*******************************************************************************
     ** The owner key type used before 0.1.0-RC.3 (camelCase). See UPGRADE.md.
@@ -90,9 +97,16 @@ public class AssistantQBitConfig implements QBitConfig
    private Set<String>               allowedWidgetNames       = new LinkedHashSet<>();
    private List<String>              customRedactionPatterns  = new ArrayList<>();
    private Integer                   killSwitchPollMillis     = 2000;
+   private Set<String>               allowedApiKeyEnvNames    = new LinkedHashSet<>();
+   private Set<String>               allowedBaseUrls          = new LinkedHashSet<>();
+   private Integer                   providerTestTimeoutSeconds = 30;
+   private Integer                   homeMaxRows              = 20000;
+   private String                    tablePathPrefix          = "/app";
 
    private transient MetaDataCustomizerInterface<QTableMetaData> tableMetaDataCustomizer;
    private transient Map<String, AssistantModelProvider>        modelProviders = new LinkedHashMap<>();
+   private transient Map<String, AssistantProviderType>         providerTypes  = new LinkedHashMap<>();
+   private transient Function<String, String>                   secretResolver = System::getenv;
    private transient AssistantRuntime                           runtime;
 
 
@@ -154,6 +168,15 @@ public class AssistantQBitConfig implements QBitConfig
       requirePositive(errors, "toolResultRetentionDays", toolResultRetentionDays);
       requirePositive(errors, "approvalRetentionDays", approvalRetentionDays);
       requirePositive(errors, "killSwitchPollMillis", killSwitchPollMillis);
+      requirePositive(errors, "providerTestTimeoutSeconds", providerTestTimeoutSeconds);
+      requirePositive(errors, "homeMaxRows", homeMaxRows);
+      for(String name : allowedApiKeyEnvNames == null ? Set.<String>of() : allowedApiKeyEnvNames)
+      {
+         if(name == null || !ENV_NAME.matcher(name).matches())
+         {
+            errors.add("allowedApiKeyEnvNames: not an environment variable name: " + name);
+         }
+      }
       for(String pattern : customRedactionPatterns == null ? List.<String>of() : customRedactionPatterns)
       {
          try
@@ -1193,6 +1216,223 @@ public class AssistantQBitConfig implements QBitConfig
    public AssistantQBitConfig withKillSwitchPollMillis(Integer killSwitchPollMillis)
    {
       this.killSwitchPollMillis = killSwitchPollMillis;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Register a provider type for the provider settings table.
+    *******************************************************************************/
+   public AssistantQBitConfig withProviderType(AssistantProviderType providerType)
+   {
+      if(providerType != null)
+      {
+         providerTypes.put(providerType.getType(), providerType);
+      }
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** The registered provider types, by type id.
+    *******************************************************************************/
+   @JsonIgnore
+   public Map<String, AssistantProviderType> getProviderTypes()
+   {
+      return (providerTypes);
+   }
+
+
+
+   /*******************************************************************************
+    ** The environment variable names an assistant_provider row may use as its
+    ** API key reference: the configured allow-list plus each registered type's
+    ** default (e.g. ANTHROPIC_API_KEY). An admin can therefore never point a
+    ** provider at an unrelated secret such as a database password.
+    *******************************************************************************/
+   @JsonIgnore
+   public Set<String> getEffectiveAllowedApiKeyEnvNames()
+   {
+      Set<String> names = new LinkedHashSet<>(allowedApiKeyEnvNames == null ? Set.of() : allowedApiKeyEnvNames);
+      providerTypes.values().forEach(t -> names.add(t.getDefaultApiKeyEnvName()));
+      return (names);
+   }
+
+
+
+   /*******************************************************************************
+    ** Resolve a key reference (an environment variable name) to the secret.
+    *******************************************************************************/
+   @JsonIgnore
+   public Function<String, String> getSecretResolver()
+   {
+      return (secretResolver);
+   }
+
+
+
+   /*******************************************************************************
+    ** Use another secret lookup than System.getenv (a host secret store; tests).
+    *******************************************************************************/
+   public AssistantQBitConfig withSecretResolver(Function<String, String> secretResolver)
+   {
+      this.secretResolver = secretResolver;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for allowedApiKeyEnvNames (extra API key environment variable names a provider row may reference)
+    *******************************************************************************/
+   public Set<String> getAllowedApiKeyEnvNames()
+   {
+      return (this.allowedApiKeyEnvNames);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for allowedApiKeyEnvNames
+    *******************************************************************************/
+   public void setAllowedApiKeyEnvNames(Set<String> allowedApiKeyEnvNames)
+   {
+      this.allowedApiKeyEnvNames = allowedApiKeyEnvNames;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for allowedApiKeyEnvNames
+    *******************************************************************************/
+   public AssistantQBitConfig withAllowedApiKeyEnvNames(Set<String> allowedApiKeyEnvNames)
+   {
+      this.allowedApiKeyEnvNames = allowedApiKeyEnvNames;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for allowedBaseUrls (base URL overrides a provider row may use; empty allows only the type's own URL)
+    *******************************************************************************/
+   public Set<String> getAllowedBaseUrls()
+   {
+      return (this.allowedBaseUrls);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for allowedBaseUrls
+    *******************************************************************************/
+   public void setAllowedBaseUrls(Set<String> allowedBaseUrls)
+   {
+      this.allowedBaseUrls = allowedBaseUrls;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for allowedBaseUrls
+    *******************************************************************************/
+   public AssistantQBitConfig withAllowedBaseUrls(Set<String> allowedBaseUrls)
+   {
+      this.allowedBaseUrls = allowedBaseUrls;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for providerTestTimeoutSeconds (how long Test connection waits for the model)
+    *******************************************************************************/
+   public Integer getProviderTestTimeoutSeconds()
+   {
+      return (this.providerTestTimeoutSeconds);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for providerTestTimeoutSeconds
+    *******************************************************************************/
+   public void setProviderTestTimeoutSeconds(Integer providerTestTimeoutSeconds)
+   {
+      this.providerTestTimeoutSeconds = providerTestTimeoutSeconds;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for providerTestTimeoutSeconds
+    *******************************************************************************/
+   public AssistantQBitConfig withProviderTestTimeoutSeconds(Integer providerTestTimeoutSeconds)
+   {
+      this.providerTestTimeoutSeconds = providerTestTimeoutSeconds;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for homeMaxRows (rows per table the app home reads for one period)
+    *******************************************************************************/
+   public Integer getHomeMaxRows()
+   {
+      return (this.homeMaxRows);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for homeMaxRows
+    *******************************************************************************/
+   public void setHomeMaxRows(Integer homeMaxRows)
+   {
+      this.homeMaxRows = homeMaxRows;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for homeMaxRows
+    *******************************************************************************/
+   public AssistantQBitConfig withHomeMaxRows(Integer homeMaxRows)
+   {
+      this.homeMaxRows = homeMaxRows;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for tablePathPrefix (the front of the links the app home makes to tables and records)
+    *******************************************************************************/
+   public String getTablePathPrefix()
+   {
+      return (this.tablePathPrefix);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for tablePathPrefix
+    *******************************************************************************/
+   public void setTablePathPrefix(String tablePathPrefix)
+   {
+      this.tablePathPrefix = tablePathPrefix;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for tablePathPrefix
+    *******************************************************************************/
+   public AssistantQBitConfig withTablePathPrefix(String tablePathPrefix)
+   {
+      this.tablePathPrefix = tablePathPrefix;
       return (this);
    }
 

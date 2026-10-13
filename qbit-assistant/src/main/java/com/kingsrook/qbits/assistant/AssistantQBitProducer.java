@@ -21,8 +21,10 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import com.kingsrook.qbits.assistant.home.AssistantHome;
 import com.kingsrook.qbits.assistant.metadata.AssistantMetaDataBuilder;
 import com.kingsrook.qbits.assistant.metadata.AssistantRecordScreens;
+import com.kingsrook.qbits.assistant.processes.TestConnectionProcess;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducerMultiOutput;
@@ -152,13 +154,20 @@ public class AssistantQBitProducer implements QBitMetaDataProducer<AssistantQBit
       }
       qInstance.addPossibleValueSource(builder.buildConversationPossibleValueSource());
       AssistantRecordScreens.buildPossibleValueSources().forEach(qInstance::addPossibleValueSource);
+      AssistantRecordScreens.buildSettingsPossibleValueSources(qBitConfig).forEach(qInstance::addPossibleValueSource);
       AssistantRecordScreens.addConversationChildLists(qInstance);
 
       QProcessMetaData retention = builder.buildRetentionProcess();
       retention.setSourceQBitName(qBitMetaData.getName());
       qInstance.addProcess(retention);
 
-      QAppMetaData app = builder.buildAdminApp(tables, retention);
+      QProcessMetaData testConnection = TestConnectionProcess.process();
+      testConnection.setSourceQBitName(qBitMetaData.getName());
+      qInstance.addProcess(testConnection);
+
+      qInstance.addWidget(AssistantHome.widget());
+
+      QAppMetaData app = builder.buildAdminApp(tables);
       qInstance.addApp(app);
 
       postProduceActions(new MetaDataProducerMultiOutput(), qInstance);
@@ -201,7 +210,7 @@ public class AssistantQBitProducer implements QBitMetaDataProducer<AssistantQBit
 
       LOG.info("Assistant QBit produced", logPair("version", VERSION), logPair("backendName", qBitConfig.getBackendName()), logPair("routes", routes), logPair("developerPanel", developerPanel),
          logPair("enabled", qBitConfig.isEffectivelyEnabled()), logPair("providerName", qBitConfig.getProviderName()),
-         logPair("providerRegistered", qBitConfig.getActiveModelProvider() != null), logPair("mainModel", qBitConfig.getModels().getMainModel()));
+         logPair("providerRegistered", qBitConfig.getActiveModelProvider() != null), logPair("providerTypes", qBitConfig.getProviderTypes().keySet()),logPair("mainModel", qBitConfig.getModels().getMainModel()));
    }
 
 

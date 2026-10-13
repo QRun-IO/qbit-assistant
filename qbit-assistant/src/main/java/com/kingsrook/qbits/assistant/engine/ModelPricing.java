@@ -66,6 +66,15 @@ public class ModelPricing implements Serializable
       map.put(AssistantModelRouting.SONNET_5_5, of(2.0, 10.0, 0.1));
       map.put(AssistantModelRouting.OPUS_5_5, of(4.0, 20.0, 0.05));
       map.put(AssistantModelRouting.HAIKU_5_5, of(0.10, 0.50, 0.1));
+      map.put("claude-fable-5-1", of(10.0, 50.0, 0.025));
+      map.put("claude-fable-5", of(10.0, 50.0, 0.1));
+      map.put("claude-opus-5", of(5.0, 25.0, 0.1));
+      map.put("claude-opus-4-8", of(5.0, 25.0, 0.1));
+      map.put("claude-opus-4-7", of(5.0, 25.0, 0.1));
+      map.put("claude-opus-4-6", of(5.0, 25.0, 0.1));
+      map.put("claude-sonnet-5", of(2.0, 10.0, 0.1));
+      map.put("claude-sonnet-4-6", of(3.0, 15.0, 0.1));
+      map.put("claude-haiku-4-5", of(1.0, 5.0, 0.1));
       return (map);
    }
 

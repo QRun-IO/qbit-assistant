@@ -62,7 +62,7 @@ class AssistantQBitProducerTest extends BaseAssistantTest
    @Test
    void testProducedMetaData()
    {
-      List<String> owned = List.of("assistant_conversation", "assistant_message", "assistant_turn", "assistant_turn_event", "assistant_tool_call", "assistant_feedback", "assistant_usage_daily");
+      List<String> owned = List.of("assistant_conversation", "assistant_message", "assistant_turn", "assistant_turn_event", "assistant_tool_call", "assistant_feedback", "assistant_usage_daily", "assistant_usage");
       for(String name : owned)
       {
          QTableMetaData table = qInstance.getTable(name);
@@ -81,7 +81,13 @@ class AssistantQBitProducerTest extends BaseAssistantTest
       QSecurityKeyType keyType = qInstance.getSecurityKeyType(AssistantQBitConfig.DEFAULT_OWNER_KEY_TYPE);
       assertThat(keyType.getAllAccessKeyName()).isEqualTo("assistant_user_id_all_access");
 
-      assertThat(qInstance.getApp(AssistantMetaDataBuilder.APP_NAME).getChildren()).hasSize(9);
+      //////////////////////////////////////////////////////////////////////
+      // the nav: the home plus the main tables; processes are actions    //
+      //////////////////////////////////////////////////////////////////////
+      assertThat(qInstance.getApp(AssistantMetaDataBuilder.APP_NAME).getChildren()).extracting(c -> c.getName())
+         .containsExactly("assistant_provider", "assistant_conversation", "assistant_model_price", "assistant_policy");
+      assertThat(qInstance.getApp(AssistantMetaDataBuilder.APP_NAME).getWidgets()).containsExactly("assistantHome");
+      assertThat(qInstance.getProcess(AssistantMetaDataBuilder.RETENTION_PROCESS_NAME).getTableName()).isEqualTo("assistant_conversation");
       assertThat(qInstance.getProcess(AssistantMetaDataBuilder.RETENTION_PROCESS_NAME)).isNotNull();
       assertThat(qInstance.getProcess(AssistantMetaDataBuilder.RETENTION_PROCESS_NAME).getSchedule()).isNull();
       assertThat(qInstance.getPossibleValueSource(AssistantConversation.TABLE_NAME)).isNotNull();
