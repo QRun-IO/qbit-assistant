@@ -228,6 +228,104 @@ The golden and red-team evals now run through the UI API too.
   - Choosing *another* user would need that user's permissions without their session. QQQ core has no API to evaluate another user's permissions, and the assistant never builds or borrows a session. That part waits for a core API, so the report is always computed with the requester's own session.
 - **Recent denials:** the home's "Recent denials" card lists the newest tool calls the UI API, data access or the policy refused, with who, the table, the operation and the HTTP status, or the assistant setting that refused it.
 
+## Owner decisions (2026-10-13), continued: write mode, the hard wall, audit attribution, providers
+
+These were added on the same day. All recommendations below are accepted; we adjust once they can be seen working.
+
+### W. Write mode: the assistant is just a UI client
+Owner: *"the assistant should be able to go into 'write mode' too - with a user selection or preference? allowing it to do things like create and schedule a report for you, or update a record. it should ALWAYS only have access via the UIUX API (the assistant is just a UI) and all permissions that the user has via the UIUX should always hard apply at a layer above the assistant. All auditing needs to be aware of this too and audit accordingly"*
+
+- **Mode per conversation.** A panel toggle switches between **Read-only** (the default) and **Write**.
+  - The default comes from the user's preference (`assistant_user_preference.default_write_mode`).
+  - An admin policy can disable write mode globally (`assistant_policy.write_mode_allowed`), per role (`write_mode_permission`: only holders may switch to Write), or per table or process (data access READ or NONE).
+- **Read-only:** the write tools are not in the tool list at all. This is decided when the request is built, not by the model.
+- **Write:** every write is still a pending-action card that the user confirms.
+  - A user may set "auto-confirm low-risk writes" only when the policy allows it (`auto_confirm_allowed`).
+  - Low-risk means a single-record insert or update on a table the admin marked `auto_confirm_ok`.
+  - Deletes, bulk operations, processes, report schedules and notifications are never auto-confirmed.
+- **What counts as a write.** All of these are `/qqq/v1` UI API operations:
+  - insert, update and delete records;
+  - run a process (`/processes/{name}/init` and steps; every step is a confirmed action);
+  - create, save or schedule a report or saved view (through the saved-report and scheduled-job tables' own insert operations);
+  - create a notification.
+- **Enforcement is beneath the assistant.** The UI API and core permission layer decide, exactly as for Next UI. The assistant only forwards the user's credentials (`UiApiInvoker`, `UiApiCredentials`, qqq#1128).
+  - The ArchUnit rule (no core actions from the tool code) and the denial matrix stay.
+  - The matrix is extended to every write operation, in both modes.
+
+### X. The hard wall between the assistant and its configuration
+Owner: *"there should also be a hard wall between the assistant and the configuration for the assistant. he should never be able to see his own configuration tables etc."*
+
+AI exposure NONE is not enough, because the assistant acts as the user and an admin user can edit the configuration. The wall is enforced in core, beneath the assistant, by client channel (UI API 1.2.x, approved design):
+
+- Every `/qqq/v1` request the assistant makes carries `X-QQQ-Client: assistant/<turnId>`. It is set server-side by `UiApiInvoker.forServer(server, "assistant")` and `withClientDetail(turnId)`, and the invoker drops any client-supplied value. Core stores it as `QSession.getClientChannel()`.
+- **Deny rules:**
+  - `ClientChannelsMetaData.withDeniedPattern("assistant", "assistant_*")`, plus core's defaults: `authentik_*`, `audit*`, `*api_key*`, `*apiKey*`, `*credential*`, `*secret*` and `webhooks_*secret*`;
+  - `QPermissionRules.withDeniedClients(Set.of("assistant"))` on every assistant process (retention, test connection) and widget.
+  
+  The rules are enforced in `PermissionsHelper`: the object is left out of metadata, and calls get 403, failing closed.
+- The qbit registers **every** `assistant_*` table, process and widget in the deny set. A **startup check** fails the instance if any `assistant_*` object is not denied to the `assistant` channel.
+- Profiles and skills reach the model only as server-assembled instructions. No tool reads or edits them (this is already enforced by ArchUnit), so a prompt injection can never persist itself.
+- The current conversation's context is read by internal code (`AssistantStore`, assistant tables only), never by a tool.
+- **Tests:** an admin through the assistant is denied on every configuration table and process (403, and absent from `list_tables` and `/metaData`), while the same admin through Next UI is allowed.
+
+### Y. Audit attribution
+- Every action records the human user as the actor **and** the client channel: `actor=james@kof22.com via=assistant/<turnId>`, versus `via=next-ui`.
+- Core writes `clientChannel` on `audit` (`AuditsMetaDataProvider.withClientChannelField(true)`, filled by `DMLAuditAction`), so audit screens can filter by channel.
+- `assistant_tool_call` keeps the turn, conversation and model, and links to the audit rows (`auditHref`), so `via=assistant/<turnId>` leads to the conversation, the turn and the model.
+- **Tests:** an assistant write produces audit rows with the human actor and `via=assistant/<turnId>`; the same write from the UI produces `via=next-ui`.
+- kof22 needs a feature-named changeset (`changesets/features/...`) for the audit column.
+
+### P. Providers, local models, HIPAA routing, budgets
+1. **Providers and models as data, any number, each with an enabled toggle.**
+   - Kinds:
+     - Anthropic (exists);
+     - **OpenAI-compatible**, one adapter for OpenAI, Azure OpenAI, OpenRouter, Ollama, LM Studio, vLLM and the llama.cpp server;
+     - **AWS Bedrock** (Claude and others);
+     - **Google Vertex** (Claude and Gemini).
+   - `assistant_provider` gains: kind, base URL, key env reference (unchanged pattern, no stored secrets), local or cloud, `hipaa_eligible` and region.
+   - The new **`assistant_model`** table holds: provider, model id, display name, capabilities (tools, context window, vision, streaming), price in and out per million tokens (0 or a configured compute cost for local models), and an enabled flag.
+   - Test connection works for every provider and every model.
+   - Tool calling follows each provider's rules. The strict-grammar lesson applies: strict only where supported, and a fallback when it is refused.
+2. **Local models** (Mac Studio, and the workstation "lora" with an RTX A5000 24 GB, running Ollama, LM Studio or vLLM; another agent sets up the hosts). Any OpenAI-compatible endpoint is supported, with health checks, model discovery (`GET /v1/models` fills `assistant_model`) and per-provider timeouts.
+3. **HIPAA/PHI routing:**
+   - A data classification on tables and fields in metadata: PHI, PII, CONFIDENTIAL or PUBLIC.
+   - Each turn tracks the highest classification its context and tool results touched.
+   - The policy allows PHI only to `hipaa_eligible` providers (local, or cloud under a BAA). Otherwise it blocks, with a clear reason.
+   - A per-instance **HIPAA mode** (on for MHP, off for kof22) also enforces:
+     - PHI redaction in logs;
+     - encrypted conversation storage;
+     - a separate retention period;
+     - a full audit (who, which classification, which model);
+     - no non-eligible providers.
+   - **BAAs are an owner and legal step**: the flag records a fact; it does not create one.
+4. **Budgets:**
+   - daily and monthly cost and token budgets per user, group or role, provider or model, and instance;
+   - default behaviour: warn at 80% (bell and alert, through the Alerts SPI when present), downgrade to a cheaper or local model at 100%, and stop at a configurable ceiling;
+   - admins can override;
+   - usage and cost over time on the app home, by user, model, provider and tool.
+5. **Extras:**
+   - model routing (simple versus complex, per profile) and fallback chains across providers;
+   - **RAG** over the instance's content: a local embedding model, pgvector, and retrieval filtered by permissions through the UI API as the user;
+   - **scheduled assistant tasks**: recurring prompts that run as a designated user (with that user's stored credentials through the UI API, never a system session) and post results as notifications or records.
+6. Everything goes through the `/qqq/v1` UI API, as the user, with the guarantees above.
+
+### Phases (each a green PR)
+| | Scope | Depends on |
+|---|---|---|
+| d | Spec'd `/assistant` endpoints, tools on `UiApiInvoker` (#19) | QQQ RC.6 |
+| W1 | Write mode: conversation toggle, user preference, policy (global, role, table), tool list by mode, auto-confirm rules, write matrix in both modes; Next toggle | — |
+| X1 | Client channel `assistant/<turnId>` on every call, deny registration for all `assistant_*` objects and the security surfaces, startup check, admin-denied tests | core client-channel PR (UI API 1.2.x) |
+| Y1 | Audit attribution tests and `auditHref` to audit rows filtered by channel | core audit column |
+| W2 | Process, report-schedule, saved-view and notification writes as confirmed UI API operations | W1, X1 |
+| P-a | Provider and model registry, OpenAI-compatible adapter, discovery and health | — |
+| P-b | Bedrock and Vertex | P-a |
+| P-c | Classification, HIPAA routing and mode | P-a, core metadata |
+| P-d | Budgets and dashboards | P-a |
+| P-e | Routing and fallback chains | P-a |
+| P-f | RAG (embeddings, pgvector, UI-API-filtered retrieval) | P-a |
+| P-g | Scheduled assistant tasks | W1, X1 |
+
+
 ## Next phases
 
 - **(c) Data access screens:**
