@@ -129,6 +129,7 @@ public class TurnEngine implements Runnable
    private int     modelCallCount = 0;
    private long    costMicros     = 0;
 
+   private TurnClassification classification;
    private ProviderService.Active active;
    private String                 model;
    private Long                   capMicros;
@@ -179,6 +180,8 @@ public class TurnEngine implements Runnable
       try
       {
          QContext.init(runtime.getQInstance(), session);
+         classification = new TurnClassification(config.getClassificationSource(), conversation, pageContext);
+         store.saveClassification(userId, conversation.getId(), turn.getId(), classification);
          startKillSwitchWatcher();
 
          emit(TurnEvent.MESSAGE_START, map("turnId", turn.getId(), "conversationId", conversation.getId(), "userMessageId", userMessage.getId(), "messageId", assistantMessage.getId()));
@@ -189,6 +192,7 @@ public class TurnEngine implements Runnable
          persistPendingEvents();
 
          model = policy.mainModel();
+         TurnDataRouting.beforeResolve(runtime, classification, turn, policy.mainModel());
          active = runtime.getProviderService().resolve(policy.mainModel());
          if(active == null)
          {
@@ -331,6 +335,12 @@ public class TurnEngine implements Runnable
             }
          }
       }
+      catch(TurnDataRouting.Blocked e)
+      {
+         status = "ERROR";
+         errorCode = e.getBlock().errorCode();
+         errorText = e.getBlock().reason();
+      }
       catch(ModelProviderException e)
       {
          if(e.getPartialUsage() != null)
@@ -343,7 +353,7 @@ public class TurnEngine implements Runnable
          errorText = e.getKind() == ModelProviderException.Kind.TIMEOUT
             ? "The assistant took too long to answer."
             : (e.isRetryable() ? "The AI service is busy or unavailable right now. Try again in a moment." : "The AI service could not answer this request.");
-         if(!e.isRetryable() && e.getProviderMessage() != null && session.hasPermission(AssistantQBitConfig.ADMIN_PERMISSION))
+         if(!isHipaaMode() && !e.isRetryable() && e.getProviderMessage() != null && session.hasPermission(AssistantQBitConfig.ADMIN_PERMISSION))
          {
             //////////////////////////////////////////////////////////////
             // administrators see the provider's own (sanitized) reason //
@@ -351,7 +361,7 @@ public class TurnEngine implements Runnable
             errorText += " The provider said: " + UsageRecorder.errorText(e);
          }
          LOG.warn("Assistant model call failed", logPair("turnId", turn.getId()), logPair("kind", e.getKind()), logPair("httpStatus", e.getHttpStatus()),
-            logPair("errorType", e.getProviderErrorType()), logPair("errorMessage", e.getProviderMessage()), logPair("requestId", e.getRequestId()));
+            logPair("errorType", hipaaSafe(e).getProviderErrorType()), logPair("errorMessage", hipaaSafe(e).getProviderMessage()), logPair("requestId", hipaaSafe(e).getRequestId()));
       }
       catch(InterruptedException e)
       {
@@ -368,7 +378,7 @@ public class TurnEngine implements Runnable
          status = "ERROR";
          errorCode = "INTERNAL";
          errorText = "Something went wrong while answering. Try again.";
-         LOG.warn("Assistant turn failed", e, logPair("turnId", turn.getId()));
+         LOG.warn("Assistant turn failed", hipaaSafe(e), logPair("turnId", turn.getId()));
       }
       finally
       {
@@ -469,7 +479,7 @@ public class TurnEngine implements Runnable
       }
       catch(QException e)
       {
-         LOG.debug("Could not re-read turn status", e);
+         LOG.debug("Could not re-read turn status", hipaaSafe(e));
       }
       return (null);
    }
@@ -496,7 +506,7 @@ public class TurnEngine implements Runnable
     ** tool schemas, retry once (and for the rest of the turn) with no strict
     ** tools. The kernel validates every tool input either way.
     *******************************************************************************/
-   private ModelResponse callModelWithStrictFallback(AssistantModelProvider provider, ModelRequest request) throws ModelProviderException, InterruptedException
+   private ModelResponse callModelWithStrictFallback(AssistantModelProvider provider, ModelRequest request) throws QException, ModelProviderException, InterruptedException
    {
       try
       {
@@ -510,7 +520,7 @@ public class TurnEngine implements Runnable
             throw (e);
          }
          LOG.warn("Assistant provider refused the strict tool schemas; retrying without strict tools", logPair("turnId", turn.getId()), logPair("model", model),
-            logPair("errorMessage", e.getProviderMessage()), logPair("requestId", e.getRequestId()));
+            logPair("errorMessage", hipaaSafe(e).getProviderMessage()), logPair("requestId", hipaaSafe(e).getRequestId()));
          request.getTools().forEach(tool -> tool.setStrict(false));
          return (callModel(provider, request));
       }
@@ -521,9 +531,8 @@ public class TurnEngine implements Runnable
    /*******************************************************************************
     ** One streamed model call.
     *******************************************************************************/
-   private ModelResponse callModel(AssistantModelProvider provider, ModelRequest request) throws ModelProviderException, InterruptedException
+   private ModelResponse callModel(AssistantModelProvider provider, ModelRequest request) throws QException, ModelProviderException, InterruptedException
    {
-      modelCallCount++;
       ModelEventListener listener = new ModelEventListener()
       {
          @Override
@@ -547,6 +556,8 @@ public class TurnEngine implements Runnable
       ModelResponse response = null;
       try
       {
+         TurnDataRouting.beforeModelCall(runtime, classification, turn, active);
+         modelCallCount++;
          StreamHandle handle = provider.stream(request.copy(), listener);
          running.setCurrentHandle(handle);
          try
@@ -592,7 +603,7 @@ public class TurnEngine implements Runnable
    /*******************************************************************************
     ** Run a batch of tool calls through the kernel.
     *******************************************************************************/
-   private ToolBatch executeTools(List<ModelPart> toolUses, Set<String> allowedTools) throws InterruptedException
+   private ToolBatch executeTools(List<ModelPart> toolUses, Set<String> allowedTools) throws QException, InterruptedException
    {
       int              allowed      = Math.max(0, config.getMaxToolCallsPerTurn() - toolCallCount);
       boolean          limitReached = false;
@@ -666,7 +677,7 @@ public class TurnEngine implements Runnable
             }
             catch(RuntimeException e)
             {
-               LOG.warn("Tool kernel threw", e, logPair("tool", call.getName()));
+               LOG.warn("Tool kernel threw", hipaaSafe(e), logPair("tool", call.getName()));
                results[index] = new AiToolResult().withToolCallId(call.getId()).withToolName(call.getName()).withOutcome(AiToolOutcome.ERROR)
                   .withSummary("Failed").withModelContent("The tool failed unexpectedly.");
             }
@@ -687,7 +698,7 @@ public class TurnEngine implements Runnable
          }
          catch(java.util.concurrent.ExecutionException e)
          {
-            LOG.debug("tool future failed", e);
+            LOG.debug("tool future failed", hipaaSafe(e));
          }
       }
 
@@ -708,11 +719,13 @@ public class TurnEngine implements Runnable
                .withSummary(running.isCancelled() ? "Not run (stopped)" : "Timed out")
                .withModelContent(running.isCancelled() ? "Not run: the user stopped the answer." : "The tool did not finish in time.");
          }
+         classification.observe(use, result);
          recordToolResult(use, result, outcomes[i]);
 
          String content = result.getModelContent() == null ? "" : result.getModelContent();
          modelResults.add(ModelPart.toolResult(use.getToolUseId(), content, result.getOutcome() != null && ERROR_OUTCOMES.contains(result.getOutcome())));
       }
+      persistClassification();
       persistPendingEvents();
       return (new ToolBatch(modelResults, limitReached, running.isCancelled()));
    }
@@ -783,7 +796,7 @@ public class TurnEngine implements Runnable
       }
       catch(QException e)
       {
-         LOG.warn("Could not record assistant tool call", e, logPair("turnId", turn.getId()), logPair("tool", use.getToolName()));
+         LOG.warn("Could not record assistant tool call", hipaaSafe(e), logPair("turnId", turn.getId()), logPair("tool", use.getToolName()));
       }
    }
 
@@ -863,6 +876,7 @@ public class TurnEngine implements Runnable
    {
       try
       {
+         persistClassification();
          flushText(true);
          Instant now = runtime.getClock().instant();
 
@@ -896,7 +910,7 @@ public class TurnEngine implements Runnable
          }
          catch(QException e)
          {
-            LOG.warn("Could not persist the end of an assistant turn", e, logPair("turnId", turn.getId()));
+            LOG.warn("Could not persist the end of an assistant turn", hipaaSafe(e), logPair("turnId", turn.getId()));
          }
 
          /////////////////////////////////////////////////////////////////////
@@ -938,7 +952,7 @@ public class TurnEngine implements Runnable
          }
          catch(QException e)
          {
-            LOG.warn("Could not persist the end of an assistant turn", e, logPair("turnId", turn.getId()));
+            LOG.warn("Could not persist the end of an assistant turn", hipaaSafe(e), logPair("turnId", turn.getId()));
          }
 
          LOG.info("Assistant turn finished",
@@ -958,9 +972,9 @@ public class TurnEngine implements Runnable
             logPair("costMicros", costMicros),
             logPair("durationMs", Duration.between(startedAt, now).toMillis()));
       }
-      catch(RuntimeException e)
+      catch(QException | RuntimeException e)
       {
-         LOG.warn("Assistant turn finish failed", e, logPair("turnId", turn.getId()));
+         LOG.warn("Assistant turn finish failed", hipaaSafe(e), logPair("turnId", turn.getId()));
       }
       finally
       {
@@ -1045,7 +1059,7 @@ public class TurnEngine implements Runnable
          }
          catch(QException e)
          {
-            LOG.warn("Could not persist assistant turn event", e, logPair("turnId", turn.getId()), logPair("seq", event.getSeq()));
+            LOG.warn("Could not persist assistant turn event", hipaaSafe(e), logPair("turnId", turn.getId()), logPair("seq", event.getSeq()));
          }
       }
    }
@@ -1110,4 +1124,37 @@ public class TurnEngine implements Runnable
       return (value == null ? 0 : value);
    }
 
+
+
+   /*******************************************************************************
+    ** Persist the monotonically increasing level independently of message/accounting writes.
+    *******************************************************************************/
+   private void persistClassification() throws QException
+   {
+      if(classification != null)
+      {
+         store.saveClassification(userId, conversation.getId(), turn.getId(), classification);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** In HIPAA mode, exceptions and provider details are never logged (they may
+    ** echo prompt text or record values); otherwise the value itself.
+    *******************************************************************************/
+   private <T> T hipaaSafe(T value)
+   {
+      return (isHipaaMode() ? null : value);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether this instance runs in HIPAA mode.
+    *******************************************************************************/
+   private boolean isHipaaMode()
+   {
+      return (Boolean.TRUE.equals(config.getHipaaMode()));
+   }
 }

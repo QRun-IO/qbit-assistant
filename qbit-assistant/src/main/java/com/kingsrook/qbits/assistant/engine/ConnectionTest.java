@@ -158,7 +158,7 @@ public final class ConnectionTest
       {
          long latency = (System.nanoTime() - started) / 1_000_000;
          UsageRecorder.save(runtime.getStore(), UsageRecorder.row(usageCall, null, e, latency, pricing));
-         return (new Result(STATUS_ERROR, (int) latency, null, describe(e)));
+         return (new Result(STATUS_ERROR, (int) latency, null, Boolean.TRUE.equals(runtime.getConfig().getHipaaMode()) ? String.valueOf(e.getKind()) : describe(e)));
       }
       catch(ProviderService.ProviderSetupException e)
       {

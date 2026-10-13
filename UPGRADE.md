@@ -1,5 +1,65 @@
 # Upgrading qbit-assistant
 
+## P-c: classification, PHI routing and encrypted storage
+
+Apply these additive schema changes before deploying P-c (adjust column mappings
+for your backend). New conversations/turns record `PUBLIC`, `CONFIDENTIAL`, `PII`
+or `PHI`; legacy null classifications read as PUBLIC. Backfill known historical
+PHI conversations to PHI before allowing their history to be used with a provider.
+
+```sql
+ALTER TABLE assistant_conversation ADD COLUMN max_classification VARCHAR(16);
+ALTER TABLE assistant_turn ADD COLUMN classification VARCHAR(16);
+ALTER TABLE assistant_turn ADD COLUMN classification_tables VARCHAR(500);
+ALTER TABLE assistant_conversation ALTER COLUMN title TYPE TEXT;
+ALTER TABLE assistant_tool_call ALTER COLUMN result_summary TYPE TEXT;
+ALTER TABLE assistant_pending_action ALTER COLUMN summary TYPE TEXT;
+ALTER TABLE assistant_pending_action ALTER COLUMN result_summary TYPE TEXT;
+CREATE TABLE assistant_data_audit
+(
+   id SERIAL PRIMARY KEY,
+   user_id VARCHAR(255),
+   conversation_id INTEGER,
+   turn_id INTEGER,
+   provider_id INTEGER,
+   provider_name VARCHAR(200),
+   model VARCHAR(200),
+   hipaa_eligible BOOLEAN,
+   classification VARCHAR(16),
+   tables VARCHAR(500),
+   decision VARCHAR(16),
+   reason VARCHAR(1000),
+   create_date TIMESTAMP WITH TIME ZONE
+);
+CREATE INDEX assistant_data_audit_user_id ON assistant_data_audit (user_id);
+CREATE INDEX assistant_data_audit_conversation_id ON assistant_data_audit (conversation_id);
+CREATE INDEX assistant_data_audit_turn_id ON assistant_data_audit (turn_id);
+```
+
+`assistant_data_audit` is an admin read-only, owner-locked child list on a
+conversation, outside navigation. It records each model call carrying PII/PHI and
+each routing block, without record values. It expires with the conversation.
+PHI conversations use `hipaaRetentionDays` (2190 by default), even outside HIPAA
+mode; null uses normal retention. Existing tool-result/replay cleanup still uses
+`toolResultRetentionDays`.
+
+Before enabling HIPAA mode, mark the permitted provider rows `hipaaEligible = true`
+and provision `conversationEncryptionKeyEnvName` with a base64-encoded 32-byte
+key. Startup refuses missing or invalid keys. A code-only provider is not eligible.
+The flag records the operator's eligibility decision; it does not establish a BAA.
+
+New/updated message parts, titles, conversation context, tool payloads/redactions
+and summaries, replay data, and pending-action payloads/summaries use
+`enc:v1:<base64(iv|ciphertext|tag)>` (AES-256-GCM, random 12-byte IV, 16-byte tag).
+Only `AssistantStore` decrypts; direct backend/admin record views show ciphertext.
+String columns holding encrypted summaries/titles must be TEXT to allow expansion.
+Legacy plaintext reads are supported; existing rows are not automatically rewritten.
+For an existing deployment, migrate legacy payloads through AssistantStore under
+the appropriate owner/admin session before treating the whole archive as encrypted.
+Keep the key available for the lifetime of encrypted data and backups. Changing the
+key requires a controlled decrypt/re-encrypt migration; P-c has no key rotation job.
+Corrupt ciphertext, a wrong key, and encrypted data without a key fail closed.
+
 ## 0.1.0-RC.3 to 0.1.0-RC.4: provider settings, prices, per-call usage, app home
 
 Three new tables. Create them before you deploy (see `docs/schema-postgres.sql`, which also seeds the Anthropic prices):

@@ -141,6 +141,8 @@ public final class AssistantHomeView
       }
       html.append("</div><div style=\"").append(CELLS).append("\">");
       cell(html, "Provider", active == null ? "None" : active.row().getName() + " (" + nvl(active.row().getModel(), "default model") + ")");
+      cell(html, "HIPAA mode", Boolean.TRUE.equals(data.getHipaaMode()) ? "On" : "Off");
+      cell(html, "PHI retention", data.getHipaaRetentionDays() == null ? "Normal retention" : data.getHipaaRetentionDays() + " days");
       cell(html, "API key", active == null ? "Not applicable" : active.keyStatus());
       cell(html, "Last test", active == null ? "Not applicable" : lastTest(active.row()));
       Integer rate = data.errorRatePercent7d();

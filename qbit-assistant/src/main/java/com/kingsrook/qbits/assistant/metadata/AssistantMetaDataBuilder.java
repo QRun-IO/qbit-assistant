@@ -24,6 +24,7 @@ import com.kingsrook.qbits.assistant.home.AssistantAccessWidget;
 import com.kingsrook.qbits.assistant.home.AssistantHome;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantDataAccess;
+import com.kingsrook.qbits.assistant.model.AssistantDataAudit;
 import com.kingsrook.qbits.assistant.model.AssistantFeedback;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
 import com.kingsrook.qbits.assistant.model.AssistantModel;
@@ -48,6 +49,7 @@ import com.kingsrook.qqq.backend.core.model.data.QRecordEntity;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueTooLongBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.DenyBehavior;
@@ -213,6 +215,32 @@ public class AssistantMetaDataBuilder
          .withRecordLabelFormat("%s #%s").withRecordLabelFields("toolName", "id"));
       text(tables.get(tables.size() - 1), "paramsJson");
 
+      tables.add(readOnly(owned(base(AssistantDataAudit.TABLE_NAME, "Assistant Data Audit", "shield", AssistantDataAudit.class), false))
+         .withoutCapabilities(Capability.TABLE_DELETE)
+         .withRecordLabelFormat("%s #%s").withRecordLabelFields("decision", "id"));
+      for(QTableMetaData table : tables)
+      {
+         if(table.getName().equals(AssistantConversation.TABLE_NAME))
+         {
+            text(table, "title");
+            table.getField("title").setMaxLength(null);
+            table.getField("title").withBehavior(ValueTooLongBehavior.PASS_THROUGH);
+         }
+         if(table.getName().equals(AssistantToolCall.TABLE_NAME))
+         {
+            text(table, "resultSummary");
+            table.getField("resultSummary").setMaxLength(null);
+            table.getField("resultSummary").withBehavior(ValueTooLongBehavior.PASS_THROUGH);
+         }
+         if(table.getName().equals(AssistantPendingAction.TABLE_NAME))
+         {
+            text(table, "summary", "resultSummary");
+            table.getField("summary").setMaxLength(null);
+            table.getField("resultSummary").setMaxLength(null);
+            table.getField("summary").withBehavior(ValueTooLongBehavior.PASS_THROUGH);
+            table.getField("resultSummary").withBehavior(ValueTooLongBehavior.PASS_THROUGH);
+         }
+      }
       tables.forEach(AssistantRecordScreens::apply);
       return (tables);
    }

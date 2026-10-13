@@ -89,14 +89,23 @@ public class AssistantRetentionStep implements BackendStep
       Instant conversationCutoff = now.minus(Duration.ofDays(config.getConversationRetentionDays()));
       Instant toolResultCutoff   = now.minus(Duration.ofDays(config.getToolResultRetentionDays()));
 
+      Integer phiDays = config.getHipaaRetentionDays() == null ? config.getConversationRetentionDays() : config.getHipaaRetentionDays();
+      Instant phiCutoff = now.minus(Duration.ofDays(phiDays));
+      Instant candidateCutoff = conversationCutoff.isAfter(phiCutoff) ? conversationCutoff : phiCutoff;
+      Integer afterId = 0;
       int deleted = 0;
       while(true)
       {
-         List<AssistantConversation> batch = store.listConversationsInactiveSince(conversationCutoff, BATCH);
+         List<AssistantConversation> batch = store.listConversationsInactiveSince(candidateCutoff, afterId, BATCH);
          for(AssistantConversation conversation : batch)
          {
-            store.deleteConversation(conversation.getUserId(), conversation.getId());
-            deleted++;
+            afterId = conversation.getId();
+            Instant cutoff = "PHI".equals(conversation.getMaxClassification()) ? phiCutoff : conversationCutoff;
+            if(conversation.getModifyDate().isBefore(cutoff))
+            {
+               store.deleteConversation(conversation.getUserId(), conversation.getId());
+               deleted++;
+            }
          }
          if(batch.size() < BATCH)
          {
@@ -131,7 +140,7 @@ public class AssistantRetentionStep implements BackendStep
       }
 
       int messagesStripped = 0;
-      int afterId          = 0;
+      afterId = 0;
       while(true)
       {
          List<AssistantMessage> batch = store.listAssistantMessagesBefore(toolResultCutoff, afterId, BATCH);

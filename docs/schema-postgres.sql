@@ -6,7 +6,8 @@ CREATE TABLE assistant_conversation
 (
    id SERIAL PRIMARY KEY,
    user_id VARCHAR(255),
-   title VARCHAR(255),
+   title TEXT,
+   max_classification VARCHAR(16),
    status VARCHAR(16),
    pinned BOOLEAN,
    last_message_at TIMESTAMP WITH TIME ZONE,
@@ -46,6 +47,8 @@ CREATE TABLE assistant_turn
    user_message_id INTEGER,
    assistant_message_id INTEGER,
    status VARCHAR(16),
+   classification VARCHAR(16),
+   classification_tables VARCHAR(500),
    stop_reason VARCHAR(64),
    error_code VARCHAR(32),
    cancel_reason VARCHAR(64),
@@ -95,7 +98,7 @@ CREATE TABLE assistant_tool_call
    widget_name VARCHAR(128),
    row_count INTEGER,
    duration_ms BIGINT,
-   result_summary VARCHAR(500),
+   result_summary TEXT,
    result_json TEXT,
    redactions_json TEXT,
    ui_api_operation VARCHAR(255),
@@ -313,10 +316,10 @@ CREATE TABLE assistant_pending_action
    table_name VARCHAR(128),
    record_id VARCHAR(128),
    params_json TEXT,
-   summary VARCHAR(500),
+   summary TEXT,
    status VARCHAR(16),
    http_status INTEGER,
-   result_summary VARCHAR(500),
+   result_summary TEXT,
    expires_at TIMESTAMP WITH TIME ZONE,
    decided_at TIMESTAMP WITH TIME ZONE,
    create_date TIMESTAMP WITH TIME ZONE,
@@ -365,3 +368,23 @@ CREATE TABLE assistant_profile_skill
    modify_date TIMESTAMP WITH TIME ZONE,
    CONSTRAINT assistant_profile_skill_pair UNIQUE (profile_id, skill_id)
 );
+
+CREATE TABLE assistant_data_audit
+(
+   id SERIAL PRIMARY KEY,
+   user_id VARCHAR(255),
+   conversation_id INTEGER,
+   turn_id INTEGER,
+   provider_id INTEGER,
+   provider_name VARCHAR(200),
+   model VARCHAR(200),
+   hipaa_eligible BOOLEAN,
+   classification VARCHAR(16),
+   tables VARCHAR(500),
+   decision VARCHAR(16),
+   reason VARCHAR(1000),
+   create_date TIMESTAMP WITH TIME ZONE
+);
+CREATE INDEX assistant_data_audit_user_id ON assistant_data_audit (user_id);
+CREATE INDEX assistant_data_audit_conversation_id ON assistant_data_audit (conversation_id);
+CREATE INDEX assistant_data_audit_turn_id ON assistant_data_audit (turn_id);

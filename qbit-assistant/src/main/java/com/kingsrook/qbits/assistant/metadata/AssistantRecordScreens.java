@@ -28,6 +28,7 @@ import com.kingsrook.qbits.assistant.engine.ProfileService;
 import com.kingsrook.qbits.assistant.engine.ProviderService;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantDataAccess;
+import com.kingsrook.qbits.assistant.model.AssistantDataAudit;
 import com.kingsrook.qbits.assistant.model.AssistantFeedback;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
 import com.kingsrook.qbits.assistant.model.AssistantModel;
@@ -174,6 +175,7 @@ public final class AssistantRecordScreens
          case AssistantSkill.TABLE_NAME -> skill(table);
          case AssistantProfileSkill.TABLE_NAME -> profileSkill(table);
          case AssistantPendingAction.TABLE_NAME -> pendingAction(table);
+         case AssistantDataAudit.TABLE_NAME -> sections(table);
          default ->
          {
             // not an assistant table
@@ -200,6 +202,7 @@ public final class AssistantRecordScreens
       childList(qInstance, conversation, AssistantToolCall.TABLE_NAME, "Tool Calls", "build", List.of("toolName", "uiApiOperation", "httpStatus", "outcome", "tableName", "rowCount", "createDate"));
       childList(qInstance, conversation, AssistantPendingAction.TABLE_NAME, "Pending Actions", "pending_actions", List.of("toolName", "tableName", "recordId", "status", "httpStatus", "createDate"));
       childList(qInstance, conversation, AssistantFeedback.TABLE_NAME, "Feedback", "thumbs_up_down", List.of("rating", "reason", "createDate"));
+      childList(qInstance, conversation, AssistantDataAudit.TABLE_NAME, "Data Audit", "shield", List.of("classification", "tables", "decision", "providerName", "model", "createDate"));
       childList(qInstance, conversation, AssistantUsage.TABLE_NAME, "Model Calls", "receipt_long", USAGE_LIST_FIELDS);
 
       QTableMetaData profile = qInstance.getTable(AssistantProfile.TABLE_NAME);

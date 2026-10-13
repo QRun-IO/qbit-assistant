@@ -137,6 +137,14 @@ public class AssistantTestFixture
          .withField(new QFieldMetaData("statDate", QFieldType.DATE).withLabel("Stat Date"))
          .withField(new QFieldMetaData("pageviews", QFieldType.INTEGER).withLabel("Pageviews")));
 
+      if(config.getClassificationSource().ofTable("patient") == com.kingsrook.qbits.assistant.classification.DataClassification.PHI)
+      {
+         qInstance.addTable(table("patient", "Patient", "status")
+            .withField(new QFieldMetaData("email", QFieldType.STRING))
+            .withField(new QFieldMetaData("status", QFieldType.STRING))
+            .withField(new QFieldMetaData("diagnosis", QFieldType.STRING)));
+      }
+
       new AuditsMetaDataProvider().defineAll(qInstance, BACKEND, null);
       for(String auditTable : List.of(AuditsMetaDataProvider.TABLE_NAME_AUDIT, AuditsMetaDataProvider.TABLE_NAME_AUDIT_DETAIL, AuditsMetaDataProvider.TABLE_NAME_AUDIT_TABLE, AuditsMetaDataProvider.TABLE_NAME_AUDIT_USER))
       {
@@ -189,6 +197,12 @@ public class AssistantTestFixture
       QContext.init(qInstance, seeder);
       try
       {
+         if(qInstance.getTable("patient") != null)
+         {
+            insert("patient", List.of(
+               new QRecord().withValue("email", "patient1@example.test").withValue("status", "Active").withValue("diagnosis", "PHI_DIAGNOSIS_SENTINEL"),
+               new QRecord().withValue("email", "patient2@example.test").withValue("status", "Inactive").withValue("diagnosis", "PHI_SECOND_SENTINEL")));
+         }
          List<QRecord> posts = new ArrayList<>();
          posts.add(post("Proxmox home lab notes", "proxmox-home-lab", "PUBLISHED", "How I run Proxmox at home.", null, "Proxmox clusters, VLANs and backups."));
          posts.add(post("Talos on Proxmox", "talos-proxmox", "PUBLISHED", null, "Running Talos Linux on Proxmox.", "Talos is an immutable Kubernetes OS."));
@@ -312,7 +326,7 @@ public class AssistantTestFixture
       List<String> readable = new ArrayList<>();
       if(all || userId.startsWith("editor"))
       {
-         readable.addAll(List.of("blog_post", "page", "media", AuditsMetaDataProvider.TABLE_NAME_AUDIT, AuditsMetaDataProvider.TABLE_NAME_AUDIT_DETAIL,
+         readable.addAll(List.of("blog_post", "page", "media", "patient", AuditsMetaDataProvider.TABLE_NAME_AUDIT, AuditsMetaDataProvider.TABLE_NAME_AUDIT_DETAIL,
             AuditsMetaDataProvider.TABLE_NAME_AUDIT_TABLE, AuditsMetaDataProvider.TABLE_NAME_AUDIT_USER));
       }
       if(all || userId.startsWith("analyst"))

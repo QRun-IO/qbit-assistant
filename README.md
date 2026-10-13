@@ -381,3 +381,61 @@ engine/tool golden turns. No cloud credentials or live endpoints are required.
 ## License
 
 Apache 2.0.
+
+
+## Data classification and HIPAA mode
+
+On QQQ 4.1.0-RC.4, classify application tables/fields in the host configuration:
+
+```java
+import com.kingsrook.qbits.assistant.classification.DataClassification;
+
+AssistantQBitConfig config = new AssistantQBitConfig()
+   .withDataClassification("patient", DataClassification.PHI)
+   .withDataClassification("patient", "id", DataClassification.PUBLIC)
+   .withDataClassification("patient", "email", DataClassification.PII)
+   .withDataClassification("patient", "status", DataClassification.PUBLIC)
+   .withHipaaMode(true)
+   .withHipaaRetentionDays(2190)
+   .withConversationEncryptionKeyEnvName("ASSISTANT_CONVERSATION_KEY");
+```
+
+Set that environment variable through your secret manager to a base64-encoded,
+random 256-bit (32-byte) key. Supply only its **name** in config, never the key.
+The existing server-side `withSecretResolver` hook also resolves this reference.
+Startup validates the key. HIPAA mode defaults off; encryption can also be enabled
+with the key reference while HIPAA mode is off.
+
+The qbit `DataClassification` enum is a stand-in for core QRun-IO/qqq#1142, with
+PUBLIC < CONFIDENTIAL < PII < PHI. Unconfigured tables default to PUBLIC; a field
+falls back to its table unless explicitly overridden. A field subset uses its
+selected fields; unrestricted reads and record page contexts use the highest
+classification across the table and its fields. Returned columns and record-label
+fields also count: tools include a primary key even for subsets, so classify it
+explicitly if the host considers it safe for that subset. Cross-table results with unknown
+tables use the highest classification anywhere. Metadata-only tools remain PUBLIC.
+The assistant's own tables remain denied to tools.
+
+Hosts can supply `withClassificationSource(ClassificationSource)` instead. When
+upgrading to an RC containing core #1142, implement that interface with
+`AiDataClassifications`/`AiTableMetaData`/`AiFieldMetaData` (map enum names), then
+replace the stand-in once the qbit's minimum core version includes it.
+
+PHI is sent only to a persisted provider row explicitly marked `hipaaEligible`.
+Every model dispatch rechecks eligibility, including calls after tools and strict
+schema retries. Blocks end the turn with `PHI_BLOCKED` or `HIPAA_PROVIDER`; the
+PHI tool result is never sent to that provider. There is no automatic fallback.
+A conversation keeps its highest classification, so moving to a PUBLIC page does
+not make existing PHI history safe for a non-eligible provider.
+
+HIPAA mode also refuses non-eligible providers at resolution and when enabling
+settings rows, disables code-only fallback, requires encrypted conversation
+storage, and suppresses provider error details in logs and turn errors. The app
+home displays HIPAA mode and PHI retention. The eligibility flag records the
+operator's decision (including any applicable BAA); it does not establish one.
+
+Both modes audit each PII/PHI model call and every routing block in
+`assistant_data_audit` (admin read-only, owner-locked, on the conversation screen).
+PHI conversations use `hipaaRetentionDays` even with HIPAA mode off. A null value
+uses normal retention; tool-result/replay cleanup remains independently configured.
+See [UPGRADE.md](UPGRADE.md) for schema changes, plaintext migration, and key handling.
