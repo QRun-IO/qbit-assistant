@@ -1057,7 +1057,7 @@ public class TurnEngine implements Runnable
     *******************************************************************************/
    private ModelPricing pricing()
    {
-      return (runtime.getProviderService().pricing(active == null ? null : active.providerType(), model));
+      return (runtime.getProviderService().pricing(active, model));
    }
 
 

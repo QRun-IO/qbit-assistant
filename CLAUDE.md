@@ -42,6 +42,7 @@ Always use the wrapper: Maven 3.10 cannot read the parent POM. The committed def
   - `processes/`: `AssistantRetentionStep` and `TestConnectionProcess` (record action on `assistant_provider`).
   - `engine/ProviderService` (active provider from `assistant_provider` rows, key references, prices), `UsageRecorder` (one `assistant_usage` row per model call), `ConnectionTest`.
 - `qbit-assistant-provider-anthropic`: `AnthropicModelProvider` and `AnthropicMapping` (anthropic-java streaming).
+- `qbit-assistant-provider-openai`: OpenAI-compatible Chat Completions, model discovery and health using JDK HTTP and Jackson.
 
 ## Invariants (do not break)
 

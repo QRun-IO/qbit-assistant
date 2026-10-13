@@ -52,6 +52,7 @@
    <modules>
       <module>qbit-assistant</module>
       <module>qbit-assistant-provider-anthropic</module>
+      <module>qbit-assistant-provider-openai</module>
    </modules>
 
    <licenses>
@@ -100,6 +101,11 @@
             <artifactId>qbit-assistant</artifactId>
             <version>${revision}</version>
             <type>test-jar</type>
+         </dependency>
+         <dependency>
+            <groupId>com.kingsrook.qbits</groupId>
+            <artifactId>qbit-assistant-provider-openai</artifactId>
+            <version>${revision}</version>
          </dependency>
          <dependency>
             <groupId>com.anthropic</groupId>

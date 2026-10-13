@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows Keep
 
 ## [0.1.0] - Unreleased
 
+- Add named, server-only CA bundles for HTTPS providers, additive JVM trust and sanitized TLS diagnostics; tolerate repeated/missing streamed tool identities and invalid arguments, with a golden tool round-trip test.
+- Add the provider/model registry, per-model capabilities and prices, keyless local providers, discovery and health, and provider/model connection tests.
+- Add the optional JDK HTTP OpenAI-compatible adapter for OpenAI, Azure, OpenRouter, Ollama, LM Studio, vLLM and llama.cpp, with strict-schema safeguards and localhost contract tests.
+
 Phase 0/1 of the QQQ Assistant: read-only Q&A and navigation. Requires QQQ 4.1 with:
 - the AI tool kernel (`qqq-backend-core` `actions.ai`, QRun-IO/qqq#1078)
 - the developer-panel contract (QRun-IO/qqq#1076).

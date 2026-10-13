@@ -26,6 +26,7 @@ import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantDataAccess;
 import com.kingsrook.qbits.assistant.model.AssistantFeedback;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
+import com.kingsrook.qbits.assistant.model.AssistantModel;
 import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
 import com.kingsrook.qbits.assistant.model.AssistantPendingAction;
 import com.kingsrook.qbits.assistant.model.AssistantPolicy;
@@ -178,6 +179,10 @@ public class AssistantMetaDataBuilder
       tables.add(settings(base(AssistantProvider.TABLE_NAME, "Assistant Provider", "settings_input_component", AssistantProvider.class))
          .withUniqueKey(new UniqueKey("name"))
          .withRecordLabelFormat("%s").withRecordLabelFields("name"));
+
+      tables.add(settings(base(AssistantModel.TABLE_NAME, "Assistant Model", "memory", AssistantModel.class))
+         .withUniqueKey(new UniqueKey("providerId", "modelId"))
+         .withRecordLabelFormat("%s").withRecordLabelFields("modelId"));
 
       tables.add(settings(base(AssistantModelPrice.TABLE_NAME, "Assistant Model Price", "sell", AssistantModelPrice.class))
          .withUniqueKey(new UniqueKey("providerType", "model"))

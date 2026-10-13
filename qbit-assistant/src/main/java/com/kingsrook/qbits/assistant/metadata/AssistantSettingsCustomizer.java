@@ -25,10 +25,10 @@ import com.kingsrook.qbits.assistant.AssistantRuntime;
 import com.kingsrook.qbits.assistant.engine.ProviderService;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
-import com.kingsrook.qqq.backend.core.model.actions.tables.QueryOrGetInputInterface;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QueryOrGetInputInterface;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.statusmessages.BadInputStatusMessage;
@@ -77,6 +77,24 @@ public class AssistantSettingsCustomizer implements TableCustomizerInterface
    public List<QRecord> preInsertOrUpdate(AbstractActionInput input, List<QRecord> records, boolean isPreview, Optional<List<QRecord>> oldRecordList) throws QException
    {
       ProviderService service = service();
+      if(com.kingsrook.qbits.assistant.model.AssistantModel.TABLE_NAME.equals(tableName(input)))
+      {
+         for(QRecord record : records)
+         {
+            if(record.getValue("id") == null)
+            {
+               if(record.getValue("source") == null)
+               {
+                  record.setValue("source", "MANUAL");
+               }
+               if(record.getValue("enabled") == null)
+               {
+                  record.setValue("enabled", true);
+               }
+            }
+         }
+         return (records);
+      }
       if(service == null || !AssistantProvider.TABLE_NAME.equals(tableName(input)))
       {
          return (records);
@@ -95,7 +113,23 @@ public class AssistantSettingsCustomizer implements TableCustomizerInterface
          old.map(m -> m.get(record.getValue("id"))).ifPresent(o -> merged.setValues(new java.util.LinkedHashMap<>(o.getValues())));
          record.getValues().forEach(merged::setValue);
 
-         for(String error : service.validate(new AssistantProvider(merged)))
+         AssistantProvider provider = new AssistantProvider(merged);
+         if(merged.getValue("kind") == null)
+         {
+            record.setValue("kind", service.kind(provider));
+         }
+         if(merged.getValue("location") == null)
+         {
+            record.setValue("location", service.location(provider));
+         }
+         for(String field : List.of("hipaaEligible", "connectTimeoutSeconds", "requestTimeoutSeconds"))
+         {
+            if(merged.getValue(field) == null)
+            {
+               record.setValue(field, field.equals("hipaaEligible") ? Boolean.FALSE : (field.equals("connectTimeoutSeconds") ? 10 : 120));
+            }
+         }
+         for(String error : service.validate(provider))
          {
             record.addError(new BadInputStatusMessage(error));
          }
@@ -169,7 +203,7 @@ public class AssistantSettingsCustomizer implements TableCustomizerInterface
       for(Map.Entry<String, Serializable> entry : record.getValues().entrySet())
       {
          String name = entry.getKey();
-         boolean system = name.equals("id") || name.equals("modifyDate") || name.startsWith("lastTest")
+         boolean system = name.equals("id") || name.equals("modifyDate") || name.startsWith("lastTest") || name.startsWith("lastDiscovery")
             || (name.equals("isDefault") && Boolean.FALSE.equals(entry.getValue()));
          if(!system)
          {

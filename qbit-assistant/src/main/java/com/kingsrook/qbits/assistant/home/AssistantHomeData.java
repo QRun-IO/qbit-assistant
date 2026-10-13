@@ -79,7 +79,7 @@ public class AssistantHomeData
    /*******************************************************************************
     ** One provider's health.
     *******************************************************************************/
-   public record ProviderHealth(AssistantProvider row, String typeLabel, String keyStatus, boolean keyPresent, List<String> problems, boolean active, long monthCostMicros, Long capMicros)
+   public record ProviderHealth(AssistantProvider row, String typeLabel, String keyStatus, boolean keyPresent, List<String> problems, boolean active, long monthCostMicros, Long capMicros, String kind, String location, long enabledModels)
    {
    }
 
@@ -275,8 +275,8 @@ public class AssistantHomeData
       {
          String status = service.keyStatus(row);
          AssistantProviderType type = row.getProviderType() == null ? null : runtime.getConfig().getProviderTypes().get(row.getProviderType());
-         data.providers.add(new ProviderHealth(row, type == null ? row.getProviderType() : type.getLabel(), status, status.startsWith("Set"), service.validate(row), active != null && active.getId().equals(row.getId()),
-            providerMonth.getOrDefault(row.getId(), 0L), ProviderService.capMicros(row)));
+         data.providers.add(new ProviderHealth(row, type == null ? row.getProviderType() : type.getLabel(), status, (status.startsWith("Set") || status.startsWith("Not needed")), service.validate(row), active != null && active.getId().equals(row.getId()),
+            providerMonth.getOrDefault(row.getId(), 0L), ProviderService.capMicros(row), service.kind(row), service.location(row), service.models(row.getId()).stream().filter(m -> Boolean.TRUE.equals(m.getEnabled())).count()));
       }
       return (data);
    }

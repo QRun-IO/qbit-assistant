@@ -118,3 +118,70 @@ Database (see `docs/schema-postgres.sql`):
 Runtime: the tools call this server's own `/qqq/v1` on `127.0.0.1` and the port the first assistant request arrived on. If the server is not reachable that way (a different bind address, a TLS-only listener), set `withUiApiBaseUrl(...)`. Grant `assistant.admin` holders the new tables through the qbit's existing admin permission (no new permission names).
 
 Behavior: nothing is writable until an admin adds a READ_WRITE data access row; before that the assistant reads exactly what it did before, now through the UI API.
+
+## P-a: provider and model registry
+
+Before starting the new version, database-backed hosts add the provider columns
+and model sub-table below. Memory-backed hosts need no migration. Existing rows
+derive kind and location from the adapter and keep their model behavior until
+models are registered. Keys remain environment-variable references.
+
+```sql
+ALTER TABLE assistant_provider
+   ADD COLUMN kind VARCHAR(30),
+   ADD COLUMN tls_ca_bundle VARCHAR(100),
+   ADD COLUMN location VARCHAR(10),
+   ADD COLUMN hipaa_eligible BOOLEAN DEFAULT FALSE,
+   ADD COLUMN region VARCHAR(50),
+   ADD COLUMN api_version VARCHAR(30),
+   ADD COLUMN connect_timeout_seconds INTEGER DEFAULT 10 CHECK (connect_timeout_seconds BETWEEN 1 AND 600),
+   ADD COLUMN request_timeout_seconds INTEGER DEFAULT 120 CHECK (request_timeout_seconds BETWEEN 1 AND 600),
+   ADD COLUMN last_discovery_at TIMESTAMP WITH TIME ZONE,
+   ADD COLUMN last_discovery_status VARCHAR(16),
+   ADD COLUMN last_discovery_error VARCHAR(500);
+ALTER TABLE assistant_provider ALTER COLUMN model TYPE VARCHAR(200);
+ALTER TABLE assistant_provider ALTER COLUMN last_test_model TYPE VARCHAR(200);
+ALTER TABLE assistant_usage ALTER COLUMN model TYPE VARCHAR(200);
+ALTER TABLE assistant_message ALTER COLUMN model TYPE VARCHAR(200);
+ALTER TABLE assistant_turn ALTER COLUMN model TYPE VARCHAR(200);
+
+CREATE TABLE assistant_model
+(
+   id SERIAL PRIMARY KEY,
+   provider_id INTEGER NOT NULL REFERENCES assistant_provider(id),
+   model_id VARCHAR(200) NOT NULL,
+   display_name VARCHAR(200),
+   enabled BOOLEAN,
+   supports_tools BOOLEAN,
+   supports_vision BOOLEAN,
+   supports_streaming BOOLEAN,
+   supports_reasoning_effort BOOLEAN,
+   context_window_tokens INTEGER,
+   max_output_tokens INTEGER,
+   input_usd_per_m_tok NUMERIC(12, 4),
+   output_usd_per_m_tok NUMERIC(12, 4),
+   source VARCHAR(16),
+   discovered_at TIMESTAMP WITH TIME ZONE,
+   last_test_at TIMESTAMP WITH TIME ZONE,
+   last_test_status VARCHAR(16),
+   last_test_latency_ms INTEGER,
+   last_test_error VARCHAR(500),
+   create_date TIMESTAMP WITH TIME ZONE,
+   modify_date TIMESTAMP WITH TIME ZONE,
+   UNIQUE (provider_id, model_id)
+);
+```
+
+Register the optional `qbit-assistant-provider-openai` module and
+`OpenAiCompatibleProviderType` to offer its kinds. Azure and generic endpoints
+require an explicit `allowedBaseUrls` entry; local defaults may be keyless.
+Discover models preserves existing rows. Cloud catalogs larger than 20 are added
+disabled; enable the models to offer before leaving the provider's model empty.
+HIPAA eligibility records an administrator's fact; P-a does not implement PHI routing.
+
+Custom CA bundles are server configuration, never database content. Register them
+with `withTrustedCaBundle(name, pem)` or `withTrustedCaBundleFile(name, path)` at
+startup, then set the HTTPS provider row's `tlsCaBundle` to that name. Empty
+references retain JVM default trust. The bundle adds trust without replacing JVM
+roots; hostname verification remains enabled. If the P-a columns were already
+applied, add only `tls_ca_bundle VARCHAR(100)` to `assistant_provider`.
