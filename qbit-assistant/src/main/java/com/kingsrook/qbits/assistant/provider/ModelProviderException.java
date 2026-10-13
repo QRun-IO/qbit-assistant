@@ -23,6 +23,8 @@ package com.kingsrook.qbits.assistant.provider;
  *******************************************************************************/
 public class ModelProviderException extends Exception
 {
+   public static final int MAX_PROVIDER_MESSAGE_CHARS = 300;
+
    /*******************************************************************************
     ** Error classes the engine reacts to.
     *******************************************************************************/
@@ -41,6 +43,10 @@ public class ModelProviderException extends Exception
    private final Kind    kind;
    private final Integer httpStatus;
    private ModelUsage    partialUsage;
+   private String        providerErrorType;
+   private String        providerMessage;
+   private String        requestId;
+   private boolean       strictSchemaRejected;
 
 
 
@@ -104,6 +110,94 @@ public class ModelProviderException extends Exception
    public boolean isRetryable()
    {
       return (kind == Kind.RATE_LIMITED || kind == Kind.OVERLOADED || kind == Kind.TIMEOUT || kind == Kind.NETWORK || kind == Kind.SERVER);
+   }
+
+
+
+
+   /*******************************************************************************
+    ** The provider's own error type (e.g. invalid_request_error), when it sent one.
+    *******************************************************************************/
+   public String getProviderErrorType()
+   {
+      return (providerErrorType);
+   }
+
+
+
+   /*******************************************************************************
+    ** The provider's own error message: one line, capped, with anything that looks
+    ** like a key removed (see {@link #sanitizeProviderMessage}). Safe to log and
+    ** to show to administrators; never contains prompt content.
+    *******************************************************************************/
+   public String getProviderMessage()
+   {
+      return (providerMessage);
+   }
+
+
+
+   /*******************************************************************************
+    ** The provider's request id, for its support.
+    *******************************************************************************/
+   public String getRequestId()
+   {
+      return (requestId);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for the provider's error details.
+    *******************************************************************************/
+   public ModelProviderException withProviderDetails(String providerErrorType, String providerMessage, String requestId)
+   {
+      this.providerErrorType = sanitizeProviderMessage(providerErrorType, 64);
+      this.providerMessage = sanitizeProviderMessage(providerMessage, MAX_PROVIDER_MESSAGE_CHARS);
+      this.requestId = sanitizeProviderMessage(requestId, 100);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** One line, at most max characters, with key-like tokens (sk-..., long
+    ** base64/hex runs) replaced by [redacted]. Null for blank input.
+    *******************************************************************************/
+   public static String sanitizeProviderMessage(String text, int max)
+   {
+      if(text == null || text.isBlank())
+      {
+         return (null);
+      }
+      String line = text.replaceAll("[\\p{Cntrl}\\s]+", " ").strip();
+      line = line.replaceAll("(?i)\\bsk-[a-z0-9_\\-]{6,}", "[redacted]");
+      line = line.replaceAll("[A-Za-z0-9+/_\\-]{40,}", "[redacted]");
+      return (line.length() <= max ? line : line.substring(0, max - 1) + "…");
+   }
+
+
+
+
+   /*******************************************************************************
+    ** Whether the provider refused the request because of its strict tool
+    ** schemas (e.g. Anthropic's "compiled grammar is too large"): the same
+    ** request without strict tools can succeed.
+    *******************************************************************************/
+   public boolean isStrictSchemaRejected()
+   {
+      return (strictSchemaRejected);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for strictSchemaRejected
+    *******************************************************************************/
+   public ModelProviderException withStrictSchemaRejected(boolean strictSchemaRejected)
+   {
+      this.strictSchemaRejected = strictSchemaRejected;
+      return (this);
    }
 
 }

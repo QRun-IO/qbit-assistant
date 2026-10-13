@@ -265,7 +265,10 @@ class AnthropicModelProviderTest
          {
             assertThat(e.getKind()).isEqualTo(ModelProviderException.Kind.AUTHENTICATION);
             assertThat(e.getHttpStatus()).isEqualTo(401);
-            assertThat(e.getMessage()).doesNotContain(TEST_KEY).doesNotContain("invalid x-api-key");
+            assertThat(e.getMessage()).doesNotContain(TEST_KEY).contains("authentication_error");
+            assertThat(e.getProviderErrorType()).isEqualTo("authentication_error");
+            assertThat(e.getProviderMessage()).isEqualTo("invalid x-api-key");
+            assertThat(e.isStrictSchemaRejected()).isFalse();
          });
 
       assertThatThrownBy(() -> provider.stream(request(), t -> { }).await(Duration.ofSeconds(10)))

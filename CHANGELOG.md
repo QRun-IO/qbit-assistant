@@ -8,6 +8,17 @@ Phase 0/1 of the QQQ Assistant: read-only Q&A and navigation. Requires QQQ 4.1 w
 - the AI tool kernel (`qqq-backend-core` `actions.ai`, QRun-IO/qqq#1078)
 - the developer-panel contract (QRun-IO/qqq#1076).
 
+### Fixed (0.1.0-RC.5)
+- **Every turn failed with "The AI service could not answer this request."** Anthropic refused the request with 400 `invalid_request_error` "The compiled grammar is too large ... reduce the number of strict tools": all ten read tools were sent with `strict: true`, and the API compiles every strict schema of a request into one grammar. Tools are now **not strict by default**. The kernel already validates every tool input and answers `INVALID_INPUT`. A host can opt individual tools in with `withStrictToolNames(...)`.
+- If a provider still refuses the strict schemas, the turn **retries once without strict tools** and logs a warning (`ModelProviderException.isStrictSchemaRejected`).
+- Provider errors now carry the **API's own error type, a sanitized message** (one line, capped, key-like tokens redacted) and the **request id**:
+  - they are logged at WARN for 4xx;
+  - they are recorded in the `assistant_usage` row's request id;
+  - they are shown to `assistant.admin` holders in the panel and in Test connection.
+  Before this, a 400 was logged as "INVALID_REQUEST httpStatus=400" with no reason.
+- A turn that hits a JVM `Error` (for example a linkage problem) now ends as `ERROR` with a log line, instead of being swallowed by the executor and ending as an empty `COMPLETE` answer.
+- `AnthropicRequestContractTest` checks the exact request against the Messages API constraints and a conservative strict-tool budget.
+
 ### Added (0.1.0-RC.4)
 - **Provider settings** (`assistant_provider`): type (registered `AssistantProviderType`s; `AnthropicProviderType` in the Anthropic module), model, enabled, default, base URL override, monthly cost cap, max output tokens per request, max concurrent requests, and the last connection test. The default enabled row is the active provider; with no rows the provider registered in code is used, so existing hosts keep working.
 - **Key handling:** the key is never stored. A row names the environment variable that holds it (`apiKeyEnvName`, allow-listed); `apiKeyStatus` is computed on read (`Set • …abcd`) and dropped on save. A pasted key, an unrelated variable or an unlisted base URL is refused. New config: `withProviderType`, `allowedApiKeyEnvNames`, `allowedBaseUrls`, `withSecretResolver`, `providerTestTimeoutSeconds`.
