@@ -23,13 +23,20 @@ import java.util.List;
 import java.util.Set;
 import com.kingsrook.qbits.assistant.AssistantModelRouting;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
+import com.kingsrook.qbits.assistant.access.DataAccessMode;
+import com.kingsrook.qbits.assistant.engine.ProfileService;
 import com.kingsrook.qbits.assistant.engine.ProviderService;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
+import com.kingsrook.qbits.assistant.model.AssistantDataAccess;
 import com.kingsrook.qbits.assistant.model.AssistantFeedback;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
 import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
+import com.kingsrook.qbits.assistant.model.AssistantPendingAction;
 import com.kingsrook.qbits.assistant.model.AssistantPolicy;
+import com.kingsrook.qbits.assistant.model.AssistantProfile;
+import com.kingsrook.qbits.assistant.model.AssistantProfileSkill;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
+import com.kingsrook.qbits.assistant.model.AssistantSkill;
 import com.kingsrook.qbits.assistant.model.AssistantToolCall;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
 import com.kingsrook.qbits.assistant.model.AssistantTurnEvent;
@@ -75,6 +82,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.Tier;
 public final class AssistantRecordScreens
 {
    public static final String EFFORT_PVS_NAME   = "assistant_effort";
+   public static final String OBJECT_TYPE_PVS_NAME      = "assistant_object_type";
+   public static final String DATA_ACCESS_MODE_PVS_NAME = "assistant_data_access_mode";
    public static final String DETAILS_SECTION   = "details";
    static final String        JSON              = "json";
    static final String        MICROS_HELP       = "In micro-dollars: 1,000,000 is $1.00.";
@@ -116,7 +125,26 @@ public final class AssistantRecordScreens
          new QPossibleValueSource().withName(EFFORT_PVS_NAME).withType(QPossibleValueSourceType.ENUM)
             .withValueFormatAndFields(PVSValueFormatAndFields.LABEL_ONLY).withEnumValues(efforts),
          QPossibleValueSource.newForTable(AssistantTurn.TABLE_NAME),
-         QPossibleValueSource.newForTable(AssistantMessage.TABLE_NAME)));
+         QPossibleValueSource.newForTable(AssistantMessage.TABLE_NAME),
+         QPossibleValueSource.newForTable(AssistantPendingAction.TABLE_NAME),
+         QPossibleValueSource.newForTable(AssistantProfile.TABLE_NAME),
+         QPossibleValueSource.newForTable(AssistantSkill.TABLE_NAME),
+         enumSource(OBJECT_TYPE_PVS_NAME, List.of(new QPossibleValue<>(AssistantDataAccess.TYPE_TABLE, "Table"), new QPossibleValue<>(AssistantDataAccess.TYPE_PROCESS, "Process"))),
+         enumSource(DATA_ACCESS_MODE_PVS_NAME, List.of(
+            new QPossibleValue<>(DataAccessMode.NONE.name(), DataAccessMode.NONE.getLabel()),
+            new QPossibleValue<>(DataAccessMode.READ.name(), DataAccessMode.READ.getLabel()),
+            new QPossibleValue<>(DataAccessMode.READ_WRITE.name(), DataAccessMode.READ_WRITE.getLabel())))));
+   }
+
+
+
+   /*******************************************************************************
+    ** An enum possible-value source shown by label.
+    *******************************************************************************/
+   private static QPossibleValueSource enumSource(String name, List<QPossibleValue<?>> values)
+   {
+      return (new QPossibleValueSource().withName(name).withType(QPossibleValueSourceType.ENUM)
+         .withValueFormatAndFields(PVSValueFormatAndFields.LABEL_ONLY).withEnumValues(values));
    }
 
 
@@ -139,6 +167,11 @@ public final class AssistantRecordScreens
          case AssistantProvider.TABLE_NAME -> provider(table);
          case AssistantModelPrice.TABLE_NAME -> price(table);
          case AssistantUsage.TABLE_NAME -> usage(table);
+         case AssistantDataAccess.TABLE_NAME -> dataAccess(table);
+         case AssistantProfile.TABLE_NAME -> profile(table);
+         case AssistantSkill.TABLE_NAME -> skill(table);
+         case AssistantProfileSkill.TABLE_NAME -> profileSkill(table);
+         case AssistantPendingAction.TABLE_NAME -> pendingAction(table);
          default ->
          {
             // not an assistant table
@@ -162,9 +195,24 @@ public final class AssistantRecordScreens
 
       childList(qInstance, conversation, AssistantMessage.TABLE_NAME, "Messages", "chat", List.of("seq", "role", "status", "model", "createDate"));
       childList(qInstance, conversation, AssistantTurn.TABLE_NAME, "Turns", "sync_alt", List.of("status", "model", "toolCallCount", "costMicros", "startedAt"));
-      childList(qInstance, conversation, AssistantToolCall.TABLE_NAME, "Tool Calls", "build", List.of("toolName", "outcome", "rowCount", "durationMs", "createDate"));
+      childList(qInstance, conversation, AssistantToolCall.TABLE_NAME, "Tool Calls", "build", List.of("toolName", "uiApiOperation", "httpStatus", "outcome", "tableName", "rowCount", "createDate"));
+      childList(qInstance, conversation, AssistantPendingAction.TABLE_NAME, "Pending Actions", "pending_actions", List.of("toolName", "tableName", "recordId", "status", "httpStatus", "createDate"));
       childList(qInstance, conversation, AssistantFeedback.TABLE_NAME, "Feedback", "thumbs_up_down", List.of("rating", "reason", "createDate"));
       childList(qInstance, conversation, AssistantUsage.TABLE_NAME, "Model Calls", "receipt_long", USAGE_LIST_FIELDS);
+
+      QTableMetaData profile = qInstance.getTable(AssistantProfile.TABLE_NAME);
+      if(profile != null)
+      {
+         childList(qInstance, profile, AssistantProfileSkill.TABLE_NAME, "Skills", "school", List.of("skillId", "createDate"), "profileId", "profile");
+         QJoinMetaData join = qInstance.getJoin(AssistantProfile.TABLE_NAME + "Join" + AssistantProfileSkill.TABLE_NAME.substring(0, 1).toUpperCase() + AssistantProfileSkill.TABLE_NAME.substring(1));
+         if(join != null && qInstance.getWidget(join.getName()) != null && qInstance.getWidget(join.getName()).getDefaultValues() != null)
+         {
+            ///////////////////////////////////////////////////////
+            // admins link skills from the profile's own screen  //
+            ///////////////////////////////////////////////////////
+            qInstance.getWidget(join.getName()).getDefaultValues().put("canAddChildRecord", true);
+         }
+      }
 
       QTableMetaData provider = qInstance.getTable(AssistantProvider.TABLE_NAME);
       if(provider != null)
@@ -372,6 +420,93 @@ public final class AssistantRecordScreens
 
 
    /*******************************************************************************
+    ** Data access: what, the mode, notes.
+    *******************************************************************************/
+   private static void dataAccess(QTableMetaData table)
+   {
+      table.getField("objectType").withLabel("Type").withDefaultValue(AssistantDataAccess.TYPE_TABLE);
+      table.getField("objectName").withLabel("Table or process name")
+         .withHelpContent(new QHelpContent("The table or process name, e.g. blog_post. Tables without a row use the default: NONE for sensitive tables, READ for the others. Processes default to NONE."));
+      table.getField("mode").withLabel("Assistant access").withDefaultValue(DataAccessMode.READ.name())
+         .withHelpContent(new QHelpContent("NONE: the assistant never sees it. READ: the read tools may use it. READ and write: the create, update and delete tools may too. The assistant always acts with the user's own permissions and record locks; this can only narrow them. A sensitive table (AI exposure NONE) stays NONE."));
+      sections(table,
+         section("access", "Data Access", "admin_panel_settings", Tier.T1, "id", "objectType", "objectName", "mode"),
+         section("notes", "Notes", "notes", Tier.T2, "notes"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Profile: how the assistant presents itself, and where it applies.
+    *******************************************************************************/
+   private static void profile(QTableMetaData table)
+   {
+      help(table, "name", "An internal name for this profile.");
+      help(table, "displayName", "The assistant's name in the panel header and its messages, e.g. Ada.");
+      help(table, "icon", "A Material icon name for the panel, e.g. auto_awesome, support_agent, school.");
+      help(table, "personality", "Tone and style instructions, at most " + ProfileService.MAX_PERSONALITY_CHARS + " characters, e.g. \"Friendly and brief. Use the user's first name.\" Added to the assistant's instructions; it never changes its rules, tools or what the user may do.");
+      help(table, "greeting", "Shown when a new conversation opens.");
+      help(table, "starterPrompts", "Suggested first questions, one per line (at most " + ProfileService.MAX_STARTER_PROMPTS + ").");
+      help(table, "isDefault", "The profile used when no app- or permission-scoped profile applies. Marking one unmarks the others.");
+      help(table, "appName", "Optional: use this profile only inside this app (its name, e.g. cms).");
+      help(table, "permissionName", "Optional: use this profile only for users who hold this permission (a role).");
+      sections(table,
+         section("profile", "Profile", "face", Tier.T1, "id", "name", "displayName", "icon", "enabled", "isDefault"),
+         section("voice", "Personality", "record_voice_over", Tier.T2, "personality", "greeting", "starterPrompts"),
+         section("scope", "Where it applies", "filter_alt", Tier.T2, "appName", "permissionName"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Skill: an instruction pack, and when it is relevant.
+    *******************************************************************************/
+   private static void skill(QTableMetaData table)
+   {
+      help(table, "name", "A short name, e.g. blog-style-guide.");
+      help(table, "description", "What the skill is for (admins only; the assistant reads the instructions).");
+      help(table, "instructions", "Markdown instructions, at most " + ProfileService.MAX_SKILL_CHARS + " characters. Instructions only: a skill never grants tools, endpoints, data access or permissions.");
+      help(table, "triggerKeywords", "Comma-separated words; the skill is read when one appears in the question. With no keywords and no apps it is always read.");
+      help(table, "appNames", "Comma-separated app names; the skill is read while the user is in one of them.");
+      sections(table,
+         section("skill", "Skill", "school", Tier.T1, "id", "name", "description", "enabled"),
+         section("instructions", "Instructions", "description", Tier.T2, "instructions"),
+         section("relevance", "When it is used", "filter_alt", Tier.T2, "triggerKeywords", "appNames"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Profile skill link.
+    *******************************************************************************/
+   private static void profileSkill(QTableMetaData table)
+   {
+      link(table, "profileId", AssistantProfile.TABLE_NAME, "Profile");
+      link(table, "skillId", AssistantSkill.TABLE_NAME, "Skill");
+      sections(table, section("link", "Profile Skill", "link", Tier.T1, "id", "profileId", "skillId"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Pending action: the proposed write, its decision and result.
+    *******************************************************************************/
+   private static void pendingAction(QTableMetaData table)
+   {
+      json(table, "paramsJson");
+      link(table, "turnId", AssistantTurn.TABLE_NAME, "Turn");
+      table.getField("paramsJson").withLabel("Values");
+      table.getField("uiApiOperation").withLabel("UI API operation");
+      table.getField("httpStatus").withLabel("HTTP status");
+      sections(table,
+         section("action", "Pending Action", "pending_actions", Tier.T1, "id", "summary", "status", "toolName", "tableName", "recordId", "userId", "conversationId", "turnId"),
+         section("decision", "Decision and result", "fact_check", Tier.T2, "expiresAt", "decidedAt", "uiApiOperation", "httpStatus", "resultSummary"),
+         section("payload", "Values", "data_object", Tier.T3, "paramsJson", "toolCallId"));
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    private static void toolCall(QTableMetaData table)
@@ -384,10 +519,14 @@ public final class AssistantRecordScreens
       table.getField("inputJson").withLabel("Input");
       table.getField("resultJson").withLabel("Result");
       table.getField("redactionsJson").withLabel("Redactions");
+      table.getField("uiApiOperation").withLabel("UI API operation");
+      table.getField("httpStatus").withLabel("HTTP status");
+      table.getField("auditHref").withLabel("Audit");
+      link(table, "pendingActionId", AssistantPendingAction.TABLE_NAME, "Pending action");
       sections(table,
          section("call", "Tool Call", "build", Tier.T1, "id", "toolName", "outcome", "conversationId", "turnId", "toolCallId", "userId"),
-         section("target", "Target and permission", "policy", Tier.T2, "tableName", "processName", "widgetName", "permissionCheck"),
-         section("result", "Result", "fact_check", Tier.T2, "resultSummary", "rowCount", "durationMs"),
+         section("target", "Target and permission", "policy", Tier.T2, "tableName", "processName", "widgetName", "uiApiOperation", "httpStatus", "permissionCheck"),
+         section("result", "Result", "fact_check", Tier.T2, "resultSummary", "rowCount", "durationMs", "pendingActionId", "auditHref"),
          section("payloads", "Payloads", "data_object", Tier.T3, "inputJson", "resultJson", "redactionsJson"));
    }
 
@@ -422,6 +561,10 @@ public final class AssistantRecordScreens
       help(table, "mainModel", "The model id answers come from; empty uses the model configured for the application.");
       help(table, "killSwitch", "On: the assistant takes no new requests from anyone.");
       help(table, "killSwitchReason", "Shown to users while the kill switch is on.");
+      help(table, "writesRequireConfirmation", "On (or empty): every create, update or delete the assistant proposes waits for the user to confirm it in the panel. Off: writes run at once, still with the user's own permissions.");
+      help(table, "allowedTools", "Comma-separated tool names the assistant may use (e.g. list_tables, query_records, count_records). Empty allows every tool.");
+      help(table, "maxRowsPerCall", "Most rows one tool call returns to the model. Empty: 50; at most 200.");
+      help(table, "redactPii", "On (or empty): API keys, tokens, private keys, card numbers and social security numbers are redacted from tool results before the model sees them.");
       for(String scope : List.of("userDaily", "instanceMonthly"))
       {
          String who = scope.equals("userDaily") ? "one user in a day" : "the whole instance in a month";
@@ -435,6 +578,7 @@ public final class AssistantRecordScreens
       sections(table,
          section("policy", "Policy", "policy", Tier.T1, "id", "name", "killSwitch", "killSwitchReason"),
          section("model", "Model", "smart_toy", Tier.T2, "mainModel", "mainEffort"),
+         section("tools", "Tools and data", "build", Tier.T2, "writesRequireConfirmation", "allowedTools", "maxRowsPerCall", "redactPii"),
          section("userDaily", "Per user, per day", "person", Tier.T2, "userDailyTokensSoft", "userDailyTokensHard", "userDailyCostMicrosSoft", "userDailyCostMicrosHard"),
          section("instanceMonthly", "Whole instance, per month", "domain", Tier.T2, "instanceMonthlyTokensSoft", "instanceMonthlyTokensHard", "instanceMonthlyCostMicrosSoft", "instanceMonthlyCostMicrosHard"));
    }

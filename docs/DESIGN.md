@@ -104,3 +104,134 @@ The nav is the home plus the main tables: Providers, Conversations, Model prices
 - logged at WARN;
 - recorded as the `assistant_usage` request id;
 - shown to `assistant.admin` holders, in the panel's error and in Test connection.
+
+## Owner decisions (2026-10-13)
+
+Owner: *"the agent should have to go through the same API that the UIUX does. that way it is held to the same security boundaries etc"*, plus the ability to configure the assistant and verify its security and data access.
+
+1. **Tools via the UI API.** Every tool that reads or writes data, or runs a process, report or widget, runs a spec'd `/qqq/v1` operation with the calling user's own session. That means the UI's authentication, permission checks, record locks, validation, audit and error mapping. There are no direct core data actions and no elevated sessions.
+2. **Data access is configured and verifiable in the UI.**
+   - Each table and process has an AI data access setting: NONE, READ or READ_WRITE. Sensitive tables default to NONE.
+   - Admins can see what the assistant could do for a given user, and why.
+3. **Writes need confirmation.** A write tool only *proposes* the change, as a pending action card. Nothing changes until the user confirms in the panel, unless the policy turns confirmation off.
+4. **Persona and skills, never more access** (owner, 2026-10-13): *"in the config for the AI settings, we should be able to set a name and personality and extra skills etc for the agent - and again - the agent should be limited to only using our UIUX API and being able to only do the things that the currently logged in user could do with the same UIUX API via the UIUX"*.
+   - **Profiles** (`assistant_profile`, admin-edited): display name, icon, personality (tone instructions, at most 2,000 characters), greeting and up to 6 starter prompts.
+     - One profile is the default. Others are scoped to an app, to users holding a permission (a role), or to both. The most specific profile wins.
+     - `/assistant/config` returns the profile for the panel header, the greeting and the starter prompts.
+   - **Skills** (`assistant_skill`, linked to profiles through `assistant_profile_skill`): named Markdown instruction packs of at most 6,000 characters, with a description, an enabled flag, trigger keywords and apps.
+     - A skill is read only when relevant: a keyword appears in the question, the user is in one of its apps, or it has neither, in which case it is always read.
+     - All skills read for one question total at most 12,000 characters.
+   - Profile and skill text goes into the per-user system block, framed as "tone and know-how only". The rules come first, and rule 10 says these can never override the rules or give other tools, data or permissions.
+   - **Hard guarantee:**
+     - Every data, process, report or widget capability is a `/qqq/v1` operation, called through the gateway (core `UiApiInvoker` once it is released) with the CURRENT user's session.
+     - The tool list is the spec'd operations ∩ data access ∩ policy. Profiles and skills are never read when tools are built or run.
+     - It is enforced by ArchUnit: the tool, UI API and access code may not use QQQ table, process, report, dashboard or async actions, the core AI kernel, or the profile and skill classes. It is also enforced by a runtime guard: `AssistantStore` refuses any table that is not `assistant_*`.
+     - `UiApiToolsSecurityTest.testDenialMatrix` checks that a user without permission gets the identical status and message from the UI API and through the assistant for query, get, insert, update and delete. The assistant has no process or report tool, and process data access defaults to NONE.
+5. All other open questions in this section were decided as recommended (shared rule: "all recommendations accepted").
+
+## Tools through the UI API (0.1.0-RC.6)
+
+### Transport: loopback HTTP with the user's session
+
+`UiApiGateway.invoke(UiApiCall)` makes an HTTP request to this server's own `/qqq/v1`, carrying the user's `sessionUUID` cookie and `X-QQQ-Invoked-By: assistant`.
+- Only operations defined by `MiddlewareVersionV1`'s endpoint specs can be called. Anything else, including the assistant's own raw routes, is refused before a request is made.
+- A call without a session is also refused.
+
+**Why loopback rather than calling the spec handlers in process.** The spec's `buildInput(Context)`, session setup, the version's `preExecute`, Javalin filters, permission checks and error mapping all hang off the Javalin request pipeline.
+- Calling the executors directly would skip some of these and drift over time.
+- Building a synthetic Javalin `Context` relies on internal API.
+- A request to the server's own port runs the identical pipeline by construction. It costs one local hop, which is milliseconds next to a model call.
+
+This matches core's design (`docs/UI-API-EXTENSIONS.md` §5, `UiApiInvoker`, QRun-IO/qqq#1128).
+- `LoopbackUiApiGateway` is the stand-in until a QQQ release has the invoker. Then an adapter over `UiApiInvoker.forServer(server)` replaces it (or a host injects one with `withUiApiGateway`), and nothing else changes.
+- The base URL is `uiApiBaseUrl` if configured. Otherwise it is `127.0.0.1` plus the local port the first assistant request arrived on, so in a multi-replica deployment the call stays on the replica that holds the session's process state.
+
+### The tools
+
+| tool | `/qqq/v1` operation |
+|---|---|
+| `list_tables` | `GET /metaData` (tables with the user's read/insert/edit/delete flags) |
+| `describe_table` | `GET /metaData/table/{tableName}` |
+| `query_records` | `POST /table/{tableName}/query` (plus `.../count` when there are more rows) |
+| `count_records` | `POST /table/{tableName}/count` |
+| `get_record` | `GET /table/{tableName}/{primaryKey}` |
+| `search_records` | `POST /search` |
+| `render_widget` | `POST /widget/{widgetName}` |
+| `get_record_history` | `GET /table/{tableName}/{primaryKey}`, then `POST /table/{tableName}/query` on `audit_table`, `audit` and `audit_detail` |
+| `create_record` / `update_record` / `delete_record` | `POST /table/{tableName}` / `PATCH /table/{tableName}/{primaryKey}` / `DELETE /table/{tableName}/{primaryKey}` |
+
+`navigate` and `search_help` stay on the core kernel because they read no records:
+- `navigate` only builds an `/app` link, and the page enforces permissions when it opens.
+- `search_help` reads help text from metadata.
+
+Running processes and reports through the assistant (`/processes/...`, `/reports/...`) is not offered yet. Process data access rows are stored so that the screens can already show and set them.
+
+### Layers (each one can only narrow the one before)
+
+1. **The user's own permissions and record locks**, enforced by the UI API itself. A user who cannot do something in the UI gets the identical status and message through the assistant: the tool result is `DENIED`/`NOT_FOUND`/`INVALID_INPUT` with `"<operation> answered HTTP <status>: <message>"`.
+2. **Data access** (`assistant_data_access`, editable by `assistant.admin`). A row sets NONE, READ or READ_WRITE per table (`TABLE`) or process (`PROCESS`). Without a row:
+   - tables whose AI exposure is NONE (the `assistant_*` tables, sessions, OAuth, and any table whose metadata says so) are NONE, and a row cannot raise them;
+   - other tables are READ, so the assistant never writes unless an admin allows it;
+   - processes are NONE.
+   The write tools are offered only when some table is READ_WRITE.
+3. **Policy** (`assistant_policy`):
+   - `writesRequireConfirmation` (default true);
+   - `allowedTools` (empty allows all);
+   - `maxRowsPerCall` (default 50, ceiling 200);
+   - `redactPii` (default true: secrets, card numbers and SSNs are redacted, with the core `AiRedactor`).
+4. **AI field exposure** from table metadata:
+   - NONE and METADATA_ONLY values never reach the model;
+   - MASKED values are masked;
+   - only VALUES fields can be filtered or sorted on.
+
+### Writes and confirmation
+
+With confirmation on, a write tool validates the table's data access and the fields. It then inserts an `assistant_pending_action` row (owner-locked, `PENDING`, expiring after `pendingActionTtlSeconds`, default 15 minutes) and returns a `pending_action` render, which the panel shows as a card. The model is told the change is not done.
+- `POST /qqq/v1/assistant/actions/{id}/confirm` claims the action (`RUNNING`, so a double click cannot run it twice). It then runs the stored operation through the UI API **with the confirming request's session** and records the outcome as `EXECUTED` or `FAILED`.
+- `POST /qqq/v1/assistant/actions/{id}/reject` runs nothing.
+- `GET /qqq/v1/assistant/actions/{id}` reads the action's state.
+- Only the user who proposed an action can see or decide it.
+
+### Tool-call log
+
+Each `assistant_tool_call` row records:
+- the user and the tool;
+- the parameters, with secrets redacted;
+- the UI API operation and the HTTP status the UI would have seen;
+- the rows touched and the outcome;
+- the pending action, if there is one;
+- an in-app link to the written record, whose page shows its audit entries.
+
+A confirmed write adds its own row. The rows are a child list on conversations, and pending actions are another one.
+
+### Tests
+
+`UiApiToolsSecurityTest` runs the fixture app on a real QQQ application server. For each case it makes the UI's own request (a direct `/qqq/v1` call with the user's cookie) next to the assistant's tool call:
+- read denied: the same 403 and message;
+- write denied without the insert permission, even with READ_WRITE and no confirmation;
+- data access only narrows: NONE, READ, and sensitive tables that cannot be raised;
+- a confirmed write runs once, through the UI API, and is logged;
+- only the owner can decide an action;
+- only spec'd operations can be called, and never without a session;
+- the policy narrows the tools and caps rows.
+
+The golden and red-team evals now run through the UI API too.
+
+## Explain access and recent denials (0.1.0-RC.6)
+
+- **Explain access:**
+  - `GET /qqq/v1/assistant/access?table=&prompt=` returns, for the calling user and each table (or only the named table, or only the tables a prompt mentions):
+    - the user's UI permissions, from `GET /qqq/v1/metaData` with their own session;
+    - the assistant's data access and where it comes from (setting, default, or sensitive table);
+    - each tool's operation, with allowed or the reason it would be denied (policy, data access, not visible in the UI, or no read/insert/edit/delete permission).
+  - The `assistantAccess` widget on the Assistant home renders the same thing for the viewing admin.
+  - Choosing *another* user would need that user's permissions without their session. QQQ core has no API to evaluate another user's permissions, and the assistant never builds or borrows a session. That part waits for a core API, so the report is always computed with the requester's own session.
+- **Recent denials:** the home's "Recent denials" card lists the newest tool calls the UI API, data access or the policy refused, with who, the table, the operation and the HTTP status, or the assistant setting that refused it.
+
+## Next phases
+
+- **(c) Data access screens:**
+  - the Data Access table, in the nav;
+  - an "Explain access" action (for a user, and a table or a prompt, which operations the assistant could call and which it would be denied, with the reason);
+  - a recent-denials widget on the app home.
+- **(d) Spec'd assistant endpoints:** move `/qqq/v1/assistant/...` (conversations, turns, events, feedback, cancel, config, actions) onto `AbstractEndpointSpec`s through the qbit spec extension point (`MiddlewareSpecExtension`, established prefix `/assistant`, QRun-IO/qqq#1128). The SSE turn and events streams stay raw routes until the spec layer can describe a stream.

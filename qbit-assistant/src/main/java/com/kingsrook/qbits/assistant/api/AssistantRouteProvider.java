@@ -105,6 +105,26 @@ public class AssistantRouteProvider implements QJavalinRouteProviderInterface
    @Override
    public void acceptJavalinConfig(JavalinConfig config)
    {
+      ///////////////////////////////////////////////////////////////////////
+      // learn this server's local port from the first UI request (e.g.   //
+      // the metaData load), so tools and Explain access can loop back to //
+      // /qqq/v1 before any assistant route has been called               //
+      ///////////////////////////////////////////////////////////////////////
+      config.routes.before("/qqq/v1/*", ctx ->
+      {
+         AssistantRuntime runtime = AssistantRuntime.of(qInstance);
+         if(runtime != null && runtime.uiApiBaseUrl() == null)
+         {
+            try
+            {
+               runtime.learnLocalPort(ctx.req().getLocalPort());
+            }
+            catch(RuntimeException e)
+            {
+               LOG.debug("Could not read the local port", e);
+            }
+         }
+      });
       config.routes.get(BASE_PATH + "/config", ctx -> json(ctx, false, (api, body) -> api.config()));
       config.routes.get(BASE_PATH + "/conversations", ctx -> json(ctx, false, (api, body) -> api.listConversations(ctx.queryParam("status"))));
       config.routes.post(BASE_PATH + "/conversations", ctx -> json(ctx, true, (api, body) ->
@@ -127,6 +147,10 @@ public class AssistantRouteProvider implements QJavalinRouteProviderInterface
          ctx.status(202);
          return (api.cancelTurn(pathInt(ctx, "turnId")));
       }));
+      config.routes.get(BASE_PATH + "/access", ctx -> json(ctx, false, (api, body) -> api.access(ctx.queryParam("table"), ctx.queryParam("prompt"))));
+      config.routes.get(BASE_PATH + "/actions/{id}", ctx -> json(ctx, false, (api, body) -> api.getAction(pathInt(ctx, "id"))));
+      config.routes.post(BASE_PATH + "/actions/{id}/confirm", ctx -> json(ctx, true, (api, body) -> api.confirmAction(pathInt(ctx, "id"))));
+      config.routes.post(BASE_PATH + "/actions/{id}/reject", ctx -> json(ctx, true, (api, body) -> api.rejectAction(pathInt(ctx, "id"))));
       config.routes.post(BASE_PATH + "/messages/{id}/feedback", ctx -> json(ctx, true, (api, body) ->
       {
          api.feedback(pathInt(ctx, "id"), body);
@@ -382,6 +406,17 @@ public class AssistantRouteProvider implements QJavalinRouteProviderInterface
       if(runtime == null)
       {
          throw (new AssistantApiException(404, "The assistant is not installed."));
+      }
+      ////////////////////////////////////////////////////////////////////
+      // the tools call /qqq/v1 on this server: remember its local port //
+      ////////////////////////////////////////////////////////////////////
+      try
+      {
+         runtime.learnLocalPort(context.req().getLocalPort());
+      }
+      catch(RuntimeException e)
+      {
+         LOG.debug("Could not read the local port", e);
       }
       QSession session = ExecutorSessionUtils.setupSession(context, qInstance);
       return (new AssistantApi(runtime, session));

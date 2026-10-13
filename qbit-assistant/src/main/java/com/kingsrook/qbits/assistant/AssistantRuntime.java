@@ -19,20 +19,29 @@ package com.kingsrook.qbits.assistant;
 
 import java.time.Clock;
 import java.util.Map;
-import java.util.regex.Pattern;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.regex.Pattern;
+import com.kingsrook.qbits.assistant.access.AccessExplainer;
+import com.kingsrook.qbits.assistant.access.DataAccessService;
 import com.kingsrook.qbits.assistant.engine.ContextBuilder;
 import com.kingsrook.qbits.assistant.engine.PolicyService;
+import com.kingsrook.qbits.assistant.engine.ProfileService;
 import com.kingsrook.qbits.assistant.engine.ProviderService;
 import com.kingsrook.qbits.assistant.engine.RateLimiter;
 import com.kingsrook.qbits.assistant.engine.RunningTurn;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
+import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
+import com.kingsrook.qbits.assistant.uiapi.LoopbackUiApiGateway;
+import com.kingsrook.qbits.assistant.uiapi.UiApiGateway;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolKernel;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolKernelSettings;
+import com.kingsrook.qqq.backend.core.actions.ai.exposure.AiExposurePolicy;
+import com.kingsrook.qqq.backend.core.actions.ai.output.AiRedactor;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitMetaData;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 
 
 /*******************************************************************************
@@ -51,6 +60,12 @@ public class AssistantRuntime
    private final RateLimiter                      rateLimiter;
    private final AiToolKernel                     kernel;
    private final ContextBuilder                   contextBuilder;
+   private final DataAccessService                dataAccessService;
+   private final ProfileService                   profileService;
+   private final AccessExplainer                  accessExplainer;
+   private final UiApiToolbox                     toolbox;
+   private final UiApiGateway                     uiApiGateway;
+   private volatile String                        localBaseUrl;
    private final ExecutorService                  executor     = Executors.newVirtualThreadPerTaskExecutor();
    private final Map<Integer, RunningTurn>        runningTurns = new ConcurrentHashMap<>();
 
@@ -78,8 +93,114 @@ public class AssistantRuntime
       this.policyService = new PolicyService(config, store, clock);
       this.providerService = new ProviderService(config, store, clock);
       this.rateLimiter = new RateLimiter(clock);
-      this.kernel = new AiToolKernel(qInstance, kernelSettings(config));
-      this.contextBuilder = new ContextBuilder(config, kernel);
+      AiToolKernelSettings settings = kernelSettings(config);
+      this.kernel = new AiToolKernel(qInstance, settings);
+      AiExposurePolicy exposurePolicy = new AiExposurePolicy(settings);
+      this.dataAccessService = new DataAccessService(qInstance, config, store, exposurePolicy, clock);
+      this.profileService = new ProfileService(config, store, clock);
+      this.accessExplainer = new AccessExplainer(qInstance, dataAccessService);
+      this.toolbox = new UiApiToolbox(qInstance, dataAccessService, exposurePolicy, new AiRedactor(settings.getCustomRedactionPatterns()),
+         config.getMaxCellChars() == null ? AiToolKernelSettings.DEFAULT_MAX_CELL_CHARS : config.getMaxCellChars());
+      this.uiApiGateway = config.getUiApiGateway() != null ? config.getUiApiGateway() : new LoopbackUiApiGateway(this::uiApiBaseUrl, qInstance);
+      this.contextBuilder = new ContextBuilder(config, kernel, toolbox);
+   }
+
+
+
+   /*******************************************************************************
+    ** The server's own root URL for UI API loopback calls: the configured
+    ** uiApiBaseUrl, else the address the first assistant request arrived on
+    ** (127.0.0.1 and this server's local port).
+    *******************************************************************************/
+   public String uiApiBaseUrl()
+   {
+      return (StringUtils.hasContent(config.getUiApiBaseUrl()) ? config.getUiApiBaseUrl() : localBaseUrl);
+   }
+
+
+
+   /*******************************************************************************
+    ** Remember this server's local port (from a request) for loopback calls.
+    *******************************************************************************/
+   public void learnLocalPort(int port)
+   {
+      if(port > 0 && localBaseUrl == null)
+      {
+         localBaseUrl = "http://127.0.0.1:" + port;
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for dataAccessService
+    *******************************************************************************/
+   public DataAccessService getDataAccessService()
+   {
+      return (dataAccessService);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for accessExplainer
+    *******************************************************************************/
+   public AccessExplainer getAccessExplainer()
+   {
+      return (accessExplainer);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for profileService (personas and skills: text only, never tools)
+    *******************************************************************************/
+   public ProfileService getProfileService()
+   {
+      return (profileService);
+   }
+
+
+
+   /*******************************************************************************
+    ** The app a page context is in: the deepest /app/... route segment that is
+    ** an app of this instance (null when none).
+    *******************************************************************************/
+   public String appNameFor(Map<String, Object> pageContext)
+   {
+      Object route = pageContext == null ? null : pageContext.get("route");
+      String found = null;
+      if(route instanceof String path)
+      {
+         for(String segment : path.split("[/?#]"))
+         {
+            if(StringUtils.hasContent(segment) && qInstance.getApp(segment) != null)
+            {
+               found = segment;
+            }
+         }
+      }
+      return (found);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for toolbox (the UI API data tools)
+    *******************************************************************************/
+   public UiApiToolbox getToolbox()
+   {
+      return (toolbox);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for uiApiGateway
+    *******************************************************************************/
+   public UiApiGateway getUiApiGateway()
+   {
+      return (uiApiGateway);
    }
 
 

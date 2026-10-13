@@ -20,13 +20,19 @@ package com.kingsrook.qbits.assistant.metadata;
 import java.util.ArrayList;
 import java.util.List;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
-import com.kingsrook.qbits.assistant.model.AssistantConversation;
-import com.kingsrook.qbits.assistant.model.AssistantFeedback;
+import com.kingsrook.qbits.assistant.home.AssistantAccessWidget;
 import com.kingsrook.qbits.assistant.home.AssistantHome;
+import com.kingsrook.qbits.assistant.model.AssistantConversation;
+import com.kingsrook.qbits.assistant.model.AssistantDataAccess;
+import com.kingsrook.qbits.assistant.model.AssistantFeedback;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
 import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
+import com.kingsrook.qbits.assistant.model.AssistantPendingAction;
 import com.kingsrook.qbits.assistant.model.AssistantPolicy;
+import com.kingsrook.qbits.assistant.model.AssistantProfile;
+import com.kingsrook.qbits.assistant.model.AssistantProfileSkill;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
+import com.kingsrook.qbits.assistant.model.AssistantSkill;
 import com.kingsrook.qbits.assistant.model.AssistantToolCall;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
 import com.kingsrook.qbits.assistant.model.AssistantTurnEvent;
@@ -97,7 +103,7 @@ public class AssistantMetaDataBuilder
     ** calls on a conversation; model calls on a provider) or reached from the
     ** home. Processes are table and record actions, never nav entries.
     *******************************************************************************/
-   public static final List<String> NAV_TABLES = List.of(AssistantProvider.TABLE_NAME, AssistantConversation.TABLE_NAME, AssistantModelPrice.TABLE_NAME, AssistantPolicy.TABLE_NAME);
+   public static final List<String> NAV_TABLES = List.of(AssistantProvider.TABLE_NAME, AssistantProfile.TABLE_NAME, AssistantSkill.TABLE_NAME, AssistantDataAccess.TABLE_NAME, AssistantConversation.TABLE_NAME, AssistantModelPrice.TABLE_NAME, AssistantPolicy.TABLE_NAME);
 
    private final AssistantQBitConfig config;
 
@@ -180,6 +186,28 @@ public class AssistantMetaDataBuilder
       tables.add(readOnly(owned(base(AssistantUsage.TABLE_NAME, "Assistant Model Call", "receipt_long", AssistantUsage.class), false))
          .withRecordLabelFormat("%s #%s").withRecordLabelFields("purpose", "id"));
 
+      tables.add(dataAccess(base(AssistantDataAccess.TABLE_NAME, "Assistant Data Access", "admin_panel_settings", AssistantDataAccess.class))
+         .withUniqueKey(new UniqueKey("objectType", "objectName"))
+         .withRecordLabelFormat("%s %s").withRecordLabelFields("objectType", "objectName"));
+
+      tables.add(profiles(base(AssistantProfile.TABLE_NAME, "Assistant Profile", "face", AssistantProfile.class))
+         .withUniqueKey(new UniqueKey("name"))
+         .withRecordLabelFormat("%s").withRecordLabelFields("displayName"));
+      text(tables.get(tables.size() - 1), "personality", "starterPrompts");
+
+      tables.add(profiles(base(AssistantSkill.TABLE_NAME, "Assistant Skill", "school", AssistantSkill.class))
+         .withUniqueKey(new UniqueKey("name"))
+         .withRecordLabelFormat("%s").withRecordLabelFields("name"));
+      text(tables.get(tables.size() - 1), "instructions");
+
+      tables.add(profiles(base(AssistantProfileSkill.TABLE_NAME, "Assistant Profile Skill", "link", AssistantProfileSkill.class))
+         .withUniqueKey(new UniqueKey("profileId", "skillId"))
+         .withRecordLabelFormat("%s · %s").withRecordLabelFields("profileId", "skillId"));
+
+      tables.add(readOnly(owned(base(AssistantPendingAction.TABLE_NAME, "Assistant Pending Action", "pending_actions", AssistantPendingAction.class), false))
+         .withRecordLabelFormat("%s #%s").withRecordLabelFields("toolName", "id"));
+      text(tables.get(tables.size() - 1), "paramsJson");
+
       tables.forEach(AssistantRecordScreens::apply);
       return (tables);
    }
@@ -195,6 +223,39 @@ public class AssistantMetaDataBuilder
       QCodeReference customizer = new QCodeReference(AssistantSettingsCustomizer.class);
       return (table
          .withCustomizer(TableCustomizers.POST_QUERY_RECORD, customizer)
+         .withCustomizer(TableCustomizers.PRE_INSERT_RECORD, customizer)
+         .withCustomizer(TableCustomizers.PRE_UPDATE_RECORD, customizer)
+         .withCustomizer(TableCustomizers.POST_INSERT_RECORD, customizer)
+         .withCustomizer(TableCustomizers.POST_UPDATE_RECORD, customizer)
+         .withCustomizer(TableCustomizers.POST_DELETE_RECORD, customizer));
+   }
+
+
+
+   /*******************************************************************************
+    ** Profile, skill and link tables: checked before a save; a change drops the
+    ** runtime's cached profiles.
+    *******************************************************************************/
+   private static QTableMetaData profiles(QTableMetaData table)
+   {
+      QCodeReference customizer = new QCodeReference(AssistantProfileCustomizer.class);
+      return (table
+         .withCustomizer(TableCustomizers.PRE_INSERT_RECORD, customizer)
+         .withCustomizer(TableCustomizers.PRE_UPDATE_RECORD, customizer)
+         .withCustomizer(TableCustomizers.POST_INSERT_RECORD, customizer)
+         .withCustomizer(TableCustomizers.POST_UPDATE_RECORD, customizer)
+         .withCustomizer(TableCustomizers.POST_DELETE_RECORD, customizer));
+   }
+
+
+
+   /*******************************************************************************
+    ** The data access table: a change drops the runtime's cached modes.
+    *******************************************************************************/
+   private static QTableMetaData dataAccess(QTableMetaData table)
+   {
+      QCodeReference customizer = new QCodeReference(AssistantDataAccessCustomizer.class);
+      return (table
          .withCustomizer(TableCustomizers.PRE_INSERT_RECORD, customizer)
          .withCustomizer(TableCustomizers.PRE_UPDATE_RECORD, customizer)
          .withCustomizer(TableCustomizers.POST_INSERT_RECORD, customizer)
@@ -251,7 +312,7 @@ public class AssistantMetaDataBuilder
          .withLabel("Assistant")
          .withIcon(new QIcon("smart_toy"))
          .withPermissionRules(adminRules())
-         .withWidgets(List.of(AssistantHome.WIDGET_NAME));
+         .withWidgets(List.of(AssistantHome.WIDGET_NAME, AssistantAccessWidget.WIDGET_NAME));
       for(String name : NAV_TABLES)
       {
          tables.stream().filter(t -> t.getName().equals(name)).findFirst().ifPresent(app::withChild);

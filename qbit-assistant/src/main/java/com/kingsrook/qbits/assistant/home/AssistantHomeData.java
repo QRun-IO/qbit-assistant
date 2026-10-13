@@ -63,6 +63,7 @@ public class AssistantHomeData
    private final List<ToolTotals>         byTool        = new ArrayList<>();
    private final List<QRecord>            failedCalls   = new ArrayList<>();
    private final List<QRecord>            failedTools   = new ArrayList<>();
+   private final List<QRecord>            deniedTools   = new ArrayList<>();
 
    private LocalDate today;
    private long      monthCostMicros;
@@ -250,6 +251,10 @@ public class AssistantHomeData
          if(TOOL_FAILURES.contains(row.getValueString("outcome")))
          {
             totals.failures++;
+            if("DENIED".equals(row.getValueString("outcome")) && data.deniedTools.size() < RECENT)
+            {
+               data.deniedTools.add(row);
+            }
             if(data.failedTools.size() < RECENT)
             {
                data.failedTools.add(row);
@@ -386,6 +391,17 @@ public class AssistantHomeData
    public List<QRecord> getFailedCalls()
    {
       return (failedCalls);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for deniedTools: the newest tool calls the UI API, data access or
+    ** the policy refused
+    *******************************************************************************/
+   public List<QRecord> getDeniedTools()
+   {
+      return (deniedTools);
    }
 
 

@@ -98,6 +98,10 @@ CREATE TABLE assistant_tool_call
    result_summary VARCHAR(500),
    result_json TEXT,
    redactions_json TEXT,
+   ui_api_operation VARCHAR(255),
+   http_status INTEGER,
+   audit_href VARCHAR(500),
+   pending_action_id INTEGER,
    create_date TIMESTAMP WITH TIME ZONE
 );
 CREATE INDEX assistant_tool_call_user_id ON assistant_tool_call (user_id);
@@ -134,6 +138,10 @@ CREATE TABLE assistant_policy
    instance_monthly_tokens_hard BIGINT,
    instance_monthly_cost_micros_soft BIGINT,
    instance_monthly_cost_micros_hard BIGINT,
+   writes_require_confirmation BOOLEAN,
+   allowed_tools VARCHAR(1000),
+   max_rows_per_call INTEGER,
+   redact_pii BOOLEAN,
    create_date TIMESTAMP WITH TIME ZONE,
    modify_date TIMESTAMP WITH TIME ZONE
 );
@@ -239,3 +247,83 @@ VALUES
    ('anthropic', 'claude-opus-4-8', 5.00, 25.00, 0.50, 6.25, 10.00, 'Anthropic list price, 2026-10', NOW(), NOW()),
    ('anthropic', 'claude-sonnet-4-6', 3.00, 15.00, 0.30, 3.75, 6.00, 'Anthropic list price, 2026-10', NOW(), NOW()),
    ('anthropic', 'claude-haiku-4-5', 1.00, 5.00, 0.10, 1.25, 2.00, 'Anthropic list price, 2026-10', NOW(), NOW());
+
+-- 0.1.0-RC.6: the assistant's data access per table / process, and writes waiting
+-- for the user's confirmation. Existing databases: add the tool-call and policy
+-- columns above with ALTER TABLE ... ADD COLUMN IF NOT EXISTS.
+CREATE TABLE assistant_data_access
+(
+   id SERIAL PRIMARY KEY,
+   object_type VARCHAR(16) NOT NULL,
+   object_name VARCHAR(128) NOT NULL,
+   mode VARCHAR(16) NOT NULL,
+   notes VARCHAR(500),
+   create_date TIMESTAMP WITH TIME ZONE,
+   modify_date TIMESTAMP WITH TIME ZONE,
+   CONSTRAINT assistant_data_access_object UNIQUE (object_type, object_name)
+);
+
+CREATE TABLE assistant_pending_action
+(
+   id SERIAL PRIMARY KEY,
+   conversation_id INTEGER,
+   turn_id INTEGER,
+   user_id VARCHAR(255),
+   tool_call_id VARCHAR(128),
+   tool_name VARCHAR(64),
+   ui_api_operation VARCHAR(255),
+   table_name VARCHAR(128),
+   record_id VARCHAR(128),
+   params_json TEXT,
+   summary VARCHAR(500),
+   status VARCHAR(16),
+   http_status INTEGER,
+   result_summary VARCHAR(500),
+   expires_at TIMESTAMP WITH TIME ZONE,
+   decided_at TIMESTAMP WITH TIME ZONE,
+   create_date TIMESTAMP WITH TIME ZONE,
+   modify_date TIMESTAMP WITH TIME ZONE
+);
+CREATE INDEX assistant_pending_action_user_id ON assistant_pending_action (user_id);
+CREATE INDEX assistant_pending_action_conversation_id ON assistant_pending_action (conversation_id);
+
+-- 0.1.0-RC.6: profiles (persona) and skills. Text the model reads; never tools or access.
+CREATE TABLE assistant_profile
+(
+   id SERIAL PRIMARY KEY,
+   name VARCHAR(64) NOT NULL UNIQUE,
+   display_name VARCHAR(64) NOT NULL,
+   icon VARCHAR(64),
+   personality TEXT,
+   greeting VARCHAR(500),
+   starter_prompts TEXT,
+   is_default BOOLEAN,
+   enabled BOOLEAN,
+   app_name VARCHAR(128),
+   permission_name VARCHAR(128),
+   create_date TIMESTAMP WITH TIME ZONE,
+   modify_date TIMESTAMP WITH TIME ZONE
+);
+
+CREATE TABLE assistant_skill
+(
+   id SERIAL PRIMARY KEY,
+   name VARCHAR(64) NOT NULL UNIQUE,
+   description VARCHAR(500),
+   instructions TEXT NOT NULL,
+   enabled BOOLEAN,
+   trigger_keywords VARCHAR(500),
+   app_names VARCHAR(500),
+   create_date TIMESTAMP WITH TIME ZONE,
+   modify_date TIMESTAMP WITH TIME ZONE
+);
+
+CREATE TABLE assistant_profile_skill
+(
+   id SERIAL PRIMARY KEY,
+   profile_id INTEGER NOT NULL,
+   skill_id INTEGER NOT NULL,
+   create_date TIMESTAMP WITH TIME ZONE,
+   modify_date TIMESTAMP WITH TIME ZONE,
+   CONSTRAINT assistant_profile_skill_pair UNIQUE (profile_id, skill_id)
+);
