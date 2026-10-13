@@ -1,5 +1,19 @@
 # Upgrading qbit-assistant
 
+## 0.1.0-RC.3 to 0.1.0-RC.4: provider settings, prices, per-call usage, app home
+
+Three new tables. Create them before you deploy (see `docs/schema-postgres.sql`, which also seeds the Anthropic prices):
+- `assistant_provider` (with the `api_key_status` column: it is filled on read and never written, but the backend selects it)
+- `assistant_model_price`
+- `assistant_usage`
+
+Then, to keep answering exactly as before:
+1. Register the provider type: `config.withProviderType(new AnthropicProviderType())`. Keep `withModelProvider(AnthropicModelProvider.fromEnvironment())` as the fallback.
+2. Add one provider row (or seed it in your migration): type `anthropic`, model = your current main model, enabled, default, `apiKeyEnvName` = `ANTHROPIC_API_KEY` (or leave it empty for the default). No key value is ever written.
+3. Run **Test connection** on it.
+
+Until a row exists, the provider registered in code answers, as in RC.3. Other changes: the app label is **Assistant**; the nav no longer lists the retention process (it is a table action on conversations) or the audit tables (they are child lists). Grants on `assistant.admin` cover everything new.
+
 ## 0.1.0-RC.1 to 0.1.0-RC.3: snake_case names
 
 The rename shipped in 0.1.0-RC.3. 0.1.0-RC.2 on Maven Central is an accidental republish of the RC.1 code (see CHANGELOG.md), so upgrading from RC.2 is the same as upgrading from RC.1.

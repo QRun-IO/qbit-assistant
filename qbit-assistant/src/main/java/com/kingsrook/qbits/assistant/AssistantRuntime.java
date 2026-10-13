@@ -25,6 +25,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import com.kingsrook.qbits.assistant.engine.ContextBuilder;
 import com.kingsrook.qbits.assistant.engine.PolicyService;
+import com.kingsrook.qbits.assistant.engine.ProviderService;
 import com.kingsrook.qbits.assistant.engine.RateLimiter;
 import com.kingsrook.qbits.assistant.engine.RunningTurn;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
@@ -46,6 +47,7 @@ public class AssistantRuntime
    private final Clock                            clock;
    private final AssistantStore                   store;
    private final PolicyService                    policyService;
+   private final ProviderService                  providerService;
    private final RateLimiter                      rateLimiter;
    private final AiToolKernel                     kernel;
    private final ContextBuilder                   contextBuilder;
@@ -74,6 +76,7 @@ public class AssistantRuntime
       this.clock = clock;
       this.store = new AssistantStore();
       this.policyService = new PolicyService(config, store, clock);
+      this.providerService = new ProviderService(config, store, clock);
       this.rateLimiter = new RateLimiter(clock);
       this.kernel = new AiToolKernel(qInstance, kernelSettings(config));
       this.contextBuilder = new ContextBuilder(config, kernel);
@@ -269,6 +272,16 @@ public class AssistantRuntime
    public ExecutorService getExecutor()
    {
       return (executor);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for providerService
+    *******************************************************************************/
+   public ProviderService getProviderService()
+   {
+      return (providerService);
    }
 
 }

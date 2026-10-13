@@ -31,14 +31,16 @@ Always use the wrapper: Maven 3.10 cannot read the parent POM. The committed def
 
 - `qbit-assistant` (`com.kingsrook.qbits.assistant`):
   - `AssistantQBitProducer`, `AssistantQBitConfig` (with `AssistantModelRouting` and `AssistantBudgets`), `AssistantRuntime`, `AssistantSecurity`.
-  - `metadata/`: tables, owner key type, the Assistant Admin app, the retention process, and the `assistant.admin` custom permission checker.
+  - `metadata/`: tables, owner key type, the Assistant app (home + main tables in the nav), the retention process, the settings customizer (key-reference checks, masked key status), and the `assistant.admin` custom permission checker.
+  - `home/`: the app home widget (`AssistantHomeData` loads, `AssistantHomeView` renders flow-layout HTML).
   - `model/`: entities for the `assistant*` tables.
   - `persistence/AssistantStore`: the **only** code that calls QQQ data actions, and only on the QBit's own tables, under the user's session.
   - `engine/`: `TurnEngine` (the loop), `ContextBuilder` (cache-prefix order), `SystemPrompt`, `PolicyService` (policy row, budgets), `RateLimiter`, the `TurnEvent` / `TurnEventLog` stream, and `MessageParts`.
   - `api/`: `AssistantApi` (transport-free) and `AssistantRouteProvider` (Javalin, SSE).
   - `provider/`: the provider-neutral SPI, plus `fake/ScriptedModelProvider` for tests, evals and demos.
   - `developer/`: the record Developer-screen panel, on the core developer-panel contract.
-  - `processes/AssistantRetentionStep`.
+  - `processes/`: `AssistantRetentionStep` and `TestConnectionProcess` (record action on `assistant_provider`).
+  - `engine/ProviderService` (active provider from `assistant_provider` rows, key references, prices), `UsageRecorder` (one `assistant_usage` row per model call), `ConnectionTest`.
 - `qbit-assistant-provider-anthropic`: `AnthropicModelProvider` and `AnthropicMapping` (anthropic-java streaming).
 
 ## Invariants (do not break)
@@ -56,6 +58,7 @@ Always use the wrapper: Maven 3.10 cannot read the parent POM. The committed def
   - Parallel tool results go back in ONE user message, in call order.
   - Errors (DENIED, NOT_FOUND, INVALID_INPUT, ERROR) are `is_error` results.
   - Unknown tools and over-limit calls also get error results.
+- **Keys:** never stored in a table. `assistant_provider.apiKeyEnvName` holds only an allowed environment variable NAME; `apiKeyStatus` is computed on read (last 4 at most) and stripped on save.
 - **Logging:** never log message content, prompts, tool results or keys. Structured end-of-turn log only.
 - **Thinking:** thinking is never streamed or stored. The Anthropic adapter keeps the raw assistant message (with signatures) only in memory, as `providerState`, for the tool loop.
 - **Links:** only `/app` or `/app/...` hrefs are emitted (`TurnEngine.isAppHref`).

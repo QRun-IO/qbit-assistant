@@ -155,3 +155,87 @@ CREATE TABLE assistant_usage_daily
 );
 CREATE INDEX assistant_usage_daily_user_id ON assistant_usage_daily (user_id);
 CREATE INDEX assistant_usage_daily_date ON assistant_usage_daily (usage_date, scope);
+
+-- 0.1.0-RC.4: provider settings, model prices and per-call usage.
+-- api_key_status is filled when a row is read (never written); the API key itself
+-- is never stored: api_key_env_name holds only the NAME of an environment variable.
+
+CREATE TABLE assistant_provider
+(
+   id SERIAL PRIMARY KEY,
+   name VARCHAR(100) NOT NULL UNIQUE,
+   provider_type VARCHAR(50) NOT NULL,
+   model VARCHAR(100),
+   enabled BOOLEAN,
+   is_default BOOLEAN,
+   base_url VARCHAR(255),
+   api_key_env_name VARCHAR(100),
+   api_key_status VARCHAR(200),
+   monthly_cost_cap_usd NUMERIC(12, 2),
+   max_output_tokens_per_request INTEGER,
+   max_concurrent_requests INTEGER,
+   last_test_at TIMESTAMP WITH TIME ZONE,
+   last_test_status VARCHAR(16),
+   last_test_latency_ms INTEGER,
+   last_test_model VARCHAR(100),
+   last_test_error VARCHAR(500),
+   create_date TIMESTAMP WITH TIME ZONE,
+   modify_date TIMESTAMP WITH TIME ZONE
+);
+
+CREATE TABLE assistant_model_price
+(
+   id SERIAL PRIMARY KEY,
+   provider_type VARCHAR(50) NOT NULL,
+   model VARCHAR(100) NOT NULL,
+   input_usd_per_m_tok NUMERIC(12, 4) NOT NULL,
+   output_usd_per_m_tok NUMERIC(12, 4) NOT NULL,
+   cache_read_usd_per_m_tok NUMERIC(12, 4),
+   cache_write5m_usd_per_m_tok NUMERIC(12, 4),
+   cache_write1h_usd_per_m_tok NUMERIC(12, 4),
+   notes VARCHAR(255),
+   create_date TIMESTAMP WITH TIME ZONE,
+   modify_date TIMESTAMP WITH TIME ZONE,
+   UNIQUE (provider_type, model)
+);
+
+CREATE TABLE assistant_usage
+(
+   id SERIAL PRIMARY KEY,
+   user_id VARCHAR(255),
+   conversation_id INTEGER,
+   turn_id INTEGER,
+   provider_id INTEGER,
+   provider_type VARCHAR(50),
+   model VARCHAR(100),
+   purpose VARCHAR(16),
+   status VARCHAR(16),
+   error_kind VARCHAR(32),
+   http_status INTEGER,
+   latency_ms INTEGER,
+   input_tokens BIGINT,
+   output_tokens BIGINT,
+   cache_read_tokens BIGINT,
+   cache_write_tokens BIGINT,
+   cost_micros BIGINT,
+   request_id VARCHAR(100),
+   create_date TIMESTAMP WITH TIME ZONE
+);
+CREATE INDEX assistant_usage_create_date ON assistant_usage (create_date);
+CREATE INDEX assistant_usage_provider ON assistant_usage (provider_id, create_date);
+CREATE INDEX assistant_usage_conversation ON assistant_usage (conversation_id);
+CREATE INDEX assistant_usage_user_id ON assistant_usage (user_id);
+
+-- Anthropic list prices, USD per million tokens (cached 2026-10-06). Cache writes:
+-- 1.25x input (5 minute) and 2x input (1 hour). Re-check before budgeting.
+INSERT INTO assistant_model_price (provider_type, model, input_usd_per_m_tok, output_usd_per_m_tok, cache_read_usd_per_m_tok, cache_write5m_usd_per_m_tok, cache_write1h_usd_per_m_tok, notes, create_date, modify_date)
+VALUES
+   ('anthropic', 'claude-sonnet-5-5', 2.00, 10.00, 0.20, 2.50, 4.00, 'Anthropic list price, 2026-10', NOW(), NOW()),
+   ('anthropic', 'claude-opus-5-5', 4.00, 20.00, 0.20, 5.00, 8.00, 'Anthropic list price, 2026-10', NOW(), NOW()),
+   ('anthropic', 'claude-haiku-5-5', 0.10, 0.50, 0.01, 0.125, 0.20, 'Anthropic list price, 2026-10 (prompts up to 100K tokens)', NOW(), NOW()),
+   ('anthropic', 'claude-fable-5-1', 10.00, 50.00, 0.25, 12.50, 20.00, 'Anthropic list price, 2026-10', NOW(), NOW()),
+   ('anthropic', 'claude-opus-5', 5.00, 25.00, 0.50, 6.25, 10.00, 'Anthropic list price, 2026-10', NOW(), NOW()),
+   ('anthropic', 'claude-sonnet-5', 2.00, 10.00, 0.20, 2.50, 4.00, 'Anthropic list price, 2026-10', NOW(), NOW()),
+   ('anthropic', 'claude-opus-4-8', 5.00, 25.00, 0.50, 6.25, 10.00, 'Anthropic list price, 2026-10', NOW(), NOW()),
+   ('anthropic', 'claude-sonnet-4-6', 3.00, 15.00, 0.30, 3.75, 6.00, 'Anthropic list price, 2026-10', NOW(), NOW()),
+   ('anthropic', 'claude-haiku-4-5', 1.00, 5.00, 0.10, 1.25, 2.00, 'Anthropic list price, 2026-10', NOW(), NOW());
