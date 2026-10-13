@@ -86,10 +86,22 @@ public class ContextBuilder
                .withName(definition.getName())
                .withDescription(definition.getDescription())
                .withInputSchema(definition.getInputSchema())
-               .withStrict(!Boolean.FALSE.equals(definition.getStrict())));
+               .withStrict(isStrict(definition)));
          }
       }
       return (tools);
+   }
+
+
+
+   /*******************************************************************************
+    ** Strict only when the host names the tool in strictToolNames (and the
+    ** kernel does not opt it out): the provider compiles every strict schema of
+    ** a request into one grammar, which it refuses when it grows too large.
+    *******************************************************************************/
+   boolean isStrict(AiToolDefinition definition)
+   {
+      return (!Boolean.FALSE.equals(definition.getStrict()) && config.getStrictToolNames() != null && config.getStrictToolNames().contains(definition.getName()));
    }
 
 

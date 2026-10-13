@@ -297,7 +297,21 @@ public class AnthropicModelProvider implements AssistantModelProvider
             if(!handle.isCancelled())
             {
                ModelProviderException exception = AnthropicMapping.toProviderException(t).withPartialUsage(seen.get());
-               LOG.info("Anthropic stream failed", logPair("kind", exception.getKind()), logPair("httpStatus", exception.getHttpStatus()), logPair("model", request.getModel()));
+               ///////////////////////////////////////////////////////////////////
+               // a 4xx is a request or account problem an operator must see:    //
+               // log the API's error type, its (sanitized) message and the      //
+               // request id - never the prompt                                  //
+               ///////////////////////////////////////////////////////////////////
+               if(exception.getHttpStatus() != null && exception.getHttpStatus() >= 400 && exception.getHttpStatus() < 500)
+               {
+                  LOG.warn("Anthropic stream failed", logPair("kind", exception.getKind()), logPair("httpStatus", exception.getHttpStatus()), logPair("model", request.getModel()),
+                     logPair("errorType", exception.getProviderErrorType()), logPair("errorMessage", exception.getProviderMessage()), logPair("requestId", exception.getRequestId()));
+               }
+               else
+               {
+                  LOG.info("Anthropic stream failed", logPair("kind", exception.getKind()), logPair("httpStatus", exception.getHttpStatus()), logPair("model", request.getModel()),
+                     logPair("errorType", exception.getProviderErrorType()), logPair("requestId", exception.getRequestId()));
+               }
                handle.fail(exception);
             }
          }

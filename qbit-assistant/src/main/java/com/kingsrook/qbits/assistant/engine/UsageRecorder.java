@@ -90,7 +90,22 @@ public final class UsageRecorder
          .withCacheReadTokens(usage == null ? 0L : nz(usage.getCacheReadTokens()))
          .withCacheWriteTokens(usage == null ? 0L : nz(usage.getCacheWriteTokens()))
          .withCostMicros(pricing == null ? 0L : pricing.costMicros(usage))
-         .withRequestId(response == null ? null : truncate(response.getRequestId(), 100)));
+         .withRequestId(response != null ? truncate(response.getRequestId(), 100) : (error == null ? null : truncate(error.getRequestId(), 100))));
+   }
+
+
+
+   /*******************************************************************************
+    ** What an administrator needs to act on a failed call: the provider's error
+    ** type and its own (sanitized) message when it sent one, else the summary.
+    *******************************************************************************/
+   public static String errorText(ModelProviderException error)
+   {
+      if(error.getProviderMessage() != null)
+      {
+         return ((error.getProviderErrorType() == null ? "" : error.getProviderErrorType() + ": ") + error.getProviderMessage());
+      }
+      return (error.getMessage());
    }
 
 
