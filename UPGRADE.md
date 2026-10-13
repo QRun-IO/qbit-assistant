@@ -1,5 +1,36 @@
 # Upgrading qbit-assistant
 
+## P-d: data-driven budgets
+
+Create `assistant_budget`, `assistant_budget_override`, `assistant_budget_event`
+and `assistant_budget_usage`
+using the P-d DDL in [schema-postgres.sql](docs/schema-postgres.sql) before deploying.
+The event unique key is required: it deduplicates each state per budget, scope and
+UTC period across replicas. Do not remove it or truncate events during a period.
+
+Budgets appear in Assistant navigation. Overrides and immutable events are child
+lists. All four tables require `assistant.admin` and have AI exposure NONE.
+Overrides record the actual session grantor and require a reason and expiry.
+The standard host QQQ audit configuration applies to budget and override edits.
+`assistant_budget_usage` is a private accounting projection populated from persisted
+usage writes. It copies only counters, time, user, provider and model, with no owner
+lock, so shared INSTANCE/PROVIDER/MODEL sums can run under the caller's own session.
+The source usage table retains its owner locks. The projection is read-only, has no
+nav entry and no AI exposure. **Pause usage writes during migration and run the DDL's
+backfill before restarting**; otherwise shared totals would omit pre-upgrade usage.
+Keep accounting rows through their budget periods even if detail rows are removed.
+ROLE budgets give each permission holder a separate allowance, checked with their
+current session. Override scopeValue, when set, narrows the allowance to one user id.
+
+Existing policy/config budgets and provider monthly caps remain additional limits;
+an override of a budget row does not waive those existing caps.
+
+Provider and MODEL scope values are numeric provider/model registry row ids;
+USER is a user id and ROLE is a permission name. INSTANCE has no scope value.
+Periods reset at midnight UTC or the first of the month UTC. Token usage includes
+input, output, cache-read and cache-write tokens; USD uses the recorded micro-dollar
+cost, not today's model price. No default budget rows are seeded.
+
 ## P-c: classification, PHI routing and encrypted storage
 
 Apply these additive schema changes before deploying P-c (adjust column mappings

@@ -17,15 +17,14 @@
 package com.kingsrook.qbits.assistant.metadata;
 
 
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
 import com.kingsrook.qbits.assistant.AssistantModelRouting;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.access.DataAccessMode;
 import com.kingsrook.qbits.assistant.engine.ProfileService;
 import com.kingsrook.qbits.assistant.engine.ProviderService;
+import com.kingsrook.qbits.assistant.model.AssistantBudget;
+import com.kingsrook.qbits.assistant.model.AssistantBudgetEvent;
+import com.kingsrook.qbits.assistant.model.AssistantBudgetOverride;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantDataAccess;
 import com.kingsrook.qbits.assistant.model.AssistantDataAudit;
@@ -65,6 +64,10 @@ import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleVal
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSection;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Tier;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 
 
 /*******************************************************************************
@@ -124,6 +127,12 @@ public final class AssistantRecordScreens
       }
 
       return (List.of(
+         QPossibleValueSource.newForTable(AssistantBudget.TABLE_NAME),
+         QPossibleValueSource.newForTable(AssistantModel.TABLE_NAME).withName("assistant_budget_model"),
+         budgetEnum("scopeType", "INSTANCE", "USER", "ROLE", "PROVIDER", "MODEL"),
+         budgetEnum("period", "DAY", "MONTH"),
+         budgetEnum("metric", "COST_USD", "TOKENS"),
+         budgetEnum("atLimitAction", "DOWNGRADE", "STOP"),
          new QPossibleValueSource().withName(EFFORT_PVS_NAME).withType(QPossibleValueSourceType.ENUM)
             .withValueFormatAndFields(PVSValueFormatAndFields.LABEL_ONLY).withEnumValues(efforts),
          QPossibleValueSource.newForTable(AssistantTurn.TABLE_NAME),
@@ -158,6 +167,12 @@ public final class AssistantRecordScreens
    {
       switch(table.getName())
       {
+         case AssistantBudget.TABLE_NAME -> budget(table);
+         case AssistantBudgetOverride.TABLE_NAME, AssistantBudgetEvent.TABLE_NAME ->
+         {
+            link(table, "budgetId", AssistantBudget.TABLE_NAME, "Budget");
+            sections(table);
+         }
          case AssistantConversation.TABLE_NAME -> conversation(table);
          case AssistantMessage.TABLE_NAME -> message(table);
          case AssistantTurn.TABLE_NAME -> turn(table);
@@ -219,6 +234,12 @@ public final class AssistantRecordScreens
          }
       }
 
+      QTableMetaData budget = qInstance.getTable(AssistantBudget.TABLE_NAME);
+      if(budget != null)
+      {
+         childList(qInstance, budget, AssistantBudgetOverride.TABLE_NAME, "Overrides", "approval", List.of("scopeValue", "extraValue", "unlimitedUntil", "reason", "grantedBy", "expiresAt"), "budgetId", "budget");
+         childList(qInstance, budget, AssistantBudgetEvent.TABLE_NAME, "Events", "notifications", List.of("scopeKey", "periodStart", "state", "usedValue", "limitValue", "userId", "createDate"), "budgetId", "budget");
+      }
       QTableMetaData provider = qInstance.getTable(AssistantProvider.TABLE_NAME);
       if(provider != null)
       {
@@ -840,7 +861,7 @@ public final class AssistantRecordScreens
       qInstance.addWidget(ChildRecordListRenderer.widgetMetaDataBuilder(join)
          .withLabel(label)
          .withMaxRows(50)
-         .withCanAddChildRecord(AssistantModel.TABLE_NAME.equals(childTableName))
+         .withCanAddChildRecord(AssistantModel.TABLE_NAME.equals(childTableName) || AssistantBudgetOverride.TABLE_NAME.equals(childTableName))
          .withOnlyIncludeFieldNames(shown)
          .getWidgetMetaData());
 
@@ -870,4 +891,38 @@ public final class AssistantRecordScreens
          section("lastTest", "Last connection test", "network_check", Tier.T2, "lastTestAt", "lastTestStatus", "lastTestLatencyMs", "lastTestError"));
    }
 
+
+
+   /*******************************************************************************
+    ** Budget choices use standard possible-value sources.
+    *******************************************************************************/
+   private static QPossibleValueSource budgetEnum(String field, String... values)
+   {
+      List<QPossibleValue<?>> choices = new ArrayList<>();
+      for(String value : values)
+      {
+         choices.add(new QPossibleValue<>(value, value));
+      }
+      return (enumSource("assistant_budget_" + field, choices));
+   }
+
+
+
+   /*******************************************************************************
+    ** Budget record screen.
+    *******************************************************************************/
+   private static void budget(QTableMetaData table)
+   {
+      for(String field : List.of("scopeType", "period", "metric", "atLimitAction"))
+      {
+         table.getField(field).withPossibleValueSourceName("assistant_budget_" + field);
+      }
+      table.getField("downgradeModelId").withPossibleValueSourceName("assistant_budget_model");
+      help(table, "scopeValue", "Empty for INSTANCE; user id, permission name, provider row id or model registry row id for the selected scope.");
+      help(table, "limitValue", "USD for COST_USD, or whole tokens for TOKENS. Periods use UTC.");
+      help(table, "downgradeModelId", "Empty chooses the cheapest enabled eligible model, preferring LOCAL providers.");
+      sections(table,
+         section("budget", "Budget", "savings", Tier.T1, "id", "name", "enabled", "scopeType", "scopeValue", "period", "metric", "limitValue"),
+         section("thresholds", "Thresholds", "notifications", Tier.T2, "warnPercent", "atLimitAction", "downgradeModelId", "hardCeilingPercent", "notes"));
+   }
 }

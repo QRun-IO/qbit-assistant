@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased � P-c
+## Unreleased - P-d
+
+- Admin budgets, expiring overrides, deduplicated warning/downgrade/stop events.
+- Per-dispatch limits preserving PHI routing and existing caps.
+- Home budget cards, 30-day cost/token bars and provider breakdowns.
+
+
+## Unreleased — P-c
 
 - Add configurable table/field classification, persistent turn/conversation maxima,
   and PHI routing checks before every model call, with a safe blocked-turn reason.
@@ -30,8 +37,8 @@ Phase 0/1 of the QQQ Assistant: read-only Q&A and navigation. Requires QQQ 4.1 w
 - Tools: `list_tables`, `describe_table`, `query_records`, `count_records`, `get_record`, `search_records`, `render_widget`, `get_record_history`, and new **`create_record`, `update_record`, `delete_record`**.
 
 ### Added (0.1.0-RC.6)
-- **Profiles** (`assistant_profile`, nav "Profiles"): display name, icon, personality (≤ 2,000 chars, appended to the per-user system block), greeting, starter prompts; one default, optional app / permission scope. `/assistant/config` returns `profile`.
-- **Skills** (`assistant_skill`, nav "Skills", linked through `assistant_profile_skill`, a child list on profiles): admin-written Markdown instructions read only when relevant (keywords / apps), ≤ 6,000 chars each and 12,000 per question. Instructions only: they never grant tools, endpoints or access (ArchUnit-enforced).
+- **Profiles** (`assistant_profile`, nav "Profiles"): display name, icon, personality (â‰¤ 2,000 chars, appended to the per-user system block), greeting, starter prompts; one default, optional app / permission scope. `/assistant/config` returns `profile`.
+- **Skills** (`assistant_skill`, nav "Skills", linked through `assistant_profile_skill`, a child list on profiles): admin-written Markdown instructions read only when relevant (keywords / apps), â‰¤ 6,000 chars each and 12,000 per question. Instructions only: they never grant tools, endpoints or access (ArchUnit-enforced).
 - **Explain access**: `GET /qqq/v1/assistant/access?table=&prompt=` and the `assistantAccess` home widget: per table and tool, allowed or the reason.
 - **Recent denials** card on the Assistant home.
 - `AssistantStore` refuses any table that is not `assistant_*`; ArchUnit forbids the tool / UI API / access packages from using QQQ actions, the AI kernel or the profile and skill classes.
@@ -54,7 +61,7 @@ Phase 0/1 of the QQQ Assistant: read-only Q&A and navigation. Requires QQQ 4.1 w
 
 ### Added (0.1.0-RC.4)
 - **Provider settings** (`assistant_provider`): type (registered `AssistantProviderType`s; `AnthropicProviderType` in the Anthropic module), model, enabled, default, base URL override, monthly cost cap, max output tokens per request, max concurrent requests, and the last connection test. The default enabled row is the active provider; with no rows the provider registered in code is used, so existing hosts keep working.
-- **Key handling:** the key is never stored. A row names the environment variable that holds it (`apiKeyEnvName`, allow-listed); `apiKeyStatus` is computed on read (`Set • …abcd`) and dropped on save. A pasted key, an unrelated variable or an unlisted base URL is refused. New config: `withProviderType`, `allowedApiKeyEnvNames`, `allowedBaseUrls`, `withSecretResolver`, `providerTestTimeoutSeconds`.
+- **Key handling:** the key is never stored. A row names the environment variable that holds it (`apiKeyEnvName`, allow-listed); `apiKeyStatus` is computed on read (`Set â€¢ â€¦abcd`) and dropped on save. A pasted key, an unrelated variable or an unlisted base URL is refused. New config: `withProviderType`, `allowedApiKeyEnvNames`, `allowedBaseUrls`, `withSecretResolver`, `providerTestTimeoutSeconds`.
 - **Test connection**, a record action on providers (standard streamed ETL Review and Result lines): one short live call, result saved on the row and recorded as a `TEST` usage row.
 - **Per-call usage** (`assistant_usage`): one row per model call (turn steps and tests) with provider, model, status, error kind, HTTP status, latency, tokens and cost. Child list on conversations and providers.
 - **Model prices** (`assistant_model_price`), editable, used for every call's cost; the reference DDL seeds the Anthropic list prices of 2026-10. The built-in `pricing` defaults now cover every current Claude model.

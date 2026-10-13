@@ -17,21 +17,6 @@
 package com.kingsrook.qbits.assistant.engine;
 
 
-import java.io.Serializable;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.ZoneOffset;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.Future;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
@@ -64,6 +49,21 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import java.io.Serializable;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.Future;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
@@ -132,6 +132,7 @@ public class TurnEngine implements Runnable
    private TurnClassification classification;
    private ProviderService.Active active;
    private String                 model;
+   private ProviderService.Active budgetOrigin;
    private Long                   capMicros;
    private long                   monthCostAtStart = 0;
 
@@ -199,6 +200,7 @@ public class TurnEngine implements Runnable
             throw (new ModelProviderException(ModelProviderException.Kind.AUTHENTICATION, null, "No usable assistant provider is configured."));
          }
          model = active.model();
+         budgetOrigin = active;
          capMicros = ProviderService.capMicros(active.row());
          if(capMicros != null)
          {
@@ -264,7 +266,7 @@ public class TurnEngine implements Runnable
                break;
             }
 
-            PolicyService.BudgetStatus budget = runtime.getPolicyService().checkBudget(policy, userId, usage.billableTokens(), costMicros);
+            PolicyService.BudgetStatus budget = runtime.getPolicyService().checkConfiguredBudget(policy, userId, usage.billableTokens(), costMicros);
             if(budget.hardExceeded())
             {
                status = "ERROR";
@@ -334,6 +336,12 @@ public class TurnEngine implements Runnable
                break;
             }
          }
+      }
+      catch(BudgetService.Blocked e)
+      {
+         status = "ERROR";
+         errorCode = "BUDGET";
+         errorText = e.getMessage();
       }
       catch(TurnDataRouting.Blocked e)
       {
@@ -533,6 +541,40 @@ public class TurnEngine implements Runnable
     *******************************************************************************/
    private ModelResponse callModel(AssistantModelProvider provider, ModelRequest request) throws QException, ModelProviderException, InterruptedException
    {
+      classification.inherit(store.getConversation(userId, conversation.getId()));
+      BudgetService.Decision budgetDecision = runtime.getBudgetService().evaluate(userId, budgetOrigin,
+         classification.getClassification() == com.kingsrook.qbits.assistant.classification.DataClassification.PHI, false);
+      budgetDecision.notices().forEach(text -> notice("warning", text));
+      if(budgetDecision.stopped())
+      {
+         throw (new BudgetService.Blocked(budgetDecision.reason()));
+      }
+      ProviderService.Active selected = budgetDecision.active();
+      if(!java.util.Objects.equals(active.providerId(), selected.providerId()) || !java.util.Objects.equals(active.model(), selected.model()))
+      {
+         active = selected;
+         model = active.model();
+         request.setModel(model);
+         request.getMessages().forEach(message -> message.withProviderState(null));
+         request.getTools().forEach(tool -> tool.setStrict(false));
+         ModelCapabilities capabilities = active.provider().getCapabilities(model);
+         if(capabilities != null && Boolean.FALSE.equals(capabilities.getParallelToolCalls()))
+         {
+            request.setParallelToolCalls(false);
+         }
+         Integer maxTokens = active.row() == null ? null : active.row().getMaxOutputTokensPerRequest();
+         if(maxTokens != null && (request.getMaxTokens() == null || request.getMaxTokens() > maxTokens))
+         {
+            request.setMaxTokens(maxTokens);
+         }
+         capMicros = null;
+      }
+      provider = active.provider();
+      Long selectedCap = ProviderService.capMicros(active.row());
+      if(selectedCap != null && runtime.getProviderService().monthToDateCostMicros(active.providerId()) >= selectedCap)
+      {
+         throw (new BudgetService.Blocked("The assistant has reached this provider's monthly cost cap. Ask an administrator."));
+      }
       ModelEventListener listener = new ModelEventListener()
       {
          @Override
