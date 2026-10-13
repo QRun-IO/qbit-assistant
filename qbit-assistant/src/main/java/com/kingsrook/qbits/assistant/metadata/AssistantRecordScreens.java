@@ -292,6 +292,8 @@ public final class AssistantRecordScreens
          case "VLLM" -> "vLLM";
          case "LLAMA_CPP" -> "llama.cpp server";
          case "OPENAI_COMPATIBLE" -> "OpenAI-compatible (other)";
+         case "BEDROCK" -> "AWS Bedrock";
+         case "VERTEX" -> "Google Vertex AI";
          default -> kind;
       });
    }
