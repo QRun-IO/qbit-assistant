@@ -382,6 +382,13 @@ public class UiApiToolbox
          }
 
          Map<String, Object> in = input == null ? Map.of() : input;
+         if(in.get("table") instanceof String table && StringUtils.hasContent(table))
+         {
+            ///////////////////////////////////////////////////////////////
+            // known up front, so a denial is logged against its table   //
+            ///////////////////////////////////////////////////////////////
+            result.setTableName(table.strip());
+         }
          switch(toolName)
          {
             case LIST_TABLES -> listTables(context, outcome);
