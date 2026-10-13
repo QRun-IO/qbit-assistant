@@ -185,6 +185,13 @@ public final class AssistantHomeView
          }
          html.append("</div><div style=\"").append(CELLS).append("\">");
          cell(html, "Type", nvl(p.typeLabel(), "Not set"));
+         cell(html, "Kind", p.kind());
+         cell(html, "Location", "LOCAL".equals(p.location()) ? "Local" : "Cloud");
+         if(Boolean.TRUE.equals(row.getHipaaEligible()))
+         {
+            cell(html, "Eligibility", "HIPAA-eligible");
+         }
+         cell(html, "Enabled models", String.valueOf(p.enabledModels()));
          cell(html, "Model", nvl(row.getModel(), "Default model"));
          cell(html, "API key", p.keyStatus());
          cell(html, "Last test", lastTest(row));

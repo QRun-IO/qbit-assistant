@@ -28,6 +28,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantFeedback;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
+import com.kingsrook.qbits.assistant.model.AssistantModel;
 import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
 import com.kingsrook.qbits.assistant.model.AssistantPendingAction;
 import com.kingsrook.qbits.assistant.model.AssistantPolicy;
@@ -726,6 +727,17 @@ public class AssistantStore
       requireOwnTable(tableName);
       List<QRecord> records = new QueryAction().execute(new QueryInput(tableName).withFilter(filter.withLimit(limit))).getRecords();
       return (records == null ? List.of() : records);
+   }
+
+
+
+
+   /*******************************************************************************
+    ** All registry models in stable id order.
+    *******************************************************************************/
+   public List<AssistantModel> listModels() throws QException
+   {
+      return (query(AssistantModel.TABLE_NAME, new QQueryFilter().withOrderBy(new QFilterOrderBy("id", true)), AssistantModel.class));
    }
 
 }

@@ -309,6 +309,30 @@ AI exposure NONE is not enough, because the assistant acts as the user and an ad
    - **scheduled assistant tasks**: recurring prompts that run as a designated user (with that user's stored credentials through the UI API, never a system session) and post results as notifications or records.
 6. Everything goes through the `/qqq/v1` UI API, as the user, with the guarantees above.
 
+### P-a as built
+
+- Per-provider `tlsCaBundle` references startup-parsed, transient server CA bundles. OpenAI-compatible chat, health and discovery trust JVM roots plus the bundle, retain hostname verification, and report sanitized NETWORK errors with a trust hint.
+- `assistant_provider` records kind, location, HIPAA eligibility, region, API
+  version, timeouts and discovery status. `assistant_model` is its admin-only
+  child list: enablement, capabilities, prices and test status, unique per provider/model.
+- `ProviderSettings`, discovery and health extend the provider SPI through default
+  methods. Legacy `create(apiKey, baseUrl)` implementations keep working.
+- The OpenAI-compatible module uses JDK HTTP and Jackson, Chat Completions with
+  SSE or single JSON replies, Azure deployment URLs and api-key auth, and keyless
+  local endpoints. Keys and URL overrides pass the existing allowlists first.
+- Strict tools require explicit opt-in, OpenAI or Azure, and recursively strict
+  object schemas. A strict/schema/grammar 400 signals the existing one-retry fallback.
+- Discovery only adds missing models; it preserves edits and disables catalogs
+  larger than 20 for cloud providers. Health uses a short models request. Provider
+  tests probe health then complete; model tests can probe a disabled model before
+  enabling it. Completion tests record TEST usage.
+- Registry prices and capabilities override adapter/type defaults. Empty provider
+  model selects the first enabled registry model; an explicitly disabled selection
+  is a setup error. Rows without models retain the prior behavior.
+- Localhost contract tests cover dialects, fragmented parallel tool calls, usage,
+  errors, timeouts, cancellation, discovery and a golden tool round trip. The live
+  smoke is environment-driven and excluded by default.
+
 ### Phases (each a green PR)
 | | Scope | Depends on |
 |---|---|---|

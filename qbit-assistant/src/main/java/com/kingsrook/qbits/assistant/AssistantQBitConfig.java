@@ -17,6 +17,9 @@
 package com.kingsrook.qbits.assistant;
 
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -25,10 +28,12 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Pattern;
+import javax.net.ssl.SSLContext;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.kingsrook.qbits.assistant.engine.ModelPricing;
 import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
 import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
+import com.kingsrook.qbits.assistant.provider.TrustedCaBundle;
 import com.kingsrook.qbits.assistant.uiapi.UiApiGateway;
 import com.kingsrook.qqq.backend.core.actions.ai.AiExposure;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -68,6 +73,9 @@ public class AssistantQBitConfig implements QBitConfig
     *******************************************************************************/
    @Deprecated(since = "0.1.0-RC.3")
    public static final String LEGACY_DEFAULT_OWNER_KEY_TYPE = "assistantUserId";
+
+   @JsonIgnore
+   private final transient Map<String, SSLContext> trustedCaBundles = new LinkedHashMap<>();
 
    private Boolean               enabled                    = true;
    private String                backendName;
@@ -1399,7 +1407,14 @@ public class AssistantQBitConfig implements QBitConfig
    public Set<String> getEffectiveAllowedApiKeyEnvNames()
    {
       Set<String> names = new LinkedHashSet<>(allowedApiKeyEnvNames == null ? Set.of() : allowedApiKeyEnvNames);
-      providerTypes.values().forEach(t -> names.add(t.getDefaultApiKeyEnvName()));
+      providerTypes.values().forEach(t -> t.getKinds().forEach(k ->
+      {
+         String name = t.getDefaultApiKeyEnvName(k);
+         if(name != null)
+         {
+            names.add(name);
+         }
+      }));
       return (names);
    }
 
@@ -1580,4 +1595,45 @@ public class AssistantQBitConfig implements QBitConfig
       return (this);
    }
 
+
+   /*******************************************************************************
+    ** Register server-only trust material, parsed eagerly without retaining PEM.
+    *******************************************************************************/
+   public AssistantQBitConfig withTrustedCaBundle(String name, String pem)
+   {
+      if(name == null || name.isBlank() || name.length() > 100 || !name.equals(name.trim()))
+      {
+         throw (new IllegalArgumentException("CA bundle name must be 1 to 100 characters without surrounding whitespace."));
+      }
+      trustedCaBundles.put(name, TrustedCaBundle.parse(pem));
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Read the bundle at startup; no file content or path enters diagnostics.
+    *******************************************************************************/
+   public AssistantQBitConfig withTrustedCaBundleFile(String name, Path pemFile)
+   {
+      try
+      {
+         return (withTrustedCaBundle(name, Files.readString(pemFile)));
+      }
+      catch(IOException | SecurityException e)
+      {
+         throw (new IllegalArgumentException("Could not read the configured CA bundle file."));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Server-only contexts; never expose trust material in metadata or JSON.
+    *******************************************************************************/
+   @JsonIgnore
+   public Map<String, SSLContext> getTrustedCaBundles()
+   {
+      return (Map.copyOf(trustedCaBundles));
+   }
 }

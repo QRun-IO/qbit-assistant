@@ -65,7 +65,7 @@ public class AssistantTurn extends QRecordEntity
    @QField(isEditable = false, maxLength = 64)
    private String cancelReason;
 
-   @QField(isEditable = false, maxLength = 64)
+   @QField(isEditable = false, maxLength = 200)
    private String model;
 
    @QField(isEditable = false)

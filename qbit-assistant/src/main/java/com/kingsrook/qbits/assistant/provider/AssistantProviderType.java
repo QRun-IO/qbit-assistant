@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.kingsrook.qbits.assistant.provider;
 
 
@@ -62,5 +63,76 @@ public interface AssistantProviderType
     ** baseUrl is null for the type's default.
     *******************************************************************************/
    AssistantModelProvider create(String apiKey, String baseUrl);
+
+
+
+
+   /*******************************************************************************
+    ** Backward-compatible provider registry extension.
+    *******************************************************************************/
+   default List<String> getKinds()
+   {
+      return (List.of(getType().toUpperCase(java.util.Locale.ROOT).replace('-', '_')));
+   }
+
+
+
+   /*******************************************************************************
+    ** Backward-compatible provider registry extension.
+    *******************************************************************************/
+   default String getDefaultBaseUrl(String kind)
+   {
+      return (getDefaultBaseUrl());
+   }
+
+
+
+   /*******************************************************************************
+    ** Backward-compatible provider registry extension.
+    *******************************************************************************/
+   default String getDefaultApiKeyEnvName(String kind)
+   {
+      return (getDefaultApiKeyEnvName());
+   }
+
+
+
+   /*******************************************************************************
+    ** Backward-compatible provider registry extension.
+    *******************************************************************************/
+   default String getDefaultLocation(String kind)
+   {
+      return ("CLOUD");
+   }
+
+
+
+   /*******************************************************************************
+    ** Backward-compatible provider registry extension.
+    *******************************************************************************/
+   default AssistantModelProvider create(ProviderSettings settings)
+   {
+      return (create(settings.getApiKey(), settings.getBaseUrl()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Backward-compatible provider registry extension.
+    *******************************************************************************/
+   default List<DiscoveredModel> discoverModels(ProviderSettings settings) throws ModelProviderException
+   {
+      return (getModels().stream().map(id -> new DiscoveredModel(id, id, null, null)).toList());
+   }
+
+
+
+   /*******************************************************************************
+    ** Backward-compatible provider registry extension.
+    *******************************************************************************/
+   default HealthResult checkHealth(ProviderSettings settings)
+   {
+      return (new HealthResult(null, null, "Health check not supported"));
+   }
 
 }

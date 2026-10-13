@@ -23,6 +23,16 @@ package com.kingsrook.qbits.assistant.provider;
  *******************************************************************************/
 public class ModelCapabilities
 {
+
+   private Boolean vision = false;
+
+
+   private Boolean streaming = true;
+
+
+   private Boolean reasoningEffort = false;
+
+
    private Boolean tools             = true;
    private Boolean parallelToolCalls = true;
    private Boolean promptCaching     = false;
@@ -179,6 +189,100 @@ public class ModelCapabilities
    public ModelCapabilities withMaxContextTokens(Integer maxContextTokens)
    {
       this.maxContextTokens = maxContextTokens;
+      return (this);
+   }
+
+
+
+
+   /*******************************************************************************
+    ** Getter for vision
+    *******************************************************************************/
+   public Boolean getVision()
+   {
+      return (this.vision);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for vision
+    *******************************************************************************/
+   public void setVision(Boolean vision)
+   {
+      this.vision = vision;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for vision
+    *******************************************************************************/
+   public ModelCapabilities withVision(Boolean vision)
+   {
+      this.vision = vision;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for streaming
+    *******************************************************************************/
+   public Boolean getStreaming()
+   {
+      return (this.streaming);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for streaming
+    *******************************************************************************/
+   public void setStreaming(Boolean streaming)
+   {
+      this.streaming = streaming;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for streaming
+    *******************************************************************************/
+   public ModelCapabilities withStreaming(Boolean streaming)
+   {
+      this.streaming = streaming;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for reasoningEffort
+    *******************************************************************************/
+   public Boolean getReasoningEffort()
+   {
+      return (this.reasoningEffort);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for reasoningEffort
+    *******************************************************************************/
+   public void setReasoningEffort(Boolean reasoningEffort)
+   {
+      this.reasoningEffort = reasoningEffort;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for reasoningEffort
+    *******************************************************************************/
+   public ModelCapabilities withReasoningEffort(Boolean reasoningEffort)
+   {
+      this.reasoningEffort = reasoningEffort;
       return (this);
    }
 
