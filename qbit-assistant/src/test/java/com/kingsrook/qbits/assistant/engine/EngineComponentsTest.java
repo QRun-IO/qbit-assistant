@@ -287,7 +287,10 @@ class EngineComponentsTest extends BaseAssistantTest
       });
 
       CompletableStreamHandle cancelled = new CompletableStreamHandle();
-      cancelled.setOnCancel(() -> { throw (new IllegalStateException("closing")); });
+      cancelled.setOnCancel(() ->
+      {
+         throw (new IllegalStateException("closing"));
+      });
       cancelled.cancel();
       cancelled.cancel();
       assertThat(cancelled.await(Duration.ofSeconds(1)).getStopReason()).isEqualTo(ModelResponse.STOP_CANCELLED);
@@ -327,7 +330,17 @@ class EngineComponentsTest extends BaseAssistantTest
       Map<String, Object> bigFilter = ContextBuilder.sanitizePageContext(Map.of("tableName", "page", "filter", Map.of("criteria", "z".repeat(5000))));
       assertThat(bigFilter).containsOnlyKeys("tableName");
 
-      assertThat(TurnEngine.map("a", 1, "b", null, "c", new Object() { public String toString() { return ("obj"); } })).containsEntry("a", 1).doesNotContainKey("b").containsEntry("c", "obj");
+      assertThat(TurnEngine.map("a", 1, "b", null, "c", new Object()
+      {
+         /*******************************************************************************
+          ** A value rendered through toString.
+          *******************************************************************************/
+         @Override
+         public String toString()
+         {
+            return ("obj");
+         }
+      })).containsEntry("a", 1).doesNotContainKey("b").containsEntry("c", "obj");
    }
 
 }

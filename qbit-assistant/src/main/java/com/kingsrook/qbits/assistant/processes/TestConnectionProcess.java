@@ -201,13 +201,14 @@ public final class TestConnectionProcess
          {
             AssistantProvider       row    = new AssistantProvider(record);
             ConnectionTest.Result   result = ConnectionTest.run(runtime, row, userId);
+            String label = row.getName() + " (" + runtime.getProviderService().kind(row) + ", " + runtime.getProviderService().location(row) + ")";
             if(result.ok())
             {
-               lines.add(single(Status.OK, row.getName() + ": connected to " + result.model() + " in " + result.latencyMs() + " ms", row.getId()));
+               lines.add(single(Status.OK, label + ": connected to " + result.model() + " in " + result.latencyMs() + " ms", row.getId()));
             }
             else
             {
-               lines.add(single(Status.ERROR, row.getName() + ": " + result.error(), row.getId()));
+               lines.add(single(Status.ERROR, label + ": " + result.error(), row.getId()));
             }
             output.getRecords().add(record);
          }

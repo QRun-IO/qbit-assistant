@@ -89,7 +89,7 @@ public class AssistantRuntime
       this.qInstance = qInstance;
       this.config = config;
       this.clock = clock;
-      this.store = new AssistantStore();
+      this.store = new AssistantStore(config);
       this.policyService = new PolicyService(config, store, clock);
       this.providerService = new ProviderService(config, store, clock);
       this.rateLimiter = new RateLimiter(clock);

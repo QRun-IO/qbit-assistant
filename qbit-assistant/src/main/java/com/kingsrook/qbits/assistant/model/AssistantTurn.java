@@ -38,6 +38,12 @@ public class AssistantTurn extends QRecordEntity
    @Deprecated(since = "0.1.0-RC.3")
    public static final String LEGACY_TABLE_NAME = "assistantTurn";
 
+   @QField(isEditable = false, maxLength = 16)
+   private String classification;
+
+   @QField(isEditable = false, maxLength = 500)
+   private String classificationTables;
+
    @QField(isEditable = false, isPrimaryKey = true)
    private Integer id;
 
@@ -65,7 +71,7 @@ public class AssistantTurn extends QRecordEntity
    @QField(isEditable = false, maxLength = 64)
    private String cancelReason;
 
-   @QField(isEditable = false, maxLength = 64)
+   @QField(isEditable = false, maxLength = 200)
    private String model;
 
    @QField(isEditable = false)
@@ -804,5 +810,69 @@ public class AssistantTurn extends QRecordEntity
       this.modifyDate = modifyDate;
       return (this);
    }
+
+
+
+   /*******************************************************************************
+    ** Getter for classification
+    *******************************************************************************/
+   public String getClassification()
+   {
+      return (classification);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for classification
+    *******************************************************************************/
+   public void setClassification(String classification)
+   {
+      this.classification = classification;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for classification
+    *******************************************************************************/
+   public AssistantTurn withClassification(String classification)
+   {
+      this.classification = classification;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for classificationTables
+    *******************************************************************************/
+   public String getClassificationTables()
+   {
+      return (classificationTables);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for classificationTables
+    *******************************************************************************/
+   public void setClassificationTables(String classificationTables)
+   {
+      this.classificationTables = classificationTables;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for classificationTables
+    *******************************************************************************/
+   public AssistantTurn withClassificationTables(String classificationTables)
+   {
+      this.classificationTables = classificationTables;
+      return (this);
+   }
+
+
 
 }

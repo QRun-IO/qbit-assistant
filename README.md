@@ -253,6 +253,189 @@ The **live** evals run the same golden tasks against Claude. They are skipped un
 ANTHROPIC_API_KEY=... ./mvnw verify -Dassistant.live=true -Dtest.excludedGroups= -Dgroups=live -Djacoco.skip=true -pl qbit-assistant-provider-anthropic -am
 ```
 
+## Providers
+
+Add `com.kingsrook.qbits:qbit-assistant-provider-openai` at the same version as
+the QBit and register the adapter alongside any Anthropic adapter:
+
+```java
+config.withProviderType(new OpenAiCompatibleProviderType());
+```
+
+`OpenAiCompatibleProviderType` is in
+`com.kingsrook.qbits.assistant.provider.openai`. Its installed type id is
+`openai-compatible`; provider rows choose OPENAI, AZURE_OPENAI, OPENROUTER,
+OLLAMA, LM_STUDIO, VLLM, LLAMA_CPP or OPENAI_COMPATIBLE as their kind.
+
+- Local kinds use their localhost endpoint by default and need no key. Leave
+  `apiKeyEnvName` empty. An auth proxy can use an explicitly allowed key env name.
+- Cloud defaults use `OPENAI_API_KEY`, `AZURE_OPENAI_API_KEY` or
+  `OPENROUTER_API_KEY`. Values stay in the host's secret store.
+- An override must match an entry in `config.withAllowedBaseUrls(Set.of(...))`.
+  Azure and OPENAI_COMPATIBLE have no default URL and always require an entry.
+  Redirects are not followed. Azure uses the deployment model id and defaults
+  `apiVersion` to `2024-10-21`.
+- **Discover models** adds a provider's Models child list; existing edits survive.
+  Large cloud catalogs (over 20 models) start disabled. **Test connection** is
+  available on both providers and models and records a TEST usage row.
+- A selected registered model must be enabled. With no model selected, the first
+  enabled registry model wins; providers with no model rows retain legacy selection.
+  Registry prices override type/model prices, then configured prices. Unpriced
+  local models cost zero. Capabilities can be adjusted per registered model.
+
+For Ollama behind a TLS proxy with a private CA and bearer authentication:
+
+```java
+config.withProviderType(new OpenAiCompatibleProviderType())
+   .withAllowedBaseUrls(Set.of("https://llm.example.lan:8443/v1"))
+   .withAllowedApiKeyEnvNames(Set.of("LOCAL_LLM_API_KEY"))
+   .withTrustedCaBundleFile("local-llm", Path.of("/etc/app/llm-root-ca.pem"));
+```
+
+Set `LOCAL_LLM_API_KEY` in the server environment from your secret store. In the
+provider record choose kind `OLLAMA`, base URL `https://llm.example.lan:8443/v1`,
+`apiKeyEnvName = LOCAL_LLM_API_KEY`, and `tlsCaBundle = local-llm`. Only the names
+are stored. `withTrustedCaBundle("local-llm", pem)` also accepts one or more PEM
+certificates directly at startup. Invalid PEM fails configuration immediately.
+The named bundle adds to the JVM roots; hostname verification stays enabled.
+Leave `tlsCaBundle` empty to use JVM trust alone. Restart after changing a CA file.
+
+Default tests use localhost mocks. To exercise an existing development server,
+set `ASSISTANT_LIVE_OPENAI_BASE_URL` and `ASSISTANT_LIVE_OPENAI_MODEL`, optionally
+`ASSISTANT_LIVE_OPENAI_KIND` (default OLLAMA), `ASSISTANT_LIVE_OPENAI_KEY_ENV`
+(the variable name containing the key), and `ASSISTANT_LIVE_OPENAI_CA_FILE`
+(a PEM bundle path). Unset or unreachable endpoints, including TLS failures, skip
+the live test. Run:
+
+```sh
+./mvnw verify -pl qbit-assistant-provider-openai -am -Dtest.excludedGroups= -Dgroups=live -Djacoco.skip=true
+```
+
+### AWS Bedrock (Claude)
+
+Add `com.kingsrook.qbits:qbit-assistant-provider-bedrock` at the QBit version and
+register `com.kingsrook.qbits.assistant.provider.bedrock.BedrockProviderType`:
+
+```java
+config.withProviderType(new BedrockProviderType());
+```
+
+Create a provider row with type `bedrock`, kind `BEDROCK`, and the required AWS
+`region` (for example `us-east-1`). Leave `apiKeyEnvName` empty. The server uses
+the AWS default credential chain: environment variables, profiles and container
+credentials (ECS/EKS Pod Identity) work with the transitive dependencies.
+**For IRSA / web-identity credentials, the host application must add
+`software.amazon.awssdk:sts` to its runtime classpath**, matching the transitive
+AWS SDK version. The default chain picks it up when present; this adapter does
+not include STS or the full AWS SDK. Credentials are never stored in tables.
+
+Leave the base URL empty for the SDK's
+`https://bedrock-runtime.<region>.amazonaws.com` endpoint. Overrides, including
+VPC endpoints, must be listed in `withAllowedBaseUrls`. Model ids are Bedrock
+Claude ids or inference profile ids, for example
+`us.anthropic.claude-sonnet-4-5-20250929-v1:0`. The model must be available to the
+server's AWS role in that region.
+
+### Google Vertex AI (Claude, Gemini)
+
+Add `com.kingsrook.qbits:qbit-assistant-provider-vertex` at the QBit version and
+register `com.kingsrook.qbits.assistant.provider.vertex.VertexProviderType`:
+
+```java
+config.withProviderType(new VertexProviderType());
+```
+
+Create a row with type `vertex`, kind `VERTEX`, required `region` (for example
+`us-east5`) and `cloudProject` (the GCP project id). Leave `apiKeyEnvName` empty.
+The server uses Google Application Default Credentials, such as
+`GOOGLE_APPLICATION_CREDENTIALS` or workload identity. Access tokens are refreshed
+when expired, held only in memory, and obtained afresh for each Gemini request.
+
+Models beginning `claude-` (for example `claude-sonnet-4-5@20250929`) use the
+Anthropic Vertex backend's `streamRawPredict` API. All other model ids use Vertex's
+OpenAI-compatible endpoint:
+
+```text
+https://{region}-aiplatform.googleapis.com/v1/projects/{project}/locations/{region}/endpoints/openapi
+```
+
+Unprefixed ids, such as `gemini-2.5-flash`, are sent as `google/gemini-2.5-flash`;
+already-prefixed ids are preserved. Gemini requests omit `strict`, including when
+a tool opts in. An allow-listed base URL overrides the Claude API origin or the
+complete OpenAI-compatible base URL, according to the selected model. Use separate
+provider rows when an override needs different URL prefixes for the two APIs.
+
+Both cloud types default to CLOUD and expose a short static model catalog.
+**Discover models** returns those defaults; it does not call Bedrock's
+`ListFoundationModels` (which needs the control-plane SDK) or Vertex Model Garden.
+Health probes are unsupported; **Test connection** performs the existing one-shot
+completion. Model access and availability depend on the configured region/project.
+`hipaaEligible` is an administrator-recorded fact: a BAA and the associated legal
+and operational requirements remain owner responsibilities. The flag does not
+establish eligibility or implement PHI routing.
+
+The default build tests both clouds using localhost only, fake credentials, AWS
+binary event-stream framing, Claude SSE and Gemini Chat Completions, including
+engine/tool golden turns. No cloud credentials or live endpoints are required.
+
 ## License
 
 Apache 2.0.
+
+
+## Data classification and HIPAA mode
+
+On QQQ 4.1.0-RC.4, classify application tables/fields in the host configuration:
+
+```java
+import com.kingsrook.qbits.assistant.classification.DataClassification;
+
+AssistantQBitConfig config = new AssistantQBitConfig()
+   .withDataClassification("patient", DataClassification.PHI)
+   .withDataClassification("patient", "id", DataClassification.PUBLIC)
+   .withDataClassification("patient", "email", DataClassification.PII)
+   .withDataClassification("patient", "status", DataClassification.PUBLIC)
+   .withHipaaMode(true)
+   .withHipaaRetentionDays(2190)
+   .withConversationEncryptionKeyEnvName("ASSISTANT_CONVERSATION_KEY");
+```
+
+Set that environment variable through your secret manager to a base64-encoded,
+random 256-bit (32-byte) key. Supply only its **name** in config, never the key.
+The existing server-side `withSecretResolver` hook also resolves this reference.
+Startup validates the key. HIPAA mode defaults off; encryption can also be enabled
+with the key reference while HIPAA mode is off.
+
+The qbit `DataClassification` enum is a stand-in for core QRun-IO/qqq#1142, with
+PUBLIC < CONFIDENTIAL < PII < PHI. Unconfigured tables default to PUBLIC; a field
+falls back to its table unless explicitly overridden. A field subset uses its
+selected fields; unrestricted reads and record page contexts use the highest
+classification across the table and its fields. Returned columns and record-label
+fields also count: tools include a primary key even for subsets, so classify it
+explicitly if the host considers it safe for that subset. Cross-table results with unknown
+tables use the highest classification anywhere. Metadata-only tools remain PUBLIC.
+The assistant's own tables remain denied to tools.
+
+Hosts can supply `withClassificationSource(ClassificationSource)` instead. When
+upgrading to an RC containing core #1142, implement that interface with
+`AiDataClassifications`/`AiTableMetaData`/`AiFieldMetaData` (map enum names), then
+replace the stand-in once the qbit's minimum core version includes it.
+
+PHI is sent only to a persisted provider row explicitly marked `hipaaEligible`.
+Every model dispatch rechecks eligibility, including calls after tools and strict
+schema retries. Blocks end the turn with `PHI_BLOCKED` or `HIPAA_PROVIDER`; the
+PHI tool result is never sent to that provider. There is no automatic fallback.
+A conversation keeps its highest classification, so moving to a PUBLIC page does
+not make existing PHI history safe for a non-eligible provider.
+
+HIPAA mode also refuses non-eligible providers at resolution and when enabling
+settings rows, disables code-only fallback, requires encrypted conversation
+storage, and suppresses provider error details in logs and turn errors. The app
+home displays HIPAA mode and PHI retention. The eligibility flag records the
+operator's decision (including any applicable BAA); it does not establish one.
+
+Both modes audit each PII/PHI model call and every routing block in
+`assistant_data_audit` (admin read-only, owner-locked, on the conversation screen).
+PHI conversations use `hipaaRetentionDays` even with HIPAA mode off. A null value
+uses normal retention; tool-result/replay cleanup remains independently configured.
+See [UPGRADE.md](UPGRADE.md) for schema changes, plaintext migration, and key handling.

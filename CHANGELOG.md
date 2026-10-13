@@ -1,8 +1,25 @@
 # Changelog
 
+## Unreleased — P-c
+
+- Add configurable table/field classification, persistent turn/conversation maxima,
+  and PHI routing checks before every model call, with a safe blocked-turn reason.
+- Add HIPAA mode, eligible-provider enforcement, AES-256-GCM conversation storage,
+  provider diagnostic redaction, and independent PHI conversation retention.
+- Add owner-locked, admin read-only data routing audits and HIPAA status on the home.
+- Keep QQQ RC.4 compatibility with a classification stand-in and core #1142 adapter seam.
+
 All notable changes to this project are documented here. The format follows Keep a Changelog, and versions follow semantic versioning.
 
 ## [0.1.0] - Unreleased
+
+- Add optional AWS Bedrock (Claude) and Google Vertex (Claude/Gemini) adapters using server credentials, static model discovery and allow-listed endpoint overrides. AWS IRSA/web-identity hosts supply STS themselves; no additional dependency is bundled.
+- Add the provider `cloudProject` column, cloud settings validation, injected Anthropic clients and per-request OpenAI bearer-token suppliers. Vertex Gemini prefixes model ids and omits strict tools.
+- Add localhost cloud contract tests and golden tool turns, including AWS binary event-stream framing, SigV4, token refresh and cloud HTTP error mapping.
+
+- Add named, server-only CA bundles for HTTPS providers, additive JVM trust and sanitized TLS diagnostics; tolerate repeated/missing streamed tool identities and invalid arguments, with a golden tool round-trip test.
+- Add the provider/model registry, per-model capabilities and prices, keyless local providers, discovery and health, and provider/model connection tests.
+- Add the optional JDK HTTP OpenAI-compatible adapter for OpenAI, Azure, OpenRouter, Ollama, LM Studio, vLLM and llama.cpp, with strict-schema safeguards and localhost contract tests.
 
 Phase 0/1 of the QQQ Assistant: read-only Q&A and navigation. Requires QQQ 4.1 with:
 - the AI tool kernel (`qqq-backend-core` `actions.ai`, QRun-IO/qqq#1078)

@@ -1,5 +1,65 @@
 # Upgrading qbit-assistant
 
+## P-c: classification, PHI routing and encrypted storage
+
+Apply these additive schema changes before deploying P-c (adjust column mappings
+for your backend). New conversations/turns record `PUBLIC`, `CONFIDENTIAL`, `PII`
+or `PHI`; legacy null classifications read as PUBLIC. Backfill known historical
+PHI conversations to PHI before allowing their history to be used with a provider.
+
+```sql
+ALTER TABLE assistant_conversation ADD COLUMN max_classification VARCHAR(16);
+ALTER TABLE assistant_turn ADD COLUMN classification VARCHAR(16);
+ALTER TABLE assistant_turn ADD COLUMN classification_tables VARCHAR(500);
+ALTER TABLE assistant_conversation ALTER COLUMN title TYPE TEXT;
+ALTER TABLE assistant_tool_call ALTER COLUMN result_summary TYPE TEXT;
+ALTER TABLE assistant_pending_action ALTER COLUMN summary TYPE TEXT;
+ALTER TABLE assistant_pending_action ALTER COLUMN result_summary TYPE TEXT;
+CREATE TABLE assistant_data_audit
+(
+   id SERIAL PRIMARY KEY,
+   user_id VARCHAR(255),
+   conversation_id INTEGER,
+   turn_id INTEGER,
+   provider_id INTEGER,
+   provider_name VARCHAR(200),
+   model VARCHAR(200),
+   hipaa_eligible BOOLEAN,
+   classification VARCHAR(16),
+   tables VARCHAR(500),
+   decision VARCHAR(16),
+   reason VARCHAR(1000),
+   create_date TIMESTAMP WITH TIME ZONE
+);
+CREATE INDEX assistant_data_audit_user_id ON assistant_data_audit (user_id);
+CREATE INDEX assistant_data_audit_conversation_id ON assistant_data_audit (conversation_id);
+CREATE INDEX assistant_data_audit_turn_id ON assistant_data_audit (turn_id);
+```
+
+`assistant_data_audit` is an admin read-only, owner-locked child list on a
+conversation, outside navigation. It records each model call carrying PII/PHI and
+each routing block, without record values. It expires with the conversation.
+PHI conversations use `hipaaRetentionDays` (2190 by default), even outside HIPAA
+mode; null uses normal retention. Existing tool-result/replay cleanup still uses
+`toolResultRetentionDays`.
+
+Before enabling HIPAA mode, mark the permitted provider rows `hipaaEligible = true`
+and provision `conversationEncryptionKeyEnvName` with a base64-encoded 32-byte
+key. Startup refuses missing or invalid keys. A code-only provider is not eligible.
+The flag records the operator's eligibility decision; it does not establish a BAA.
+
+New/updated message parts, titles, conversation context, tool payloads/redactions
+and summaries, replay data, and pending-action payloads/summaries use
+`enc:v1:<base64(iv|ciphertext|tag)>` (AES-256-GCM, random 12-byte IV, 16-byte tag).
+Only `AssistantStore` decrypts; direct backend/admin record views show ciphertext.
+String columns holding encrypted summaries/titles must be TEXT to allow expansion.
+Legacy plaintext reads are supported; existing rows are not automatically rewritten.
+For an existing deployment, migrate legacy payloads through AssistantStore under
+the appropriate owner/admin session before treating the whole archive as encrypted.
+Keep the key available for the lifetime of encrypted data and backups. Changing the
+key requires a controlled decrypt/re-encrypt migration; P-c has no key rotation job.
+Corrupt ciphertext, a wrong key, and encrypted data without a key fail closed.
+
 ## 0.1.0-RC.3 to 0.1.0-RC.4: provider settings, prices, per-call usage, app home
 
 Three new tables. Create them before you deploy (see `docs/schema-postgres.sql`, which also seeds the Anthropic prices):
@@ -118,3 +178,93 @@ Database (see `docs/schema-postgres.sql`):
 Runtime: the tools call this server's own `/qqq/v1` on `127.0.0.1` and the port the first assistant request arrived on. If the server is not reachable that way (a different bind address, a TLS-only listener), set `withUiApiBaseUrl(...)`. Grant `assistant.admin` holders the new tables through the qbit's existing admin permission (no new permission names).
 
 Behavior: nothing is writable until an admin adds a READ_WRITE data access row; before that the assistant reads exactly what it did before, now through the UI API.
+
+## P-a: provider and model registry
+
+Before starting the new version, database-backed hosts add the provider columns
+and model sub-table below. Memory-backed hosts need no migration. Existing rows
+derive kind and location from the adapter and keep their model behavior until
+models are registered. Keys remain environment-variable references.
+
+```sql
+ALTER TABLE assistant_provider
+   ADD COLUMN kind VARCHAR(30),
+   ADD COLUMN tls_ca_bundle VARCHAR(100),
+   ADD COLUMN location VARCHAR(10),
+   ADD COLUMN hipaa_eligible BOOLEAN DEFAULT FALSE,
+   ADD COLUMN region VARCHAR(50),
+   ADD COLUMN api_version VARCHAR(30),
+   ADD COLUMN connect_timeout_seconds INTEGER DEFAULT 10 CHECK (connect_timeout_seconds BETWEEN 1 AND 600),
+   ADD COLUMN request_timeout_seconds INTEGER DEFAULT 120 CHECK (request_timeout_seconds BETWEEN 1 AND 600),
+   ADD COLUMN last_discovery_at TIMESTAMP WITH TIME ZONE,
+   ADD COLUMN last_discovery_status VARCHAR(16),
+   ADD COLUMN last_discovery_error VARCHAR(500);
+ALTER TABLE assistant_provider ALTER COLUMN model TYPE VARCHAR(200);
+ALTER TABLE assistant_provider ALTER COLUMN last_test_model TYPE VARCHAR(200);
+ALTER TABLE assistant_usage ALTER COLUMN model TYPE VARCHAR(200);
+ALTER TABLE assistant_message ALTER COLUMN model TYPE VARCHAR(200);
+ALTER TABLE assistant_turn ALTER COLUMN model TYPE VARCHAR(200);
+
+CREATE TABLE assistant_model
+(
+   id SERIAL PRIMARY KEY,
+   provider_id INTEGER NOT NULL REFERENCES assistant_provider(id),
+   model_id VARCHAR(200) NOT NULL,
+   display_name VARCHAR(200),
+   enabled BOOLEAN,
+   supports_tools BOOLEAN,
+   supports_vision BOOLEAN,
+   supports_streaming BOOLEAN,
+   supports_reasoning_effort BOOLEAN,
+   context_window_tokens INTEGER,
+   max_output_tokens INTEGER,
+   input_usd_per_m_tok NUMERIC(12, 4),
+   output_usd_per_m_tok NUMERIC(12, 4),
+   source VARCHAR(16),
+   discovered_at TIMESTAMP WITH TIME ZONE,
+   last_test_at TIMESTAMP WITH TIME ZONE,
+   last_test_status VARCHAR(16),
+   last_test_latency_ms INTEGER,
+   last_test_error VARCHAR(500),
+   create_date TIMESTAMP WITH TIME ZONE,
+   modify_date TIMESTAMP WITH TIME ZONE,
+   UNIQUE (provider_id, model_id)
+);
+```
+
+Register the optional `qbit-assistant-provider-openai` module and
+`OpenAiCompatibleProviderType` to offer its kinds. Azure and generic endpoints
+require an explicit `allowedBaseUrls` entry; local defaults may be keyless.
+Discover models preserves existing rows. Cloud catalogs larger than 20 are added
+disabled; enable the models to offer before leaving the provider's model empty.
+HIPAA eligibility records an administrator's fact; P-a does not implement PHI routing.
+
+Custom CA bundles are server configuration, never database content. Register them
+with `withTrustedCaBundle(name, pem)` or `withTrustedCaBundleFile(name, path)` at
+startup, then set the HTTPS provider row's `tlsCaBundle` to that name. Empty
+references retain JVM default trust. The bundle adds trust without replacing JVM
+roots; hostname verification remains enabled. If the P-a columns were already
+applied, add only `tls_ca_bundle VARCHAR(100)` to `assistant_provider`.
+
+
+## P-b: AWS Bedrock and Google Vertex
+
+Before starting this version, database-backed hosts that already applied P-a add:
+
+```sql
+ALTER TABLE assistant_provider ADD COLUMN cloud_project VARCHAR(100);
+```
+
+Fresh installations use `docs/schema-postgres.sql`; memory-backed hosts need no
+migration. Existing providers leave the new column null. Vertex requires the GCP
+project id in `cloudProject`; Bedrock and Vertex both require `region` and reject
+`apiKeyEnvName`. They default to CLOUD; `hipaaEligible` remains a manual admin fact.
+
+Add the optional `qbit-assistant-provider-bedrock` and/or
+`qbit-assistant-provider-vertex` module at the QBit version and register
+`BedrockProviderType` / `VertexProviderType`. Credentials come from the server's
+AWS default chain / Google Application Default Credentials. No credentials are
+stored in provider rows. Hosts using AWS IRSA or web identity supply
+`software.amazon.awssdk:sts` on their own runtime classpath (matching the
+transitive AWS SDK version); this QBit does not add it. See README Providers for
+configuration, endpoint overrides and static discovery limitations.

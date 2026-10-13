@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import com.kingsrook.qbits.assistant.metadata.AssistantRecordScreens;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
@@ -140,6 +141,8 @@ public final class AssistantHomeView
       }
       html.append("</div><div style=\"").append(CELLS).append("\">");
       cell(html, "Provider", active == null ? "None" : active.row().getName() + " (" + nvl(active.row().getModel(), "default model") + ")");
+      cell(html, "HIPAA mode", Boolean.TRUE.equals(data.getHipaaMode()) ? "On" : "Off");
+      cell(html, "PHI retention", data.getHipaaRetentionDays() == null ? "Normal retention" : data.getHipaaRetentionDays() + " days");
       cell(html, "API key", active == null ? "Not applicable" : active.keyStatus());
       cell(html, "Last test", active == null ? "Not applicable" : lastTest(active.row()));
       Integer rate = data.errorRatePercent7d();
@@ -185,6 +188,13 @@ public final class AssistantHomeView
          }
          html.append("</div><div style=\"").append(CELLS).append("\">");
          cell(html, "Type", nvl(p.typeLabel(), "Not set"));
+         cell(html, "Kind", AssistantRecordScreens.providerKindLabel(p.kind()));
+         cell(html, "Location", "LOCAL".equals(p.location()) ? "Local" : "Cloud");
+         if(Boolean.TRUE.equals(row.getHipaaEligible()))
+         {
+            cell(html, "Eligibility", "HIPAA-eligible");
+         }
+         cell(html, "Enabled models", String.valueOf(p.enabledModels()));
          cell(html, "Model", nvl(row.getModel(), "Default model"));
          cell(html, "API key", p.keyStatus());
          cell(html, "Last test", lastTest(row));

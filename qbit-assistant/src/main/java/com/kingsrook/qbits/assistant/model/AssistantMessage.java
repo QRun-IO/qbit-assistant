@@ -63,7 +63,7 @@ public class AssistantMessage extends QRecordEntity
    @QField(isEditable = false)
    private Integer seq;
 
-   @QField(isEditable = false, maxLength = 64)
+   @QField(isEditable = false, maxLength = 200)
    private String model;
 
    @QField(isEditable = false)

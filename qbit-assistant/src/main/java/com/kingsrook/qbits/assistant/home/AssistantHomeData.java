@@ -65,6 +65,8 @@ public class AssistantHomeData
    private final List<QRecord>            failedTools   = new ArrayList<>();
    private final List<QRecord>            deniedTools   = new ArrayList<>();
 
+   private Boolean hipaaMode;
+   private Integer hipaaRetentionDays;
    private LocalDate today;
    private long      monthCostMicros;
    private long      monthRequests;
@@ -79,7 +81,7 @@ public class AssistantHomeData
    /*******************************************************************************
     ** One provider's health.
     *******************************************************************************/
-   public record ProviderHealth(AssistantProvider row, String typeLabel, String keyStatus, boolean keyPresent, List<String> problems, boolean active, long monthCostMicros, Long capMicros)
+   public record ProviderHealth(AssistantProvider row, String typeLabel, String keyStatus, boolean keyPresent, List<String> problems, boolean active, long monthCostMicros, Long capMicros, String kind, String location, long enabledModels)
    {
    }
 
@@ -133,6 +135,8 @@ public class AssistantHomeData
    public static AssistantHomeData load(AssistantRuntime runtime) throws QException
    {
       AssistantHomeData data = new AssistantHomeData();
+      data.hipaaMode = runtime.getConfig().getHipaaMode();
+      data.hipaaRetentionDays = runtime.getConfig().getHipaaRetentionDays();
       data.today = LocalDate.now(runtime.getClock().withZone(ZoneOffset.UTC));
       LocalDate firstDay   = data.today.minusDays(DAYS - 1);
       LocalDate monthStart = data.today.withDayOfMonth(1);
@@ -275,8 +279,8 @@ public class AssistantHomeData
       {
          String status = service.keyStatus(row);
          AssistantProviderType type = row.getProviderType() == null ? null : runtime.getConfig().getProviderTypes().get(row.getProviderType());
-         data.providers.add(new ProviderHealth(row, type == null ? row.getProviderType() : type.getLabel(), status, status.startsWith("Set"), service.validate(row), active != null && active.getId().equals(row.getId()),
-            providerMonth.getOrDefault(row.getId(), 0L), ProviderService.capMicros(row)));
+         data.providers.add(new ProviderHealth(row, type == null ? row.getProviderType() : type.getLabel(), status, (status.startsWith("Set") || status.startsWith("Not needed")), service.validate(row), active != null && active.getId().equals(row.getId()),
+            providerMonth.getOrDefault(row.getId(), 0L), ProviderService.capMicros(row), service.kind(row), service.location(row), service.models(row.getId()).stream().filter(m -> Boolean.TRUE.equals(m.getEnabled())).count()));
       }
       return (data);
    }
@@ -494,4 +498,23 @@ public class AssistantHomeData
       return (truncated);
    }
 
+
+
+   /*******************************************************************************
+    ** Read-only instance HIPAA status.
+    *******************************************************************************/
+   public Boolean getHipaaMode()
+   {
+      return (hipaaMode);
+   }
+
+
+
+   /*******************************************************************************
+    ** Configured PHI retention in days.
+    *******************************************************************************/
+   public Integer getHipaaRetentionDays()
+   {
+      return (hipaaRetentionDays);
+   }
 }

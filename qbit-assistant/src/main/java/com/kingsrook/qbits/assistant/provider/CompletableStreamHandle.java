@@ -79,20 +79,29 @@ public class CompletableStreamHandle implements StreamHandle
 
 
    /*******************************************************************************
-    ** Finish with a response.
+    ** Finish with a response (ignored once cancelled: cancel() answers with a
+    ** cancelled response, and closing the stream may wake the worker first).
     *******************************************************************************/
    public void complete(ModelResponse response)
    {
+      if(cancelled.get())
+      {
+         return;
+      }
       future.complete(response);
    }
 
 
 
    /*******************************************************************************
-    ** Finish with an error.
+    ** Finish with an error (ignored once cancelled, see complete()).
     *******************************************************************************/
    public void fail(ModelProviderException exception)
    {
+      if(cancelled.get())
+      {
+         return;
+      }
       future.completeExceptionally(exception);
    }
 

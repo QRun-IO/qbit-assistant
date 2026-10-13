@@ -62,7 +62,7 @@ class AssistantQBitProducerTest extends BaseAssistantTest
    @Test
    void testProducedMetaData()
    {
-      List<String> owned = List.of("assistant_conversation", "assistant_message", "assistant_turn", "assistant_turn_event", "assistant_tool_call", "assistant_feedback", "assistant_usage_daily", "assistant_usage");
+      List<String> owned = List.of("assistant_conversation", "assistant_message", "assistant_turn", "assistant_turn_event", "assistant_tool_call", "assistant_feedback", "assistant_usage_daily", "assistant_usage", "assistant_data_audit");
       for(String name : owned)
       {
          QTableMetaData table = qInstance.getTable(name);

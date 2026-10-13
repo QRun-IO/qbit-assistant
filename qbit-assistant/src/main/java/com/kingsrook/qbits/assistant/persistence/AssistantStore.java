@@ -22,12 +22,17 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import com.kingsrook.qbits.assistant.AssistantQBitConfig;
+import com.kingsrook.qbits.assistant.AssistantRuntime;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
+import com.kingsrook.qbits.assistant.model.AssistantDataAudit;
 import com.kingsrook.qbits.assistant.model.AssistantFeedback;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
+import com.kingsrook.qbits.assistant.model.AssistantModel;
 import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
 import com.kingsrook.qbits.assistant.model.AssistantPendingAction;
 import com.kingsrook.qbits.assistant.model.AssistantPolicy;
@@ -42,6 +47,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
@@ -80,6 +86,14 @@ public class AssistantStore
    public static final int MAX_PRICES        = 500;
    public static final int MAX_SUM_ROWS      = 100_000;
 
+   private final ConversationEncryption encryption;
+   private static final Map<String, List<String>> ENCRYPTED_FIELDS = Map.of(
+      AssistantMessage.TABLE_NAME, List.of("partsJson"),
+      AssistantConversation.TABLE_NAME, List.of("title", "contextJson"),
+      AssistantToolCall.TABLE_NAME, List.of("inputJson", "resultJson", "redactionsJson", "resultSummary"),
+      AssistantTurnEvent.TABLE_NAME, List.of("dataJson"),
+      AssistantPendingAction.TABLE_NAME, List.of("paramsJson", "summary", "resultSummary"));
+
    private static final Map<String, Object> USAGE_LOCKS = new ConcurrentHashMap<>();
 
 
@@ -112,7 +126,7 @@ public class AssistantStore
       List<T>       result  = new ArrayList<>();
       for(QRecord record : CollectionUtils.nonNullList(records))
       {
-         result.add(QRecordEntity.fromQRecord(entityClass, record));
+         result.add(QRecordEntity.fromQRecord(entityClass, cryptRecord(tableName, record, false)));
       }
       return (result);
    }
@@ -126,13 +140,13 @@ public class AssistantStore
    public <T extends QRecordEntity> T insert(T entity) throws QException
    {
       requireOwnTable(entity.tableName());
-      InsertOutput output = new InsertAction().execute(new InsertInput(entity.tableName()).withRecordEntity(entity));
+      InsertOutput output = new InsertAction().execute(new InsertInput(entity.tableName()).withRecord(cryptRecord(entity.tableName(), entity.toQRecord(), true)));
       QRecord      record = output.getRecords().get(0);
       if(CollectionUtils.nullSafeHasContents(record.getErrors()))
       {
          throw (new QException("Could not save to " + entity.tableName() + ": " + record.getErrors().get(0).getMessage()));
       }
-      return ((T) QRecordEntity.fromQRecord(entity.getClass(), record));
+      return ((T) QRecordEntity.fromQRecord(entity.getClass(), cryptRecord(entity.tableName(), record, false)));
    }
 
 
@@ -143,7 +157,7 @@ public class AssistantStore
    public void update(QRecordEntity entity) throws QException
    {
       requireOwnTable(entity.tableName());
-      UpdateOutput output = new UpdateAction().execute(new UpdateInput(entity.tableName()).withRecordEntity(entity));
+      UpdateOutput output = new UpdateAction().execute(new UpdateInput(entity.tableName()).withRecord(cryptRecord(entity.tableName(), entity.toQRecord(), true)));
       QRecord      record = output.getRecords().get(0);
       if(CollectionUtils.nullSafeHasContents(record.getErrors()))
       {
@@ -159,7 +173,7 @@ public class AssistantStore
    public void updateFields(String tableName, QRecord record) throws QException
    {
       requireOwnTable(tableName);
-      UpdateOutput output = new UpdateAction().execute(new UpdateInput(tableName).withRecord(record));
+      UpdateOutput output = new UpdateAction().execute(new UpdateInput(tableName).withRecord(cryptRecord(tableName, record, true)));
       QRecord      result = output.getRecords().get(0);
       if(CollectionUtils.nullSafeHasContents(result.getErrors()))
       {
@@ -281,6 +295,8 @@ public class AssistantStore
       {
          delete(table, owned(userId).withCriteria("conversationId", QCriteriaOperator.EQUALS, conversationId));
       }
+      delete(AssistantDataAudit.TABLE_NAME, owned(userId).withCriteria("conversationId", QCriteriaOperator.EQUALS, conversationId));
+      delete(AssistantPendingAction.TABLE_NAME, owned(userId).withCriteria("conversationId", QCriteriaOperator.EQUALS, conversationId));
       delete(AssistantConversation.TABLE_NAME, owned(userId).withCriteria("id", QCriteriaOperator.EQUALS, conversationId));
    }
 
@@ -725,7 +741,97 @@ public class AssistantStore
    {
       requireOwnTable(tableName);
       List<QRecord> records = new QueryAction().execute(new QueryInput(tableName).withFilter(filter.withLimit(limit))).getRecords();
-      return (records == null ? List.of() : records);
+      return (records == null ? List.of() : records.stream().map(record -> cryptRecord(tableName, record, false)).toList());
    }
 
+
+
+
+   /*******************************************************************************
+    ** All registry models in stable id order.
+    *******************************************************************************/
+   public List<AssistantModel> listModels() throws QException
+   {
+      return (query(AssistantModel.TABLE_NAME, new QQueryFilter().withOrderBy(new QFilterOrderBy("id", true)), AssistantModel.class));
+   }
+
+
+
+   /*******************************************************************************
+    ** Save the turn level and never lower persisted conversation history.
+    *******************************************************************************/
+   public synchronized void saveClassification(String userId, Integer conversationId, Integer turnId, com.kingsrook.qbits.assistant.engine.TurnClassification classification) throws QException
+   {
+      AssistantConversation current = getConversation(userId, conversationId);
+      classification.inherit(current);
+      updateFields(AssistantTurn.TABLE_NAME, new QRecord().withValue("id", turnId)
+         .withValue("classification", classification.getClassification().name()).withValue("classificationTables", classification.getTables()));
+      if(current != null)
+      {
+         var maximum = com.kingsrook.qbits.assistant.classification.DataClassification.max(
+            com.kingsrook.qbits.assistant.classification.DataClassification.stored(current.getMaxClassification()), classification.getClassification());
+         if(!maximum.name().equals(current.getMaxClassification()))
+         {
+            updateFields(AssistantConversation.TABLE_NAME, new QRecord().withValue("id", conversationId).withValue("maxClassification", maximum.name()));
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Compatibility store: use the current instance runtime for encryption.
+    *******************************************************************************/
+   public AssistantStore()
+   {
+      encryption = null;
+   }
+
+
+
+   /*******************************************************************************
+    ** Runtime-owned store validates its configured key before serving any requests.
+    *******************************************************************************/
+   public AssistantStore(AssistantQBitConfig config)
+   {
+      encryption = new ConversationEncryption(config);
+   }
+
+
+
+   /*******************************************************************************
+    ** Copy records at the storage boundary so memory-backend records and callers are never mutated.
+    *******************************************************************************/
+   private QRecord cryptRecord(String tableName, QRecord record, Boolean encrypt)
+   {
+      ConversationEncryption codec = encryption;
+      if(codec == null)
+      {
+         AssistantRuntime runtime = AssistantRuntime.of(QContext.getQInstance());
+         codec = runtime == null ? new ConversationEncryption(new AssistantQBitConfig()) : runtime.getStore().encryption;
+      }
+      QRecord copy = new QRecord();
+      copy.setValues(new LinkedHashMap<>(record.getValues()));
+      for(String field : ENCRYPTED_FIELDS.getOrDefault(tableName, List.of()))
+      {
+         if(copy.getValue(field) instanceof String text)
+         {
+            copy.setValue(field, encrypt ? codec.encrypt(text) : codec.decrypt(text));
+         }
+      }
+      return (copy);
+   }
+
+
+
+   /*******************************************************************************
+    ** Retention candidates are paged independently of deletion, so retained PHI cannot starve other rows.
+    *******************************************************************************/
+   public List<AssistantConversation> listConversationsInactiveSince(Instant cutoff, Integer afterId, Integer limit) throws QException
+   {
+      return (query(AssistantConversation.TABLE_NAME, new QQueryFilter()
+         .withCriteria("modifyDate", QCriteriaOperator.LESS_THAN, cutoff)
+         .withCriteria("id", QCriteriaOperator.GREATER_THAN, afterId)
+         .withOrderBy(new QFilterOrderBy("id", true)).withLimit(limit), AssistantConversation.class));
+   }
 }
