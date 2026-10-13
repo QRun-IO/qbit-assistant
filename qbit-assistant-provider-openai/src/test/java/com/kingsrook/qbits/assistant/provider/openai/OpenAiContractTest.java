@@ -391,7 +391,7 @@ class OpenAiContractTest
          assertThat(type.getModels()).isEmpty();
          assertThat(type.getDefaultBaseUrl()).isNull();
          assertThat(type.getDefaultApiKeyEnvName()).isNull();
-         assertThat(type.getLabel()).contains("Ollama");
+         assertThat(type.getLabel()).isEqualTo("OpenAI-compatible");
          for(String k : type.getKinds())
          {
             assertThat(type.getDefaultLocation(k)).isIn("LOCAL", "CLOUD");

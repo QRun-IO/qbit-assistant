@@ -254,7 +254,7 @@ public final class AssistantRecordScreens
       List<QPossibleValue<?>> kinds = new ArrayList<>();
       Set<String> kindNames = new LinkedHashSet<>(List.of("ANTHROPIC", "OPENAI", "AZURE_OPENAI", "OPENROUTER", "OLLAMA", "LM_STUDIO", "VLLM", "LLAMA_CPP", "OPENAI_COMPATIBLE"));
       config.getProviderTypes().values().forEach(t -> kindNames.addAll(t.getKinds()));
-      kindNames.forEach(k -> kinds.add(new QPossibleValue<>(k, k)));
+      kindNames.forEach(k -> kinds.add(new QPossibleValue<>(k, providerKindLabel(k))));
       List<QPossibleValue<?>> modelValues = new ArrayList<>();
       models.forEach(m -> modelValues.add(new QPossibleValue<>(m, m)));
 
@@ -272,6 +272,33 @@ public final class AssistantRecordScreens
 
 
    /*******************************************************************************
+    ** Display label shared by provider settings and home cards. Custom kinds
+    ** retain their registered name.
+    *******************************************************************************/
+   public static String providerKindLabel(String kind)
+   {
+      if(kind == null)
+      {
+         return (null);
+      }
+      return (switch(kind)
+      {
+         case "ANTHROPIC" -> "Anthropic";
+         case "OPENAI" -> "OpenAI";
+         case "AZURE_OPENAI" -> "Azure OpenAI";
+         case "OPENROUTER" -> "OpenRouter";
+         case "OLLAMA" -> "Ollama";
+         case "LM_STUDIO" -> "LM Studio";
+         case "VLLM" -> "vLLM";
+         case "LLAMA_CPP" -> "llama.cpp server";
+         case "OPENAI_COMPATIBLE" -> "OpenAI-compatible (other)";
+         default -> kind;
+      });
+   }
+
+
+
+   /*******************************************************************************
     ** The provider settings screen.
     *******************************************************************************/
    private static void provider(QTableMetaData table)
@@ -280,14 +307,18 @@ public final class AssistantRecordScreens
       pvs(table, "model", MODEL_PVS_NAME, "Model");
       pvs(table, "kind", "assistant_provider_kind", "Kind");
       pvs(table, "location", "assistant_provider_location", "Location");
+      table.getField("hipaaEligible").withLabel("HIPAA-eligible");
+      table.getField("apiVersion").withLabel("API version");
+      table.getField("connectTimeoutSeconds").withLabel("Connect timeout (s)");
+      table.getField("requestTimeoutSeconds").withLabel("Request timeout (s)");
       help(table, "hipaaEligible", "Records a fact (local, or cloud under a signed BAA). It does not create a BAA.");
       table.getField("isDefault").withLabel("Default");
       table.getField("apiKeyEnvName").withLabel("API Key Variable");
-      table.getField("tlsCaBundle").withLabel("TLS CA Bundle");
+      table.getField("tlsCaBundle").withLabel("TLS CA bundle");
       table.getField("baseUrl").withLabel("Base URL Override");
       table.getField("monthlyCostCapUsd").withLabel("Monthly Cost Cap (USD)").withDisplayFormat(DisplayFormat.CURRENCY);
       counts(table, "maxOutputTokensPerRequest", "lastTestLatencyMs");
-      table.getField("lastTestLatencyMs").withLabel("Last Test Latency (ms)");
+      table.getField("lastTestLatencyMs").withLabel("Last test latency (ms)");
       help(table, "name", "A name for this provider, e.g. Claude (production).");
       help(table, "providerType", "Which kind of provider this is. Only the types installed on this server are offered.");
       help(table, "model", "The model answers come from. Empty uses the policy's (or the application's) main model.");
@@ -322,8 +353,8 @@ public final class AssistantRecordScreens
       {
          help(table, field, "USD per million tokens.");
       }
-      table.getField("inputUsdPerMTok").withLabel("Input (USD / MTok)");
-      table.getField("outputUsdPerMTok").withLabel("Output (USD / MTok)");
+      table.getField("inputUsdPerMTok").withLabel("Input (USD per million tokens)");
+      table.getField("outputUsdPerMTok").withLabel("Output (USD per million tokens)");
       table.getField("cacheReadUsdPerMTok").withLabel("Cache Read (USD / MTok)");
       table.getField("cacheWrite5mUsdPerMTok").withLabel("Cache Write 5m (USD / MTok)");
       table.getField("cacheWrite1hUsdPerMTok").withLabel("Cache Write 1h (USD / MTok)");
@@ -819,6 +850,12 @@ public final class AssistantRecordScreens
    {
       link(table, "providerId", AssistantProvider.TABLE_NAME, "Provider");
       pvs(table, "source", "assistant_model_source", "Source");
+      table.getField("contextWindowTokens").withLabel("Context window (tokens)");
+      table.getField("maxOutputTokens").withLabel("Max output tokens");
+      table.getField("supportsReasoningEffort").withLabel("Supports reasoning effort");
+      table.getField("inputUsdPerMTok").withLabel("Input (USD per million tokens)");
+      table.getField("outputUsdPerMTok").withLabel("Output (USD per million tokens)");
+      table.getField("lastTestLatencyMs").withLabel("Last test latency (ms)");
       sections(table,
          section("model", "Model", "memory", Tier.T1, "id", "providerId", "modelId", "displayName", "enabled", "source", "discoveredAt"),
          section("capabilities", "Capabilities", "settings", Tier.T2, "supportsTools", "supportsVision", "supportsStreaming", "supportsReasoningEffort", "contextWindowTokens", "maxOutputTokens"),

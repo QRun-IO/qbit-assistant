@@ -23,3 +23,15 @@ Light and dark, 390 and 1440 px:
 - `panel-persona-*`: the panel with the configured persona. This is the Next UI build of qqq-frontend-next#94; the demo's admin matches the permission-scoped "Ada (analytics)" profile.
 - `panel-pending-*`: the assistant proposed `update_record` on page 12, which is READ_WRITE. The card shows the change with Save and Cancel; nothing is saved yet.
 - `panel-confirmed-*`: after Save, the write ran once through `PATCH /qqq/v1/table/page/12` with the user's session. The card says Done, and the record screen behind the panel shows the new value.
+
+Planned P-a provider registry additions, taken against `OpenAiDemoServer` in the
+OpenAI provider's test sources with the Next UI **1.0.0-RC.18** jar. See that
+[demo's run instructions](../../qbit-assistant-provider-openai/src/test/java/com/kingsrook/qbits/assistant/provider/openai/demo/README.md).
+Discovery and connection-test status, TEST usage and the assistant turn are real
+executions against the localhost mock; replies/token counts are synthetic, not
+live GPU measurements. No screenshots in this group have been added yet.
+
+Light and dark, 390 and 1440 px:
+- `p-provider-local-*`: Local GPU (Ollama), keyless LOCAL settings, discovery/test results and discovered models.
+- `p-model-*`: a discovered model's capabilities, compute prices and connection-test result.
+- `p-home-providers-*`: the home's provider summary and usage from the executed demo calls, including disabled OpenRouter with its key Not set.

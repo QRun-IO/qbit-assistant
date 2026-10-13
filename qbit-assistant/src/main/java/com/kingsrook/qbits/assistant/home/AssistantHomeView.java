@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import com.kingsrook.qbits.assistant.metadata.AssistantRecordScreens;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
@@ -185,7 +186,7 @@ public final class AssistantHomeView
          }
          html.append("</div><div style=\"").append(CELLS).append("\">");
          cell(html, "Type", nvl(p.typeLabel(), "Not set"));
-         cell(html, "Kind", p.kind());
+         cell(html, "Kind", AssistantRecordScreens.providerKindLabel(p.kind()));
          cell(html, "Location", "LOCAL".equals(p.location()) ? "Local" : "Cloud");
          if(Boolean.TRUE.equals(row.getHipaaEligible()))
          {
