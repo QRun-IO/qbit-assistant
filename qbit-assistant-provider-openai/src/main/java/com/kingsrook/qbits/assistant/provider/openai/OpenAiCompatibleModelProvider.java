@@ -185,7 +185,15 @@ public class OpenAiCompatibleModelProvider implements AssistantModelProvider
       }
       catch(IOException | RuntimeException e)
       {
-         handle.fail(OpenAiHttp.transportError(e).withPartialUsage(result.usage));
+         ////////////////////////////////////////////////////////////////////////
+         // a transport error at or past the deadline is the timeout itself    //
+         // (the JDK client or the guard closed the call), whichever saw it    //
+         // first; report it as TIMEOUT so the kind does not depend on a race. //
+         ////////////////////////////////////////////////////////////////////////
+         long now = System.nanoTime();
+         long margin = TimeUnit.MILLISECONDS.toNanos(200);
+         boolean late = now - started >= timeout - margin || now - lastRead.get() >= timeout - margin;
+         handle.fail((late ? new ModelProviderException(ModelProviderException.Kind.TIMEOUT, null, "The provider did not answer in time.") : OpenAiHttp.transportError(e)).withPartialUsage(result.usage));
       }
       finally
       {
