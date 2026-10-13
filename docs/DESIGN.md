@@ -228,6 +228,18 @@ The golden and red-team evals now run through the UI API too.
   - Choosing *another* user would need that user's permissions without their session. QQQ core has no API to evaluate another user's permissions, and the assistant never builds or borrows a session. That part waits for a core API, so the report is always computed with the requester's own session.
 - **Recent denials:** the home's "Recent denials" card lists the newest tool calls the UI API, data access or the policy refused, with who, the table, the operation and the HTTP status, or the assistant setting that refused it.
 
+## Spec'd assistant endpoints and the core invoker (phase d, needs QQQ with #1128)
+
+- **The endpoints are spec'd `/qqq/v1` operations.** `api/specs/AssistantSpecs` registers the UI API extension `assistant` (semver 1.0.0, established prefix `/assistant`) through `MiddlewareSpecExtensionsMetaData`.
+  - The URLs, bodies and statuses stay the same (201 create, 202 cancel, 204 delete and feedback, and the assistant's `{"error","code"}` errors), so Next needs no change.
+  - They appear in the served `/qqq/v1/openapi.yaml`. The turn and events streams are declared as `text/event-stream`, with `AssistantTurnEventV1` describing the events.
+  - The fragment is committed as `qbit-assistant/src/main/resources/openapi/qqq-v1/assistant.yaml`. `AssistantSpecsContractTest` checks it against the code, and the release baseline in test resources, with core's `UiApiContract`.
+- **No raw routes.** `AssistantRouteProvider` keeps only a before-handler that learns the server's local port from the first `/qqq/v1` request.
+- **Tools call core's `UiApiInvoker`** (`CoreUiApiGateway`), and the loopback stand-in is removed.
+  - The request's credentials (`UiApiCredentials.fromContext`: session cookies, Authorization, API key, exactly as they came in) are captured by the spec that starts the turn, confirms an action or explains access. They are passed to the tools, so OAuth2, table auth and API-key sessions all work. They are never logged.
+  - The gateway also refuses the assistant's own operations, so a turn can never start a turn.
+- Until a QQQ release contains #1128, this branch builds with `-Dqqq.snapshot.version=<local build of #1128>`.
+
 ## Next phases
 
 - **(c) Data access screens:**

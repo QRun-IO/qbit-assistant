@@ -1,0 +1,1088 @@
+components:
+  schemas:
+    AssistantAccessResponseV1:
+      description: "Explain access: per table, the user's UI permissions, the assistant's\
+        \ data access, and each tool's verdict."
+      properties:
+        tables:
+          items:
+            additionalProperties: true
+            description: "table, label, dataAccess, dataAccessSource, ui {visible,\
+              \ read, insert, edit, delete}, operations [{tool, operation, allowed,\
+              \ reason}]."
+            type: "object"
+          type: "array"
+      type: "object"
+    AssistantActionV1:
+      description: "A write the assistant proposed and its state."
+      properties:
+        id:
+          type: "integer"
+        status:
+          description: "PENDING, RUNNING, EXECUTED, FAILED, REJECTED or EXPIRED."
+          type: "string"
+        toolName:
+          type: "string"
+        tableName:
+          type: "string"
+        recordId:
+          nullable: true
+          type: "string"
+        summary:
+          type: "string"
+        httpStatus:
+          description: "The UI API status of the write."
+          nullable: true
+          type: "integer"
+        resultSummary:
+          nullable: true
+          type: "string"
+        expiresAt:
+          nullable: true
+          type: "string"
+        outcome:
+          description: "After a confirm: the tool outcome."
+          nullable: true
+          type: "string"
+        message:
+          description: "After a confirm: what happened."
+          nullable: true
+          type: "string"
+        href:
+          description: "After a confirm: the written record's /app link."
+          nullable: true
+          type: "string"
+      type: "object"
+    AssistantConfigResponseV1:
+      description: "Whether the assistant is available to this user, and how."
+      properties:
+        enabled:
+          description: "Whether the panel may be used."
+          type: "boolean"
+        reason:
+          description: "Why not: DISABLED, NO_PERMISSION, NOT_CONFIGURED or KILL_SWITCH."
+          nullable: true
+          type: "string"
+        shortcut:
+          description: "Keyboard shortcut, e.g. mod+j."
+          type: "string"
+        model:
+          description: "The model that answers."
+          type: "string"
+        limits:
+          additionalProperties: true
+          description: "maxTurnSeconds and maxToolCallsPerTurn."
+          type: "object"
+        features:
+          additionalProperties: true
+          description: "writes: some table allows writes; pendingActions: writes wait\
+            \ for confirmation."
+          type: "object"
+        profile:
+          $ref: "#/components/schemas/AssistantProfileV1"
+      type: "object"
+    AssistantConversationDetailResponseV1:
+      description: "A conversation and a page of its messages, oldest first."
+      properties:
+        conversation:
+          $ref: "#/components/schemas/AssistantConversationV1"
+        messages:
+          items:
+            $ref: "#/components/schemas/AssistantMessageV1"
+          type: "array"
+      type: "object"
+    AssistantConversationListResponseV1:
+      description: "The user's conversations, newest first."
+      properties:
+        conversations:
+          items:
+            $ref: "#/components/schemas/AssistantConversationV1"
+          type: "array"
+      type: "object"
+    AssistantConversationV1:
+      description: "One of the user's own conversations."
+      properties:
+        id:
+          type: "integer"
+        title:
+          nullable: true
+          type: "string"
+        status:
+          description: "ACTIVE or ARCHIVED."
+          type: "string"
+        pinned:
+          type: "boolean"
+        lastMessageAt:
+          description: "ISO-8601 instant."
+          nullable: true
+          type: "string"
+        unreadCount:
+          type: "integer"
+        createDate:
+          description: "ISO-8601 instant."
+          nullable: true
+          type: "string"
+      type: "object"
+    AssistantErrorV1:
+      description: "An error."
+      properties:
+        error:
+          description: "A message for the user."
+          type: "string"
+        code:
+          description: "BUDGET, RATE_LIMIT, NOT_CONFIGURED, KILL_SWITCH, DISABLED,\
+            \ NO_PERMISSION..."
+          nullable: true
+          type: "string"
+      type: "object"
+    AssistantMessageV1:
+      description: "A message: the user's text or the assistant's reply as parts (text,\
+        \ tool, record_refs, navigate, notice)."
+      properties:
+        id:
+          type: "integer"
+        role:
+          description: "USER or ASSISTANT."
+          type: "string"
+        status:
+          type: "string"
+        turnId:
+          nullable: true
+          type: "integer"
+        createDate:
+          nullable: true
+          type: "string"
+        parts:
+          items:
+            additionalProperties: true
+            description: "A message part."
+            type: "object"
+          type: "array"
+      type: "object"
+    AssistantProfileV1:
+      description: "How the assistant presents itself (admin-configured; text only,\
+        \ it never changes access)."
+      properties:
+        displayName:
+          description: "The assistant's name."
+          type: "string"
+        icon:
+          description: "A Material icon name."
+          type: "string"
+        greeting:
+          description: "Shown on a new conversation."
+          nullable: true
+          type: "string"
+        starterPrompts:
+          description: "Suggested first questions."
+          items:
+            type: "string"
+          type: "array"
+      type: "object"
+    AssistantStatusResponseV1:
+      description: "An acknowledgement."
+      properties:
+        status:
+          type: "string"
+      type: "object"
+    AssistantTurnEventV1:
+      description: "One server-sent event of a turn (event: <type>, id: <seq>, data:\
+        \ this object). Types: message.start, text.delta, tool.start, tool.result,\
+        \ ui.navigate, notice, usage, message.end, error, ping."
+      properties:
+        seq:
+          description: "Sequence number; resume with ?after=<seq>."
+          type: "integer"
+        type:
+          description: "The event type (also the SSE event name)."
+          type: "string"
+        data:
+          additionalProperties: true
+          description: "The event's fields, by type."
+          type: "object"
+      type: "object"
+  securitySchemes:
+    sessionUuidCookie:
+      in: "cookie"
+      name: "sessionUUID"
+      type: "apiKey"
+info:
+  contact:
+    email: "contact@kingsrook.com"
+  description: "QQQ Assistant: conversations, streamed turns, feedback, pending actions\
+    \ and data access explanations"
+  title: "QQQ Middleware API extension: assistant"
+  version: "1.0.0"
+openapi: "3.0.3"
+paths:
+  /qqq/v1/assistant/config:
+    get:
+      description: "Whether the assistant is available to this user, its persona and\
+        \ limits"
+      responses:
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Invalid input"
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "No access to the assistant"
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Not found (or not the user's own)"
+        503:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Disabled, not configured, or the kill switch is on"
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantConfigResponseV1"
+          description: "Successful Response"
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Already finished or decided"
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Budget or rate limit"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Whether the assistant is available to this user, its persona and limits"
+  /qqq/v1/assistant/conversations:
+    get:
+      description: "The user's own conversations"
+      parameters:
+      - description: "ARCHIVED for archived conversations; active ones by default."
+        in: "query"
+        name: "status"
+        required: false
+        schema:
+          type: "string"
+      responses:
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Invalid input"
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "No access to the assistant"
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Not found (or not the user's own)"
+        503:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Disabled, not configured, or the kill switch is on"
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantConversationListResponseV1"
+          description: "Successful Response"
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Already finished or decided"
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Budget or rate limit"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "The user's own conversations"
+    post:
+      description: "Start a conversation"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              description: "Optional title and the page context it starts from."
+              properties:
+                title:
+                  type: "string"
+                context:
+                  additionalProperties: true
+                  description: "route, tableName, recordId, filter, selectedIds."
+                  type: "object"
+              type: "object"
+        required: true
+      responses:
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Invalid input"
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "No access to the assistant"
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Not found (or not the user's own)"
+        503:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Disabled, not configured, or the kill switch is on"
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Already finished or decided"
+        201:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantConversationV1"
+          description: "Successful Response"
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Budget or rate limit"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Start a conversation"
+  /qqq/v1/assistant/conversations/{id}:
+    delete:
+      description: "Delete a conversation"
+      parameters:
+      - description: "The conversation id."
+        in: "path"
+        name: "id"
+        required: true
+        schema:
+          type: "integer"
+      responses:
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Invalid input"
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "No access to the assistant"
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Not found (or not the user's own)"
+        503:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Disabled, not configured, or the kill switch is on"
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Already finished or decided"
+        204:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/null"
+          description: "Done (no body)"
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Budget or rate limit"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Delete a conversation"
+    get:
+      description: "A conversation and a page of its messages"
+      parameters:
+      - description: "The conversation id."
+        in: "path"
+        name: "id"
+        required: true
+        schema:
+          type: "integer"
+      - description: "Only messages older than this message id."
+        in: "query"
+        name: "before"
+        required: false
+        schema:
+          type: "integer"
+      - description: "Page size (default 50, at most 200)."
+        in: "query"
+        name: "limit"
+        required: false
+        schema:
+          type: "integer"
+      responses:
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Invalid input"
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "No access to the assistant"
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Not found (or not the user's own)"
+        503:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Disabled, not configured, or the kill switch is on"
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantConversationDetailResponseV1"
+          description: "Successful Response"
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Already finished or decided"
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Budget or rate limit"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "A conversation and a page of its messages"
+    patch:
+      description: "Rename, pin or archive a conversation"
+      parameters:
+      - description: "The conversation id."
+        in: "path"
+        name: "id"
+        required: true
+        schema:
+          type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              description: "The changed properties."
+              properties:
+                title:
+                  type: "string"
+                pinned:
+                  type: "boolean"
+                status:
+                  description: "ACTIVE or ARCHIVED."
+                  type: "string"
+              type: "object"
+        required: true
+      responses:
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Invalid input"
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "No access to the assistant"
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Not found (or not the user's own)"
+        503:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Disabled, not configured, or the kill switch is on"
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantConversationV1"
+          description: "Successful Response"
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Already finished or decided"
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Budget or rate limit"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Rename, pin or archive a conversation"
+  /qqq/v1/assistant/conversations/{id}/turns:
+    post:
+      description: "Ask: start a turn and stream the reply as server-sent events"
+      parameters:
+      - description: "The conversation id."
+        in: "path"
+        name: "id"
+        required: true
+        schema:
+          type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              description: "The user's text and the page context hint."
+              properties:
+                text:
+                  description: "The user's message."
+                  type: "string"
+                pageContext:
+                  additionalProperties: true
+                  description: "Where the user is in the app."
+                  type: "object"
+              type: "object"
+        required: true
+      responses:
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Invalid input"
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "No access to the assistant"
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Not found (or not the user's own)"
+        503:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Disabled, not configured, or the kill switch is on"
+        200:
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/AssistantTurnEventV1"
+          description: "The turn's events, until message.end"
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Already finished or decided"
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Budget or rate limit"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Ask: start a turn and stream the reply as server-sent events"
+  /qqq/v1/assistant/turns/{turnId}/events:
+    get:
+      description: "Resume a turn's events after a sequence number (replay, then the\
+        \ live tail)"
+      parameters:
+      - description: "The turn id."
+        in: "path"
+        name: "turnId"
+        required: true
+        schema:
+          type: "integer"
+      - description: "The last sequence number already received (0 for all)."
+        in: "query"
+        name: "after"
+        required: false
+        schema:
+          type: "integer"
+      responses:
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Invalid input"
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "No access to the assistant"
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Not found (or not the user's own)"
+        503:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Disabled, not configured, or the kill switch is on"
+        200:
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/AssistantTurnEventV1"
+          description: "The turn's events after `after`, until message.end"
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Already finished or decided"
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Budget or rate limit"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Resume a turn's events after a sequence number (replay, then the live\
+        \ tail)"
+  /qqq/v1/assistant/turns/{turnId}/cancel:
+    post:
+      description: "Stop a running turn"
+      parameters:
+      - description: "The turn id."
+        in: "path"
+        name: "turnId"
+        required: true
+        schema:
+          type: "integer"
+      responses:
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Invalid input"
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "No access to the assistant"
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Not found (or not the user's own)"
+        503:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Disabled, not configured, or the kill switch is on"
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Already finished or decided"
+        202:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantStatusResponseV1"
+          description: "Successful Response"
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Budget or rate limit"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Stop a running turn"
+  /qqq/v1/assistant/messages/{id}/feedback:
+    post:
+      description: "Thumbs up or down on an assistant message"
+      parameters:
+      - description: "The assistant message id."
+        in: "path"
+        name: "id"
+        required: true
+        schema:
+          type: "integer"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              description: "The rating and an optional reason or comment."
+              properties:
+                rating:
+                  description: "1 or -1."
+                  type: "integer"
+                reason:
+                  type: "string"
+                comment:
+                  type: "string"
+              type: "object"
+        required: true
+      responses:
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Invalid input"
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "No access to the assistant"
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Not found (or not the user's own)"
+        503:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Disabled, not configured, or the kill switch is on"
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Already finished or decided"
+        204:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/null"
+          description: "Done (no body)"
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Budget or rate limit"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Thumbs up or down on an assistant message"
+  /qqq/v1/assistant/actions/{id}:
+    get:
+      description: "A write the assistant proposed, and its state"
+      parameters:
+      - description: "The pending action id."
+        in: "path"
+        name: "id"
+        required: true
+        schema:
+          type: "integer"
+      responses:
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Invalid input"
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "No access to the assistant"
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Not found (or not the user's own)"
+        503:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Disabled, not configured, or the kill switch is on"
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantActionV1"
+          description: "Successful Response"
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Already finished or decided"
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Budget or rate limit"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "A write the assistant proposed, and its state"
+  /qqq/v1/assistant/actions/{id}/confirm:
+    post:
+      description: "Confirm a proposed write: it runs once, through the UI API, with\
+        \ this request's session"
+      parameters:
+      - description: "The pending action id."
+        in: "path"
+        name: "id"
+        required: true
+        schema:
+          type: "integer"
+      responses:
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Invalid input"
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "No access to the assistant"
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Not found (or not the user's own)"
+        503:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Disabled, not configured, or the kill switch is on"
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantActionV1"
+          description: "Successful Response"
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Already finished or decided"
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Budget or rate limit"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Confirm a proposed write: it runs once, through the UI API, with this\
+        \ request's session"
+  /qqq/v1/assistant/actions/{id}/reject:
+    post:
+      description: "Cancel a proposed write; nothing changes"
+      parameters:
+      - description: "The pending action id."
+        in: "path"
+        name: "id"
+        required: true
+        schema:
+          type: "integer"
+      responses:
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Invalid input"
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "No access to the assistant"
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Not found (or not the user's own)"
+        503:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Disabled, not configured, or the kill switch is on"
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantActionV1"
+          description: "Successful Response"
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Already finished or decided"
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Budget or rate limit"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Cancel a proposed write; nothing changes"
+  /qqq/v1/assistant/access:
+    get:
+      description: "Explain access: which UI API operations the assistant could call\
+        \ for this user, and why not"
+      parameters:
+      - description: "Only this table."
+        in: "query"
+        name: "table"
+        required: false
+        schema:
+          type: "string"
+      - description: "Only the tables this text mentions."
+        in: "query"
+        name: "prompt"
+        required: false
+        schema:
+          type: "string"
+      responses:
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Invalid input"
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "No access to the assistant"
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Not found (or not the user's own)"
+        503:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Disabled, not configured, or the kill switch is on"
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantAccessResponseV1"
+          description: "Successful Response"
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Already finished or decided"
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Budget or rate limit"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Explain access: which UI API operations the assistant could call for\
+        \ this user, and why not"

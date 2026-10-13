@@ -20,6 +20,7 @@ package com.kingsrook.qbits.assistant.uiapi;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiCredentials;
 
 
 /*******************************************************************************
@@ -35,6 +36,7 @@ public class UiApiCall
    private final Map<String, String> queryParams = new LinkedHashMap<>();
    private Object                    jsonBody;
    private String                    sessionUUID;
+   private UiApiCredentials          credentials;
    private String                    userTimezone;
    private String                    invokedBy   = "assistant";
    private Duration                  timeout     = Duration.ofSeconds(60);
@@ -157,6 +159,29 @@ public class UiApiCall
    {
       this.sessionUUID = sessionUUID;
       return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** The caller's credentials exactly as their request carried them (session
+    ** cookies, Authorization, API key); preferred over the session UUID alone.
+    ** Never logged (their toString is redacted).
+    *******************************************************************************/
+   public UiApiCall withCredentials(UiApiCredentials credentials)
+   {
+      this.credentials = credentials;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for credentials
+    *******************************************************************************/
+   public UiApiCredentials getCredentials()
+   {
+      return (credentials);
    }
 
 

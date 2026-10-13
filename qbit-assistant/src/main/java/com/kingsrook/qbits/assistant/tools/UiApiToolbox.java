@@ -59,6 +59,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiCredentials;
 
 
 /*******************************************************************************
@@ -150,8 +151,15 @@ public class UiApiToolbox
     ** Where a tool call runs: the user's session, the gateway, the policy, and
     ** what to do with a write that needs confirmation.
     *******************************************************************************/
-   public record Context(String sessionUUID, String userTimezone, UiApiGateway gateway, PolicyService.ToolPolicy policy, PendingActions pendingActions)
+   public record Context(String sessionUUID, String userTimezone, UiApiGateway gateway, PolicyService.ToolPolicy policy, PendingActions pendingActions, UiApiCredentials credentials)
    {
+      /*******************************************************************************
+       ** With the session UUID only (no request credentials captured).
+       *******************************************************************************/
+      public Context(String sessionUUID, String userTimezone, UiApiGateway gateway, PolicyService.ToolPolicy policy, PendingActions pendingActions)
+      {
+         this(sessionUUID, userTimezone, gateway, policy, pendingActions, null);
+      }
    }
 
 
@@ -643,7 +651,7 @@ public class UiApiToolbox
       if(truncated)
       {
          UiApiResult counted = context.gateway().invoke(new UiApiCall("POST", "/table/{tableName}/count").withPathParam("tableName", tableName).withJsonBody(filterBody(linkFilter))
-            .withSessionUUID(context.sessionUUID()).withUserTimezone(context.userTimezone()));
+            .withSessionUUID(context.sessionUUID()).withCredentials(context.credentials()).withUserTimezone(context.userTimezone()));
          totalCount = counted.isSuccess() ? asMap(counted.json()).get("count") : null;
       }
 
@@ -1240,7 +1248,7 @@ public class UiApiToolbox
     *******************************************************************************/
    private UiApiResult call(Context context, Outcome outcome, UiApiCall call) throws QException
    {
-      call.withSessionUUID(context.sessionUUID()).withUserTimezone(context.userTimezone()).withInvokedBy("assistant");
+      call.withSessionUUID(context.sessionUUID()).withCredentials(context.credentials()).withUserTimezone(context.userTimezone()).withInvokedBy("assistant");
       outcome.operation = call.operation();
       UiApiResult response = context.gateway().invoke(call);
       outcome.httpStatus = response.status();

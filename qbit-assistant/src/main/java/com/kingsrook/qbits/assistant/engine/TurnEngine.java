@@ -64,6 +64,7 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiCredentials;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
@@ -135,6 +136,7 @@ public class TurnEngine implements Runnable
    private long                   monthCostAtStart = 0;
 
    private volatile boolean finished = false;
+   private UiApiCredentials credentials;
 
 
 
@@ -158,6 +160,19 @@ public class TurnEngine implements Runnable
       this.policy = policy;
       this.running = running;
       this.softBudgetNotice = softBudgetNotice;
+   }
+
+
+
+   /*******************************************************************************
+    ** The credentials of the request that started the turn, forwarded to the
+    ** UI API by the tools (session cookies, Authorization, API key as they came
+    ** in). Without them the session UUID is used. Never logged.
+    *******************************************************************************/
+   public TurnEngine withCredentials(UiApiCredentials credentials)
+   {
+      this.credentials = credentials;
+      return (this);
    }
 
 
@@ -796,7 +811,7 @@ public class TurnEngine implements Runnable
     *******************************************************************************/
    private UiApiToolbox.Context toolContext()
    {
-      return (new UiApiToolbox.Context(session.getUuid(), userTimezone(), runtime.getUiApiGateway(), policy.tools(), this::proposeWrite));
+      return (new UiApiToolbox.Context(session.getUuid(), userTimezone(), runtime.getUiApiGateway(), policy.tools(), this::proposeWrite, credentials));
    }
 
 

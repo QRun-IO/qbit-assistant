@@ -35,11 +35,11 @@ import com.kingsrook.qbits.assistant.model.AssistantPolicy;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
 import com.kingsrook.qbits.assistant.testing.AssistantTestFixture;
 import com.kingsrook.qbits.assistant.testing.BaseAssistantTest;
+import com.kingsrook.qbits.assistant.testing.UiApiTestServer;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.middleware.javalin.QJavalinMetaData;
-import io.javalin.Javalin;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -57,7 +57,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  *******************************************************************************/
 class AssistantRouteProviderTest extends BaseAssistantTest
 {
-   private Javalin    javalin;
    private String     base;
    private HttpClient client = HttpClient.newHttpClient();
 
@@ -70,10 +69,8 @@ class AssistantRouteProviderTest extends BaseAssistantTest
    void startServer()
    {
       QContext.clear();
-      AssistantRouteProvider routes = new AssistantRouteProvider().withPingMillis(200);
-      routes.setQInstance(qInstance);
-      javalin = Javalin.create(routes::acceptJavalinConfig).start(0);
-      base = "http://localhost:" + javalin.port() + AssistantRouteProvider.BASE_PATH;
+      TurnStreams.setPingMillis(200);
+      base = UiApiTestServer.serve(qInstance, config) + AssistantRouteProvider.BASE_PATH;
    }
 
 
@@ -84,7 +81,7 @@ class AssistantRouteProviderTest extends BaseAssistantTest
    @AfterEach
    void stopServer()
    {
-      javalin.stop();
+      TurnStreams.setPingMillis(TurnStreams.PING_MILLIS);
    }
 
 

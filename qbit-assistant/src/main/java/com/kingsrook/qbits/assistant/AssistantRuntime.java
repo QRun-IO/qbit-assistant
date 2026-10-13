@@ -33,7 +33,7 @@ import com.kingsrook.qbits.assistant.engine.RateLimiter;
 import com.kingsrook.qbits.assistant.engine.RunningTurn;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
-import com.kingsrook.qbits.assistant.uiapi.LoopbackUiApiGateway;
+import com.kingsrook.qbits.assistant.uiapi.CoreUiApiGateway;
 import com.kingsrook.qbits.assistant.uiapi.UiApiGateway;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolKernel;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolKernelSettings;
@@ -101,7 +101,7 @@ public class AssistantRuntime
       this.accessExplainer = new AccessExplainer(qInstance, dataAccessService);
       this.toolbox = new UiApiToolbox(qInstance, dataAccessService, exposurePolicy, new AiRedactor(settings.getCustomRedactionPatterns()),
          config.getMaxCellChars() == null ? AiToolKernelSettings.DEFAULT_MAX_CELL_CHARS : config.getMaxCellChars());
-      this.uiApiGateway = config.getUiApiGateway() != null ? config.getUiApiGateway() : new LoopbackUiApiGateway(this::uiApiBaseUrl, qInstance);
+      this.uiApiGateway = config.getUiApiGateway() != null ? config.getUiApiGateway() : new CoreUiApiGateway(this::uiApiBaseUrl, qInstance);
       this.contextBuilder = new ContextBuilder(config, kernel, toolbox);
    }
 

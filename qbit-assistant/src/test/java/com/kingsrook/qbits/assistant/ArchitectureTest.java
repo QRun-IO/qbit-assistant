@@ -24,7 +24,8 @@ import com.kingsrook.qbits.assistant.model.AssistantProfileSkill;
 import com.kingsrook.qbits.assistant.model.AssistantSkill;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
-import com.kingsrook.qbits.assistant.uiapi.LoopbackUiApiGateway;
+import com.kingsrook.qbits.assistant.uiapi.CoreUiApiGateway;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolKernel;
 import com.kingsrook.qqq.backend.core.actions.dashboard.RenderWidgetAction;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
@@ -176,9 +177,10 @@ class ArchitectureTest
    {
       assertThat(ContextBuilder.KERNEL_TOOLS).containsExactlyInAnyOrder("navigate", "search_help");
       assertThat(UiApiToolbox.OPERATIONS.keySet()).doesNotContainAnyElementsOf(ContextBuilder.KERNEL_TOOLS);
+      CoreUiApiGateway gateway = new CoreUiApiGateway(() -> "http://127.0.0.1:1", new QInstance());
       for(String[] operation : UiApiToolbox.OPERATIONS.values())
       {
-         assertThat(LoopbackUiApiGateway.getSpecOperations()).as("spec'd: " + operation[0] + " " + operation[1]).contains(operation[0] + " " + operation[1]);
+         assertThat(gateway.isInvocable(operation[0], operation[1])).as("spec'd: " + operation[0] + " " + operation[1]).isTrue();
       }
    }
 

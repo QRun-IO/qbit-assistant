@@ -8,6 +8,11 @@ Phase 0/1 of the QQQ Assistant: read-only Q&A and navigation. Requires QQQ 4.1 w
 - the AI tool kernel (`qqq-backend-core` `actions.ai`, QRun-IO/qqq#1078)
 - the developer-panel contract (QRun-IO/qqq#1076).
 
+### Changed (0.1.0-RC.7, needs QQQ with QRun-IO/qqq#1128)
+- The assistant's endpoints are spec'd `/qqq/v1` operations (UI API extension `assistant` 1.0.0, prefix `/assistant`): same URLs, bodies and statuses, now in the served OpenAPI; turns and events are `text/event-stream`. The raw routes are gone.
+- Tools call core's `UiApiInvoker` with the caller's own request credentials (`UiApiCredentials`); the loopback stand-in is removed. The assistant's own operations are never invocable by its tools.
+- The OpenAPI fragment is committed (`openapi/qqq-v1/assistant.yaml`) and contract-tested.
+
 ### Changed (0.1.0-RC.6): tools go through the UI API (owner decision 2026-10-13)
 - **Every data tool runs a spec'd `/qqq/v1` operation with the user's own session** (`UiApiGateway`, loopback HTTP with the `sessionUUID` cookie): the same authentication, permissions, record locks, validation, audit and errors as the UI. A user without a permission gets the identical denial through the assistant. `navigate` and `search_help` (no records) stay on the core kernel. `LoopbackUiApiGateway` is a stand-in for core's `UiApiInvoker` (QRun-IO/qqq#1128).
 - Tools: `list_tables`, `describe_table`, `query_records`, `count_records`, `get_record`, `search_records`, `render_widget`, `get_record_history`, and new **`create_record`, `update_record`, `delete_record`**.
