@@ -185,3 +185,26 @@ startup, then set the HTTPS provider row's `tlsCaBundle` to that name. Empty
 references retain JVM default trust. The bundle adds trust without replacing JVM
 roots; hostname verification remains enabled. If the P-a columns were already
 applied, add only `tls_ca_bundle VARCHAR(100)` to `assistant_provider`.
+
+
+## P-b: AWS Bedrock and Google Vertex
+
+Before starting this version, database-backed hosts that already applied P-a add:
+
+```sql
+ALTER TABLE assistant_provider ADD COLUMN cloud_project VARCHAR(100);
+```
+
+Fresh installations use `docs/schema-postgres.sql`; memory-backed hosts need no
+migration. Existing providers leave the new column null. Vertex requires the GCP
+project id in `cloudProject`; Bedrock and Vertex both require `region` and reject
+`apiKeyEnvName`. They default to CLOUD; `hipaaEligible` remains a manual admin fact.
+
+Add the optional `qbit-assistant-provider-bedrock` and/or
+`qbit-assistant-provider-vertex` module at the QBit version and register
+`BedrockProviderType` / `VertexProviderType`. Credentials come from the server's
+AWS default chain / Google Application Default Credentials. No credentials are
+stored in provider rows. Hosts using AWS IRSA or web identity supply
+`software.amazon.awssdk:sts` on their own runtime classpath (matching the
+transitive AWS SDK version); this QBit does not add it. See README Providers for
+configuration, endpoint overrides and static discovery limitations.

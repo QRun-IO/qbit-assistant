@@ -262,7 +262,7 @@ class ProviderRegistryTest extends BaseAssistantTest
       assertThat(row.getHipaaEligible()).isFalse();
       assertThat(row.getConnectTimeoutSeconds()).isEqualTo(10);
       assertThat(row.getRequestTimeoutSeconds()).isEqualTo(120);
-      assertThat(service.keyStatus(row)).isEqualTo("Not needed (local, no key)");
+      assertThat(service.keyStatus(row)).isEqualTo("Not needed (no API key)");
       assertThat(service.forRow(row, "legacy").model()).isEqualTo("legacy");
       service.forRow(row, "legacy");
       assertThat(creates).isEqualTo(1);
@@ -428,5 +428,31 @@ class ProviderRegistryTest extends BaseAssistantTest
       input.setCallback(QProcessCallbackFactory.forPrimaryKey("id", id));
       input.setFrontendStepBehavior(RunProcessInput.FrontendStepBehavior.SKIP);
       new RunProcessAction().execute(input);
+   }
+
+
+
+   /*******************************************************************************
+    ** Cloud project survives record mapping and changing it rebuilds the client.
+    *******************************************************************************/
+   @Test
+   void cloudProjectRoundTripAndCache() throws Exception
+   {
+      AssistantProvider row = row();
+      row.setCloudProject("project-one");
+      var recordCopy = new AssistantProvider(row.toQRecord());
+      assertThat(recordCopy.getCloudProject()).isEqualTo("project-one");
+      var service = config.getRuntime().getProviderService();
+      assertThat(service.settings(row).getCloudProject()).isEqualTo("project-one");
+      assertThat(qInstance.getTable(AssistantProvider.TABLE_NAME).getField("cloudProject").getMaxLength()).isEqualTo(100);
+      service.forRow(row, "legacy");
+      service.forRow(row, "legacy");
+      assertThat(creates).isEqualTo(1);
+      row.withCloudProject("project-two");
+      service.forRow(row, "legacy");
+      assertThat(creates).isEqualTo(2);
+      var settings = new ProviderSettings();
+      settings.setCloudProject("project-three");
+      assertThat(settings.getCloudProject()).isEqualTo("project-three");
    }
 }

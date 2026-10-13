@@ -311,6 +311,73 @@ the live test. Run:
 ./mvnw verify -pl qbit-assistant-provider-openai -am -Dtest.excludedGroups= -Dgroups=live -Djacoco.skip=true
 ```
 
+### AWS Bedrock (Claude)
+
+Add `com.kingsrook.qbits:qbit-assistant-provider-bedrock` at the QBit version and
+register `com.kingsrook.qbits.assistant.provider.bedrock.BedrockProviderType`:
+
+```java
+config.withProviderType(new BedrockProviderType());
+```
+
+Create a provider row with type `bedrock`, kind `BEDROCK`, and the required AWS
+`region` (for example `us-east-1`). Leave `apiKeyEnvName` empty. The server uses
+the AWS default credential chain: environment variables, profiles and container
+credentials (ECS/EKS Pod Identity) work with the transitive dependencies.
+**For IRSA / web-identity credentials, the host application must add
+`software.amazon.awssdk:sts` to its runtime classpath**, matching the transitive
+AWS SDK version. The default chain picks it up when present; this adapter does
+not include STS or the full AWS SDK. Credentials are never stored in tables.
+
+Leave the base URL empty for the SDK's
+`https://bedrock-runtime.<region>.amazonaws.com` endpoint. Overrides, including
+VPC endpoints, must be listed in `withAllowedBaseUrls`. Model ids are Bedrock
+Claude ids or inference profile ids, for example
+`us.anthropic.claude-sonnet-4-5-20250929-v1:0`. The model must be available to the
+server's AWS role in that region.
+
+### Google Vertex AI (Claude, Gemini)
+
+Add `com.kingsrook.qbits:qbit-assistant-provider-vertex` at the QBit version and
+register `com.kingsrook.qbits.assistant.provider.vertex.VertexProviderType`:
+
+```java
+config.withProviderType(new VertexProviderType());
+```
+
+Create a row with type `vertex`, kind `VERTEX`, required `region` (for example
+`us-east5`) and `cloudProject` (the GCP project id). Leave `apiKeyEnvName` empty.
+The server uses Google Application Default Credentials, such as
+`GOOGLE_APPLICATION_CREDENTIALS` or workload identity. Access tokens are refreshed
+when expired, held only in memory, and obtained afresh for each Gemini request.
+
+Models beginning `claude-` (for example `claude-sonnet-4-5@20250929`) use the
+Anthropic Vertex backend's `streamRawPredict` API. All other model ids use Vertex's
+OpenAI-compatible endpoint:
+
+```text
+https://{region}-aiplatform.googleapis.com/v1/projects/{project}/locations/{region}/endpoints/openapi
+```
+
+Unprefixed ids, such as `gemini-2.5-flash`, are sent as `google/gemini-2.5-flash`;
+already-prefixed ids are preserved. Gemini requests omit `strict`, including when
+a tool opts in. An allow-listed base URL overrides the Claude API origin or the
+complete OpenAI-compatible base URL, according to the selected model. Use separate
+provider rows when an override needs different URL prefixes for the two APIs.
+
+Both cloud types default to CLOUD and expose a short static model catalog.
+**Discover models** returns those defaults; it does not call Bedrock's
+`ListFoundationModels` (which needs the control-plane SDK) or Vertex Model Garden.
+Health probes are unsupported; **Test connection** performs the existing one-shot
+completion. Model access and availability depend on the configured region/project.
+`hipaaEligible` is an administrator-recorded fact: a BAA and the associated legal
+and operational requirements remain owner responsibilities. The flag does not
+establish eligibility or implement PHI routing.
+
+The default build tests both clouds using localhost only, fake credentials, AWS
+binary event-stream framing, Claude SSE and Gemini Chat Completions, including
+engine/tool golden turns. No cloud credentials or live endpoints are required.
+
 ## License
 
 Apache 2.0.

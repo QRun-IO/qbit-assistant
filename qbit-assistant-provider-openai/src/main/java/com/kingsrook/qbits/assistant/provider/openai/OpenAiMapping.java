@@ -54,7 +54,8 @@ final class OpenAiMapping
       ObjectNode body = OpenAiHttp.JSON.createObjectNode();
       boolean streaming = Boolean.TRUE.equals(capabilities.getStreaming());
       boolean nativeOpenAi = List.of("OPENAI", "AZURE_OPENAI").contains(kind);
-      body.put("model", request.getModel());
+      String model = request.getModel();
+      body.put("model", "VERTEX".equals(kind) && model != null && !model.contains("/") ? "google/" + model : model);
       body.put("stream", streaming);
       if(streaming)
       {

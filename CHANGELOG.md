@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows Keep
 
 ## [0.1.0] - Unreleased
 
+- Add optional AWS Bedrock (Claude) and Google Vertex (Claude/Gemini) adapters using server credentials, static model discovery and allow-listed endpoint overrides. AWS IRSA/web-identity hosts supply STS themselves; no additional dependency is bundled.
+- Add the provider `cloudProject` column, cloud settings validation, injected Anthropic clients and per-request OpenAI bearer-token suppliers. Vertex Gemini prefixes model ids and omits strict tools.
+- Add localhost cloud contract tests and golden tool turns, including AWS binary event-stream framing, SigV4, token refresh and cloud HTTP error mapping.
+
 - Add named, server-only CA bundles for HTTPS providers, additive JVM trust and sanitized TLS diagnostics; tolerate repeated/missing streamed tool identities and invalid arguments, with a golden tool round-trip test.
 - Add the provider/model registry, per-model capabilities and prices, keyless local providers, discovery and health, and provider/model connection tests.
 - Add the optional JDK HTTP OpenAI-compatible adapter for OpenAI, Azure, OpenRouter, Ollama, LM Studio, vLLM and llama.cpp, with strict-schema safeguards and localhost contract tests.

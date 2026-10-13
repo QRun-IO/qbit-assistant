@@ -252,7 +252,7 @@ public final class AssistantRecordScreens
          types.add(new QPossibleValue<>(config.getProviderName(), config.getProviderName()));
       }
       List<QPossibleValue<?>> kinds = new ArrayList<>();
-      Set<String> kindNames = new LinkedHashSet<>(List.of("ANTHROPIC", "OPENAI", "AZURE_OPENAI", "OPENROUTER", "OLLAMA", "LM_STUDIO", "VLLM", "LLAMA_CPP", "OPENAI_COMPATIBLE"));
+      Set<String> kindNames = new LinkedHashSet<>(List.of("ANTHROPIC", "OPENAI", "AZURE_OPENAI", "OPENROUTER", "OLLAMA", "LM_STUDIO", "VLLM", "LLAMA_CPP", "OPENAI_COMPATIBLE", "BEDROCK", "VERTEX"));
       config.getProviderTypes().values().forEach(t -> kindNames.addAll(t.getKinds()));
       kindNames.forEach(k -> kinds.add(new QPossibleValue<>(k, providerKindLabel(k))));
       List<QPossibleValue<?>> modelValues = new ArrayList<>();
@@ -292,6 +292,8 @@ public final class AssistantRecordScreens
          case "VLLM" -> "vLLM";
          case "LLAMA_CPP" -> "llama.cpp server";
          case "OPENAI_COMPATIBLE" -> "OpenAI-compatible (other)";
+         case "BEDROCK" -> "AWS Bedrock";
+         case "VERTEX" -> "Google Vertex AI";
          default -> kind;
       });
    }
@@ -316,6 +318,8 @@ public final class AssistantRecordScreens
       table.getField("apiKeyEnvName").withLabel("API Key Variable");
       table.getField("tlsCaBundle").withLabel("TLS CA bundle");
       table.getField("baseUrl").withLabel("Base URL Override");
+      table.getField("cloudProject").withLabel("GCP Project ID");
+      help(table, "cloudProject", "Required for Vertex: the Google Cloud project id, not a credential.");
       table.getField("monthlyCostCapUsd").withLabel("Monthly Cost Cap (USD)").withDisplayFormat(DisplayFormat.CURRENCY);
       counts(table, "maxOutputTokensPerRequest", "lastTestLatencyMs");
       table.getField("lastTestLatencyMs").withLabel("Last test latency (ms)");
@@ -325,7 +329,7 @@ public final class AssistantRecordScreens
       help(table, "enabled", "Off: the assistant never uses this provider.");
       help(table, "isDefault", "The assistant uses the default enabled provider (else the first enabled one). Marking one default unmarks the others.");
       help(table, "apiKeyEnvName", "The NAME of the environment variable that holds the API key (e.g. ANTHROPIC_API_KEY), never the key itself. "
-         + "The key stays in the server's secret store; only allowed variable names are accepted. Empty uses the type's default variable. To replace the key, change it in the secret store.");
+         + "The key stays in the server's secret store; only allowed variable names are accepted. Empty uses the type's default variable. Bedrock and Vertex require this field to be empty and use server credentials. To replace the key, change it in the secret store.");
       help(table, "tlsCaBundle", "Name of a CA bundle configured on the server (withTrustedCaBundle). Leave empty to use the JVM trust store.");
       help(table, "baseUrl", "Leave empty to use the provider's own API. Other URLs must be allowed in the server's configuration.");
       help(table, "monthlyCostCapUsd", "When this provider's cost this month (UTC) reaches the cap, new requests are refused. Empty: no cap.");
@@ -334,7 +338,7 @@ public final class AssistantRecordScreens
       table.getField(ProviderService.KEY_STATUS_FIELD).withLabel("API Key").withHelpContent(new QHelpContent("Whether the key variable is set on this server, with the key's last four characters. The key itself is never shown or returned."));
       sections(table,
          section("provider", "Provider", "settings_input_component", Tier.T1, "id", "name", "providerType", "model", "enabled", "isDefault"),
-         section("connection", "Connection", "key", Tier.T2, "apiKeyEnvName", ProviderService.KEY_STATUS_FIELD, "baseUrl", "tlsCaBundle"),
+         section("connection", "Connection", "key", Tier.T2, "apiKeyEnvName", ProviderService.KEY_STATUS_FIELD, "baseUrl", "tlsCaBundle", "cloudProject"),
          section("limits", "Limits", "speed", Tier.T2, "monthlyCostCapUsd", "maxOutputTokensPerRequest", "maxConcurrentRequests"),
          section("registry", "Provider settings", "settings", Tier.T2, "kind", "location", "hipaaEligible", "region", "apiVersion", "connectTimeoutSeconds", "requestTimeoutSeconds"),
          section("discovery", "Last discovery", "memory", Tier.T2, "lastDiscoveryAt", "lastDiscoveryStatus", "lastDiscoveryError"),
