@@ -17,17 +17,12 @@
 package com.kingsrook.qbits.assistant.persistence;
 
 
-import java.io.Serializable;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
+import com.kingsrook.qbits.assistant.model.AssistantBudget;
+import com.kingsrook.qbits.assistant.model.AssistantBudgetEvent;
+import com.kingsrook.qbits.assistant.model.AssistantBudgetOverride;
+import com.kingsrook.qbits.assistant.model.AssistantBudgetUsage;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantDataAudit;
 import com.kingsrook.qbits.assistant.model.AssistantFeedback;
@@ -61,6 +56,15 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.data.QRecordEntity;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
+import java.io.Serializable;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 
 /*******************************************************************************
@@ -146,6 +150,10 @@ public class AssistantStore
       {
          throw (new QException("Could not save to " + entity.tableName() + ": " + record.getErrors().get(0).getMessage()));
       }
+      if(entity instanceof AssistantUsage)
+      {
+         projectBudgetUsage(record);
+      }
       return ((T) QRecordEntity.fromQRecord(entity.getClass(), cryptRecord(entity.tableName(), record, false)));
    }
 
@@ -178,6 +186,11 @@ public class AssistantStore
       if(CollectionUtils.nullSafeHasContents(result.getErrors()))
       {
          throw (new QException("Could not update " + tableName + ": " + result.getErrors().get(0).getMessage()));
+      }
+      if(AssistantUsage.TABLE_NAME.equals(tableName))
+      {
+         AssistantUsage usage = first(query(tableName, new QQueryFilter().withCriteria("id", QCriteriaOperator.EQUALS, record.getValue("id")), AssistantUsage.class));
+         projectBudgetUsage(usage.toQRecord());
       }
    }
 
@@ -833,5 +846,92 @@ public class AssistantStore
          .withCriteria("modifyDate", QCriteriaOperator.LESS_THAN, cutoff)
          .withCriteria("id", QCriteriaOperator.GREATER_THAN, afterId)
          .withOrderBy(new QFilterOrderBy("id", true)).withLimit(limit), AssistantConversation.class));
+   }
+
+
+
+   /*******************************************************************************
+    ** Enabled data-driven budgets, read once per evaluation (never per token).
+    *******************************************************************************/
+   public List<AssistantBudget> budgets() throws QException
+   {
+      return (query(AssistantBudget.TABLE_NAME, new QQueryFilter().withCriteria("enabled", QCriteriaOperator.EQUALS, true)
+         .withOrderBy(new QFilterOrderBy("id", true)), AssistantBudget.class));
+   }
+
+
+
+   /*******************************************************************************
+    ** One budget, including disabled rows for override validation.
+    *******************************************************************************/
+   public AssistantBudget budget(Integer id) throws QException
+   {
+      return (first(query(AssistantBudget.TABLE_NAME, new QQueryFilter().withCriteria("id", QCriteriaOperator.EQUALS, id), AssistantBudget.class)));
+   }
+
+
+
+   /*******************************************************************************
+    ** Overrides of one budget; expiry and narrower scope are evaluated together.
+    *******************************************************************************/
+   public List<AssistantBudgetOverride> budgetOverrides(Integer id) throws QException
+   {
+      return (query(AssistantBudgetOverride.TABLE_NAME, new QQueryFilter().withCriteria("budgetId", QCriteriaOperator.EQUALS, id), AssistantBudgetOverride.class));
+   }
+
+
+
+   /*******************************************************************************
+    ** Persist a transition once. The unique key arbitrates concurrent replicas;
+    ** an insert failure is ignored only when the winning row can be read.
+    *******************************************************************************/
+   public synchronized boolean budgetEvent(AssistantBudgetEvent event) throws QException
+   {
+      QQueryFilter filter = new QQueryFilter().withCriteria("budgetId", QCriteriaOperator.EQUALS, event.getBudgetId())
+         .withCriteria("scopeKey", QCriteriaOperator.EQUALS, event.getScopeKey())
+         .withCriteria("periodStart", QCriteriaOperator.EQUALS, event.getPeriodStart())
+         .withCriteria("state", QCriteriaOperator.EQUALS, event.getState());
+      if(!query(AssistantBudgetEvent.TABLE_NAME, filter, AssistantBudgetEvent.class).isEmpty())
+      {
+         return (false);
+      }
+      try
+      {
+         insert(event);
+         return (true);
+      }
+      catch(QException e)
+      {
+         if(query(AssistantBudgetEvent.TABLE_NAME, filter, AssistantBudgetEvent.class).isEmpty())
+         {
+            throw (e);
+         }
+         return (false);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Accounting derives only from persisted usage. No conversation or request
+    ** data is copied, and no session or security key is changed.
+    *******************************************************************************/
+   private void projectBudgetUsage(QRecord usage) throws QException
+   {
+      List<AssistantBudgetUsage> existing = query(AssistantBudgetUsage.TABLE_NAME,
+         new QQueryFilter().withCriteria("usageId", QCriteriaOperator.EQUALS, usage.getValueInteger("id")), AssistantBudgetUsage.class);
+      QRecord projection = new QRecord().withValue("usageId", usage.getValueInteger("id")).withValue("occurredAt", usage.getValueInstant("createDate"));
+      for(String field : List.of("userId", "providerId", "model", "costMicros", "inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens"))
+      {
+         projection.setValue(field, usage.getValue(field));
+      }
+      if(existing.isEmpty())
+      {
+         insert(new AssistantBudgetUsage(projection));
+      }
+      else
+      {
+         updateFields(AssistantBudgetUsage.TABLE_NAME, projection.withValue("id", existing.get(0).getId()));
+      }
    }
 }

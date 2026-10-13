@@ -439,3 +439,24 @@ Both modes audit each PII/PHI model call and every routing block in
 PHI conversations use `hipaaRetentionDays` even with HIPAA mode off. A null value
 uses normal retention; tool-result/replay cleanup remains independently configured.
 See [UPGRADE.md](UPGRADE.md) for schema changes, plaintext migration, and key handling.
+
+## Data-driven budgets
+
+Admins configure **Assistant > Budgets** for UTC DAY or MONTH allowances in USD or
+TOKENS, scoped to INSTANCE, USER, ROLE (a permission), PROVIDER or MODEL. Provider
+and model scope values are registry record ids. Warnings default to 80%; at 100%
+the default action is DOWNGRADE, and the hard ceiling defaults to 120% (always
+STOP). Multiple budgets apply together and STOP wins.
+
+An explicit downgrade model is optional. Otherwise the cheapest enabled usable
+model is selected, preferring LOCAL providers. PHI never goes to a provider that
+is not HIPAA-eligible. No eligible target means STOP. Administrators can grant
+extra allowance or temporary unlimited use from the budget's Overrides child list,
+with a required reason and expiry; the session sets the grantor.
+
+Budget state changes appear once per scope/period/state in the Events child list,
+as panel notices and, when the optional QQQ Alerts SPI is installed, bell alerts.
+The Assistant home shows budgets, overrides, daily cost and tokens, and breakdowns
+by user, model, provider and tool. Existing `AssistantBudgets`/policy limits and
+provider monthly caps continue to apply independently of these rows and overrides.
+See [UPGRADE.md](UPGRADE.md) for the required additive schema.

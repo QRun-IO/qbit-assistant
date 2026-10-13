@@ -17,11 +17,6 @@
 package com.kingsrook.qbits.assistant.settings;
 
 
-import java.io.Serializable;
-import java.math.BigDecimal;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.api.AssistantApiException;
 import com.kingsrook.qbits.assistant.engine.ConnectionTest;
@@ -71,6 +66,11 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend.StreamedETLWithFrontendProcess;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
+import java.io.Serializable;
+import java.math.BigDecimal;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -516,7 +516,7 @@ class AssistantSettingsTest extends BaseAssistantTest
       asAdmin();
       String html = render();
       assertThat(html).contains("No providers yet").contains("No assistant use in the last 30 days").contains("No tool calls yet")
-         .contains("No failed model calls").contains("No one has used the assistant this month").doesNotContain("<table");
+         .contains("No failed model calls").contains("No one has used the assistant in the last 30 days").doesNotContain("<table");
    }
 
 

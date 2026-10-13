@@ -17,11 +17,13 @@
 package com.kingsrook.qbits.assistant.metadata;
 
 
-import java.util.ArrayList;
-import java.util.List;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.home.AssistantAccessWidget;
 import com.kingsrook.qbits.assistant.home.AssistantHome;
+import com.kingsrook.qbits.assistant.model.AssistantBudget;
+import com.kingsrook.qbits.assistant.model.AssistantBudgetEvent;
+import com.kingsrook.qbits.assistant.model.AssistantBudgetOverride;
+import com.kingsrook.qbits.assistant.model.AssistantBudgetUsage;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantDataAccess;
 import com.kingsrook.qbits.assistant.model.AssistantDataAudit;
@@ -65,6 +67,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import java.util.ArrayList;
+import java.util.List;
 
 
 /*******************************************************************************
@@ -106,7 +110,7 @@ public class AssistantMetaDataBuilder
     ** calls on a conversation; model calls on a provider) or reached from the
     ** home. Processes are table and record actions, never nav entries.
     *******************************************************************************/
-   public static final List<String> NAV_TABLES = List.of(AssistantProvider.TABLE_NAME, AssistantProfile.TABLE_NAME, AssistantSkill.TABLE_NAME, AssistantDataAccess.TABLE_NAME, AssistantConversation.TABLE_NAME, AssistantModelPrice.TABLE_NAME, AssistantPolicy.TABLE_NAME);
+   public static final List<String> NAV_TABLES = List.of(AssistantBudget.TABLE_NAME, AssistantProvider.TABLE_NAME, AssistantProfile.TABLE_NAME, AssistantSkill.TABLE_NAME, AssistantDataAccess.TABLE_NAME, AssistantConversation.TABLE_NAME, AssistantModelPrice.TABLE_NAME, AssistantPolicy.TABLE_NAME);
 
    private final AssistantQBitConfig config;
 
@@ -241,6 +245,19 @@ public class AssistantMetaDataBuilder
             table.getField("resultSummary").withBehavior(ValueTooLongBehavior.PASS_THROUGH);
          }
       }
+      tables.add(readOnly(base(AssistantBudgetUsage.TABLE_NAME, "Budget Accounting", "receipt_long", AssistantBudgetUsage.class))
+         .withoutCapabilities(Capability.TABLE_DELETE).withUniqueKey(new UniqueKey("usageId")));
+      QCodeReference budgetCustomizer = new QCodeReference(AssistantBudgetCustomizer.class);
+      tables.add(base(AssistantBudget.TABLE_NAME, "Budgets", "savings", AssistantBudget.class)
+         .withRecordLabelFormat("%s").withRecordLabelFields("name")
+         .withCustomizer(TableCustomizers.PRE_INSERT_RECORD, budgetCustomizer)
+         .withCustomizer(TableCustomizers.PRE_UPDATE_RECORD, budgetCustomizer));
+      tables.add(base(AssistantBudgetOverride.TABLE_NAME, "Budget Override", "approval", AssistantBudgetOverride.class)
+         .withCustomizer(TableCustomizers.PRE_INSERT_RECORD, budgetCustomizer)
+         .withCustomizer(TableCustomizers.PRE_UPDATE_RECORD, budgetCustomizer));
+      tables.add(readOnly(base(AssistantBudgetEvent.TABLE_NAME, "Budget Event", "notifications", AssistantBudgetEvent.class))
+         .withoutCapabilities(Capability.TABLE_DELETE)
+         .withUniqueKey(new UniqueKey("budgetId", "scopeKey", "periodStart", "state")));
       tables.forEach(AssistantRecordScreens::apply);
       return (tables);
    }

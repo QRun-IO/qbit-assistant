@@ -17,12 +17,6 @@
 package com.kingsrook.qbits.assistant.engine;
 
 
-import java.time.Clock;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.ZoneOffset;
-import java.util.LinkedHashSet;
-import java.util.Set;
 import com.kingsrook.qbits.assistant.AssistantBudgets;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.model.AssistantPolicy;
@@ -31,6 +25,12 @@ import com.kingsrook.qbits.assistant.persistence.AssistantStore;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 
 /*******************************************************************************
@@ -46,6 +46,9 @@ public class PolicyService
    private final AssistantQBitConfig config;
    private final AssistantStore      store;
    private final Clock               clock;
+
+   private BudgetService budgetService;
+   private ProviderService providerService;
 
    private volatile AssistantPolicy cached;
    private volatile Instant         cachedAt;
@@ -211,6 +214,26 @@ public class PolicyService
     *******************************************************************************/
    public BudgetStatus checkBudget(EffectivePolicy policy, String userId, long pendingTokens, long pendingCostMicros) throws QException
    {
+      if(budgetService != null && pendingTokens == 0 && pendingCostMicros == 0)
+      {
+         BudgetService.Decision decision = budgetService.evaluate(userId, providerService.resolve(policy.mainModel()), false, true);
+         if(decision.stopped() || !decision.notices().isEmpty())
+         {
+            BudgetStatus configured = checkConfiguredBudget(policy, userId, pendingTokens, pendingCostMicros);
+            return (configured.hardExceeded() ? configured : new BudgetStatus(decision.stopped(), !decision.notices().isEmpty(),
+               decision.stopped() ? decision.reason() : String.join(" ", decision.notices())));
+         }
+      }
+      return (checkConfiguredBudget(policy, userId, pendingTokens, pendingCostMicros));
+   }
+
+
+
+   /*******************************************************************************
+    ** Existing config budgets remain additive and unchanged.
+    *******************************************************************************/
+   public BudgetStatus checkConfiguredBudget(EffectivePolicy policy, String userId, long pendingTokens, long pendingCostMicros) throws QException
+   {
       AssistantBudgets b     = policy.budgets();
       LocalDate        today = LocalDate.now(clock.withZone(ZoneOffset.UTC));
 
@@ -320,4 +343,14 @@ public class PolicyService
       return (override != null ? override : base);
    }
 
+
+   /*******************************************************************************
+    ** Wire the data-driven start-turn check into the existing 429 BUDGET path.
+    *******************************************************************************/
+   public PolicyService withBudgetService(BudgetService budgets, ProviderService providers)
+   {
+      this.budgetService = budgets;
+      this.providerService = providers;
+      return (this);
+   }
 }

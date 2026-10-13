@@ -376,6 +376,25 @@ AI exposure NONE is not enough, because the assistant acts as the user and an ad
   to 2190 days in either mode; shorter tool-result/replay cleanup is unchanged.
   The app home shows HIPAA mode and PHI retention.
 
+### P-d as built
+
+- ROLE allowances are per permission holder. Shared scopes sum a private immutable
+  accounting projection of usage counters; owner-locked source rows stay locked.
+  Migration backfills existing usage before writes resume. No sessions are elevated.
+
+- Standard admin budget rows add daily/monthly cost or token allowances above the
+  existing config/policy budgets and provider monthly caps. Overrides carry a
+  reason, session grantor and expiry; they never waive the other limit layers.
+- Start-turn checks use the existing 429 BUDGET path through PolicyService.
+  Every dispatch, including strict retries, evaluates current usage and overrides.
+  Events deduplicate WARNED, DOWNGRADED and STOPPED; optional reflective QAlerts
+  signals accompany panel notices without a compile-time Alerts dependency.
+- Explicit registry model selection leaves provider defaults untouched. Automatic
+  downgrades prefer LOCAL, then price. PHI eligibility and destination provider caps
+  still apply; a missing eligible target stops the turn.
+- The home owns the budget cards and 30-day cost/token bars, with user, model,
+  provider and tool breakdowns, inherited colors and empty states.
+
 ### Phases (each a green PR)
 | | Scope | Depends on |
 |---|---|---|

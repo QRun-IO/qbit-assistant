@@ -17,6 +17,16 @@
 package com.kingsrook.qbits.assistant.home;
 
 
+import com.kingsrook.qbits.assistant.engine.BudgetService;
+import com.kingsrook.qbits.assistant.metadata.AssistantRecordScreens;
+import com.kingsrook.qbits.assistant.model.AssistantBudget;
+import com.kingsrook.qbits.assistant.model.AssistantBudgetOverride;
+import com.kingsrook.qbits.assistant.model.AssistantConversation;
+import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
+import com.kingsrook.qbits.assistant.model.AssistantProvider;
+import com.kingsrook.qbits.assistant.model.AssistantToolCall;
+import com.kingsrook.qbits.assistant.model.AssistantUsage;
+import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.NumberFormat;
@@ -28,13 +38,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import com.kingsrook.qbits.assistant.metadata.AssistantRecordScreens;
-import com.kingsrook.qbits.assistant.model.AssistantConversation;
-import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
-import com.kingsrook.qbits.assistant.model.AssistantProvider;
-import com.kingsrook.qbits.assistant.model.AssistantToolCall;
-import com.kingsrook.qbits.assistant.model.AssistantUsage;
-import com.kingsrook.qqq.backend.core.model.data.QRecord;
 
 
 /*******************************************************************************
@@ -90,7 +93,9 @@ public final class AssistantHomeView
       status(html, data, prefix);
       providers(html, data, prefix);
       html.append("<div style=\"").append(GRID).append("\">");
+      budgets(html, data, prefix);
       usageByDay(html, data, prefix);
+      byProvider(html, data);
       costs(html, data, prefix);
       byUser(html, data);
       tools(html, data, prefix);
@@ -232,14 +237,13 @@ public final class AssistantHomeView
     *******************************************************************************/
    private static void usageByDay(StringBuilder html, AssistantHomeData data, String prefix)
    {
-      open(html, "Usage, last " + AssistantHomeData.DAYS + " days");
+      open(html, "Usage over time, last " + AssistantHomeData.DAYS + " days");
       Map<LocalDate, AssistantHomeData.DayUsage> days = data.getDays();
       long conversations = 0;
       long requests      = 0;
       long tokensIn      = 0;
       long tokensOut     = 0;
       long cost          = 0;
-      long max           = 1;
       for(AssistantHomeData.DayUsage day : days.values())
       {
          conversations += day.conversations;
@@ -247,7 +251,6 @@ public final class AssistantHomeView
          tokensIn += day.tokensIn;
          tokensOut += day.tokensOut;
          cost += day.costMicros;
-         max = Math.max(max, day.requests);
       }
 
       if(requests == 0 && conversations == 0)
@@ -256,16 +259,16 @@ public final class AssistantHomeView
       }
       else
       {
-         html.append("<div role=\"img\" aria-label=\"Model requests per day, last ").append(days.size()).append(" days\" style=\"display:flex;align-items:flex-end;gap:2px;height:3rem;margin:0 0 .25rem;\">");
+         long maxCost = days.values().stream().mapToLong(d -> d.costMicros).max().orElse(1);
+         long maxTokens = days.values().stream().mapToLong(d -> d.tokensIn + d.tokensOut).max().orElse(1);
          for(Map.Entry<LocalDate, AssistantHomeData.DayUsage> entry : days.entrySet())
          {
             AssistantHomeData.DayUsage day = entry.getValue();
-            int pct = (int) Math.max(day.requests == 0 ? 0 : 4, Math.round(day.requests * 100.0 / max));
-            html.append("<span title=\"").append(esc(DAY.format(entry.getKey()) + ": " + day.requests + " requests")).append("\" style=\"flex:1 1 0;min-width:0;height:").append(pct)
-               .append("%;background:").append(day.errors > 0 ? AMBER : BAR).append(";border-radius:2px 2px 0 0;\"></span>");
+            html.append("<div style=\"").append(LINE).append("\"><span>").append(esc(DAY.format(entry.getKey()))).append("</span><span>")
+               .append(esc(money(day.costMicros) + ", " + number(day.tokensIn + day.tokensOut) + " tokens")).append("</span></div>");
+            bar(html, maxCost == 0 ? 0 : 100.0 * day.costMicros / maxCost, BAR, "Daily cost");
+            bar(html, maxTokens == 0 ? 0 : 100.0 * (day.tokensIn + day.tokensOut) / maxTokens, GREY, "Daily tokens");
          }
-         html.append("</div><div style=\"display:flex;justify-content:space-between;font-size:.75rem;margin:0 0 .75rem;").append(MUTED).append("\"><span>")
-            .append(esc(DAY.format(days.keySet().iterator().next()))).append("</span><span>").append(esc(DAY.format(data.getToday()))).append("</span></div>");
 
          html.append("<dl style=\"").append(LIST).append("\">");
          row(html, "Conversations", number(conversations));
@@ -316,9 +319,10 @@ public final class AssistantHomeView
          }
       }
       html.append("</dl>");
+      html.append("<h4>By model, last 30 days</h4>");
       if(data.getByModel().isEmpty())
       {
-         empty(html, "No model calls this month.");
+         empty(html, "No model calls in the last 30 days.");
       }
       else
       {
@@ -342,10 +346,10 @@ public final class AssistantHomeView
     *******************************************************************************/
    private static void byUser(StringBuilder html, AssistantHomeData data)
    {
-      open(html, "By user, this month");
+      open(html, "By user, last 30 days");
       if(data.getByUser().isEmpty())
       {
-         empty(html, "No one has used the assistant this month.");
+         empty(html, "No one has used the assistant in the last 30 days.");
       }
       for(AssistantHomeData.Totals t : data.getByUser())
       {
@@ -668,4 +672,65 @@ public final class AssistantHomeView
       return (out.toString());
    }
 
+
+   /*******************************************************************************
+    ** Enabled budgets with their effective allowance and active overrides.
+    *******************************************************************************/
+   private static void budgets(StringBuilder html, AssistantHomeData data, String prefix)
+   {
+      open(html, "Budgets");
+      if(data.getBudgets().isEmpty())
+      {
+         empty(html, "No enabled data-driven budgets. Configured policy and provider limits still apply.");
+      }
+      for(BudgetService.Snapshot snapshot : data.getBudgets())
+      {
+         AssistantBudget budget = snapshot.budget();
+         html.append("<div style=\"").append(ROW).append("\"><strong>")
+            .append(recordLink(prefix, AssistantBudget.TABLE_NAME, budget.getId(), budget.getName())).append("</strong>");
+         html.append("<p>").append(esc(snapshot.scopeKey() + " · " + budget.getPeriod() + " (UTC) · " + budget.getMetric())).append("</p>");
+         html.append("<p>").append(esc(snapshot.used().stripTrailingZeros().toPlainString() + " / "
+            + (snapshot.limit() == null ? "Unlimited" : snapshot.limit().stripTrailingZeros().toPlainString()) + " · " + snapshot.state())).append("</p>");
+         bar(html, snapshot.percent().doubleValue(), snapshot.percent().intValue() >= 100 ? RED
+            : snapshot.percent().intValue() >= budget.getWarnPercent() ? AMBER : "currentColor", "Budget used " + snapshot.percent() + "%");
+         for(AssistantBudgetOverride override : snapshot.overrides())
+         {
+            html.append("<p>").append(esc("Override: " + (override.getExtraValue() == null ? "Unlimited until " + override.getUnlimitedUntil() : "+" + override.getExtraValue())
+               + " · " + nvl(override.getScopeValue(), "Whole scope") + " · " + override.getReason() + " · expires " + override.getExpiresAt())).append("</p>");
+         }
+         html.append("</div>");
+      }
+      close(html);
+   }
+
+
+
+   /*******************************************************************************
+    ** A fluid semantic bar; values are clamped and text remains readable.
+    *******************************************************************************/
+   private static void bar(StringBuilder html, double percent, String color, String label)
+   {
+      html.append("<div aria-label=\"").append(esc(label)).append("\" style=\"background:rgba(127,127,127,.15);margin:.2rem 0;height:.35rem;\"><div style=\"height:100%;width:")
+         .append(Math.max(0, Math.min(100, percent))).append("%;background:").append(color).append(";\"></div></div>");
+   }
+
+
+
+   /*******************************************************************************
+    ** Provider breakdown over the same window as users, models and tools.
+    *******************************************************************************/
+   private static void byProvider(StringBuilder html, AssistantHomeData data)
+   {
+      open(html, "By provider, last 30 days");
+      if(data.getByProvider().isEmpty())
+      {
+         empty(html, "No provider usage in the last 30 days.");
+      }
+      for(AssistantHomeData.Totals total : data.getByProvider())
+      {
+         html.append("<div style=\"").append(LINE).append("\"><span>").append(esc(total.key)).append("</span><span>")
+            .append(esc(money(total.costMicros) + ", " + number(total.tokensIn + total.tokensOut) + " tokens")).append("</span></div>");
+      }
+      close(html);
+   }
 }

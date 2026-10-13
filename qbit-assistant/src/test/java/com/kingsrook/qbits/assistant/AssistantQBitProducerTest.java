@@ -17,8 +17,6 @@
 package com.kingsrook.qbits.assistant;
 
 
-import java.util.ArrayList;
-import java.util.List;
 import com.kingsrook.qbits.assistant.metadata.AssistantAdminPermissionChecker;
 import com.kingsrook.qbits.assistant.metadata.AssistantMetaDataBuilder;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
@@ -44,6 +42,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryBackendModule;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -85,7 +85,7 @@ class AssistantQBitProducerTest extends BaseAssistantTest
       // the nav: the home plus the main tables; processes are actions    //
       //////////////////////////////////////////////////////////////////////
       assertThat(qInstance.getApp(AssistantMetaDataBuilder.APP_NAME).getChildren()).extracting(c -> c.getName())
-         .containsExactly("assistant_provider", "assistant_profile", "assistant_skill", "assistant_data_access", "assistant_conversation", "assistant_model_price", "assistant_policy");
+         .containsExactly("assistant_budget", "assistant_provider", "assistant_profile", "assistant_skill", "assistant_data_access", "assistant_conversation", "assistant_model_price", "assistant_policy");
       assertThat(qInstance.getApp(AssistantMetaDataBuilder.APP_NAME).getWidgets()).containsExactly("assistantHome", "assistantAccess");
       assertThat(qInstance.getProcess(AssistantMetaDataBuilder.RETENTION_PROCESS_NAME).getTableName()).isEqualTo("assistant_conversation");
       assertThat(qInstance.getProcess(AssistantMetaDataBuilder.RETENTION_PROCESS_NAME)).isNotNull();
