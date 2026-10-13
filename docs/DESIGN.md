@@ -114,7 +114,20 @@ Owner: *"the agent should have to go through the same API that the UIUX does. th
    - Each table and process has an AI data access setting: NONE, READ or READ_WRITE. Sensitive tables default to NONE.
    - Admins can see what the assistant could do for a given user, and why.
 3. **Writes need confirmation.** A write tool only *proposes* the change, as a pending action card. Nothing changes until the user confirms in the panel, unless the policy turns confirmation off.
-4. All other open questions in this section were decided as recommended (shared rule: "all recommendations accepted").
+4. **Persona and skills, never more access** (owner, 2026-10-13): *"in the config for the AI settings, we should be able to set a name and personality and extra skills etc for the agent - and again - the agent should be limited to only using our UIUX API and being able to only do the things that the currently logged in user could do with the same UIUX API via the UIUX"*.
+   - **Profiles** (`assistant_profile`, admin-edited): display name, icon, personality (tone instructions, at most 2,000 characters), greeting and up to 6 starter prompts.
+     - One profile is the default. Others are scoped to an app, to users holding a permission (a role), or to both. The most specific profile wins.
+     - `/assistant/config` returns the profile for the panel header, the greeting and the starter prompts.
+   - **Skills** (`assistant_skill`, linked to profiles through `assistant_profile_skill`): named Markdown instruction packs of at most 6,000 characters, with a description, an enabled flag, trigger keywords and apps.
+     - A skill is read only when relevant: a keyword appears in the question, the user is in one of its apps, or it has neither, in which case it is always read.
+     - All skills read for one question total at most 12,000 characters.
+   - Profile and skill text goes into the per-user system block, framed as "tone and know-how only". The rules come first, and rule 10 says these can never override the rules or give other tools, data or permissions.
+   - **Hard guarantee:**
+     - Every data, process, report or widget capability is a `/qqq/v1` operation, called through the gateway (core `UiApiInvoker` once it is released) with the CURRENT user's session.
+     - The tool list is the spec'd operations ∩ data access ∩ policy. Profiles and skills are never read when tools are built or run.
+     - It is enforced by ArchUnit: the tool, UI API and access code may not use QQQ table, process, report, dashboard or async actions, the core AI kernel, or the profile and skill classes. It is also enforced by a runtime guard: `AssistantStore` refuses any table that is not `assistant_*`.
+     - `UiApiToolsSecurityTest.testDenialMatrix` checks that a user without permission gets the identical status and message from the UI API and through the assistant for query, get, insert, update and delete. The assistant has no process or report tool, and process data access defaults to NONE.
+5. All other open questions in this section were decided as recommended (shared rule: "all recommendations accepted").
 
 ## Tools through the UI API (0.1.0-RC.6)
 
@@ -203,6 +216,17 @@ A confirmed write adds its own row. The rows are a child list on conversations, 
 - the policy narrows the tools and caps rows.
 
 The golden and red-team evals now run through the UI API too.
+
+## Explain access and recent denials (0.1.0-RC.6)
+
+- **Explain access:**
+  - `GET /qqq/v1/assistant/access?table=&prompt=` returns, for the calling user and each table (or only the named table, or only the tables a prompt mentions):
+    - the user's UI permissions, from `GET /qqq/v1/metaData` with their own session;
+    - the assistant's data access and where it comes from (setting, default, or sensitive table);
+    - each tool's operation, with allowed or the reason it would be denied (policy, data access, not visible in the UI, or no read/insert/edit/delete permission).
+  - The `assistantAccess` widget on the Assistant home renders the same thing for the viewing admin.
+  - Choosing *another* user would need that user's permissions without their session. QQQ core has no API to evaluate another user's permissions, and the assistant never builds or borrows a session. That part waits for a core API, so the report is always computed with the requester's own session.
+- **Recent denials:** the home's "Recent denials" card lists the newest tool calls the UI API, data access or the policy refused, with who, the table, the operation and the HTTP status, or the assistant setting that refused it.
 
 ## Next phases
 

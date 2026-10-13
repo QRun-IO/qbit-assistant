@@ -212,7 +212,10 @@ public class TurnEngine implements Runnable
             }
          }
 
-         ModelRequest request = runtime.getContextBuilder().build(session, model, policy.mainEffort(), history, userText, pageContext, policy.tools());
+         String                  appName = runtime.appNameFor(pageContext);
+         ProfileService.Persona  persona = runtime.getProfileService().persona(session, appName);
+         String                  profileText = ProfileService.instructions(persona, runtime.getProfileService().relevantSkills(persona.profileId(), userText, appName));
+         ModelRequest request = runtime.getContextBuilder().build(session, model, policy.mainEffort(), history, userText, pageContext, policy.tools(), profileText);
          Integer maxPerRequest = active.row() == null ? null : active.row().getMaxOutputTokensPerRequest();
          if(maxPerRequest != null && (request.getMaxTokens() == null || request.getMaxTokens() > maxPerRequest))
          {

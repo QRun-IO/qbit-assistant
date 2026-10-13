@@ -21,6 +21,7 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import com.kingsrook.qbits.assistant.home.AssistantAccessWidget;
 import com.kingsrook.qbits.assistant.home.AssistantHome;
 import com.kingsrook.qbits.assistant.metadata.AssistantMetaDataBuilder;
 import com.kingsrook.qbits.assistant.metadata.AssistantRecordScreens;
@@ -166,6 +167,7 @@ public class AssistantQBitProducer implements QBitMetaDataProducer<AssistantQBit
       qInstance.addProcess(testConnection);
 
       qInstance.addWidget(AssistantHome.widget());
+      qInstance.addWidget(AssistantAccessWidget.widget());
 
       QAppMetaData app = builder.buildAdminApp(tables);
       qInstance.addApp(app);

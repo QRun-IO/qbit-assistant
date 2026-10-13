@@ -94,6 +94,7 @@ public final class AssistantHomeView
       byUser(html, data);
       tools(html, data, prefix);
       failures(html, data, prefix);
+      denials(html, data, prefix);
       html.append("</div>");
       if(data.isTruncated())
       {
@@ -368,6 +369,35 @@ public final class AssistantHomeView
          html.append("</div>");
       }
       link(html, prefix, AssistantToolCall.TABLE_NAME, "All tool calls");
+      close(html);
+   }
+
+
+
+   /*******************************************************************************
+    ** Recent denials: tool calls refused by the UI API (the user's own
+    ** permissions), by data access or by the policy. Each says who, what and why.
+    *******************************************************************************/
+   private static void denials(StringBuilder html, AssistantHomeData data, String prefix)
+   {
+      open(html, "Recent denials");
+      if(data.getDeniedTools().isEmpty())
+      {
+         empty(html, "No tool call was denied in the last " + AssistantHomeData.DAYS + " days.");
+      }
+      else
+      {
+         html.append("<ul style=\"").append(ITEMS).append("\">");
+         for(QRecord tool : data.getDeniedTools())
+         {
+            String status = tool.getValueInteger("httpStatus") == null ? "refused before the UI API (" + nvl(tool.getValueString("permissionCheck"), "assistant setting") + ")"
+               : "HTTP " + tool.getValueInteger("httpStatus") + " from " + nvl(tool.getValueString("uiApiOperation"), "the UI API");
+            html.append("<li>").append(recordLink(prefix, AssistantToolCall.TABLE_NAME, tool.getValue("id"), nvl(tool.getValueString("toolName"), "Tool call"))).append(": ")
+               .append(esc(nvl(tool.getValueString("userId"), "unknown user") + ", " + nvl(tool.getValueString("tableName"), "no table") + ", " + status + ", " + when(tool.getValueInstant("createDate"))))
+               .append("</li>");
+         }
+         html.append("</ul>");
+      }
       close(html);
    }
 
