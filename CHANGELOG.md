@@ -8,6 +8,12 @@ Phase 0/1 of the QQQ Assistant: read-only Q&A and navigation. Requires QQQ 4.1 w
 - the AI tool kernel (`qqq-backend-core` `actions.ai`, QRun-IO/qqq#1078)
 - the developer-panel contract (QRun-IO/qqq#1076).
 
+### Added (0.1.0-RC.7): write mode (owner decision 2026-10-13)
+- Per-conversation **Read-only** (default) or **Write** mode: `writeMode` on conversations (PATCH, create), the write tools exist only in Write mode, and a write tool called in Read-only mode is refused before any request (`mode:READ_ONLY`).
+- Policy: `writeModeAllowed`, `writeModePermission` (role), `autoConfirmAllowed`. Data access: `autoConfirmOk` per table.
+- `assistant_user_preference` (own rows): default mode of new conversations, auto-confirm of low-risk writes (single-record insert/update on auto-confirm-OK tables; never deletes). `GET`/`PATCH /qqq/v1/assistant/preferences`; `/config` reports `features.writeMode`, `features.autoConfirm` and `preferences`.
+- The denial matrix covers the write tools in both modes.
+
 ### Changed (0.1.0-RC.7, needs QQQ with QRun-IO/qqq#1128)
 - The assistant's endpoints are spec'd `/qqq/v1` operations (UI API extension `assistant` 1.0.0, prefix `/assistant`): same URLs, bodies and statuses, now in the served OpenAPI; turns and events are `text/event-stream`. The raw routes are gone.
 - Tools call core's `UiApiInvoker` with the caller's own request credentials (`UiApiCredentials`); the loopback stand-in is removed. The assistant's own operations are never invocable by its tools.

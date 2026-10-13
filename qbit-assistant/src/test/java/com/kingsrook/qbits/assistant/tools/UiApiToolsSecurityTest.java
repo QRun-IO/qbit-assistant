@@ -244,7 +244,7 @@ class UiApiToolsSecurityTest extends BaseAssistantTest
    void testConfirmedWriteRunsThroughTheUiApi() throws Exception
    {
       setAccess("blog_post", DataAccessMode.READ_WRITE);
-      UiApiToolbox.Outcome proposed = tool(AssistantTestFixture.ADMIN, PolicyService.ToolPolicy.defaults(), UiApiToolbox.CREATE_RECORD,
+      UiApiToolbox.Outcome proposed = tool(AssistantTestFixture.ADMIN, PolicyService.ToolPolicy.defaults().withWriteMode(true), UiApiToolbox.CREATE_RECORD,
          input("table", "blog_post", "values", Map.of("title", "Proposed by the assistant", "status", "DRAFT")));
       assertThat(proposed.getResult().getOutcome()).isEqualTo(AiToolOutcome.OK);
       assertThat(proposed.getHttpStatus()).as("nothing runs before confirmation").isNull();
@@ -282,7 +282,7 @@ class UiApiToolsSecurityTest extends BaseAssistantTest
    void testOnlyTheOwnerDecides() throws Exception
    {
       setAccess("blog_post", DataAccessMode.READ_WRITE);
-      UiApiToolbox.Outcome proposed = tool(AssistantTestFixture.EDITOR, PolicyService.ToolPolicy.defaults(), UiApiToolbox.UPDATE_RECORD,
+      UiApiToolbox.Outcome proposed = tool(AssistantTestFixture.EDITOR, PolicyService.ToolPolicy.defaults().withWriteMode(true), UiApiToolbox.UPDATE_RECORD,
          input("table", "blog_post", "id", "1", "values", Map.of("title", "Changed")));
       Integer actionId = proposed.getPendingActionId();
       assertThat(actionId).isNotNull();
@@ -376,6 +376,27 @@ class UiApiToolsSecurityTest extends BaseAssistantTest
             assertThat(assistant.getResult().getModelContent()).as(row[0] + " message").contains(message);
          }
       }
+
+      //////////////////////////////////////////////////////////////////
+      // Read-only mode: the same writes never reach the UI API, for   //
+      // the analyst and for the admin who could make them in the UI   //
+      //////////////////////////////////////////////////////////////////
+      PolicyService.ToolPolicy readOnly = noConfirmation().withWriteMode(false);
+      for(String who : List.of(AssistantTestFixture.ANALYST, AssistantTestFixture.ADMIN))
+      {
+         for(Object[] row : new Object[][] {
+            {UiApiToolbox.CREATE_RECORD, input("table", "blog_post", "values", Map.of("title", "x"))},
+            {UiApiToolbox.UPDATE_RECORD, input("table", "blog_post", "id", "1", "values", Map.of("title", "x"))},
+            {UiApiToolbox.DELETE_RECORD, input("table", "blog_post", "id", "1")}})
+         {
+            @SuppressWarnings("unchecked")
+            UiApiToolbox.Outcome outcome = tool(who, readOnly, (String) row[0], (Map<String, Object>) row[1]);
+            assertThat(outcome.getResult().getOutcome()).as(who + " " + row[0]).isEqualTo(AiToolOutcome.DENIED);
+            assertThat(outcome.getHttpStatus()).as(who + " " + row[0] + ": no request").isNull();
+            assertThat(outcome.getResult().getPermissionCheck()).isEqualTo("mode:READ_ONLY");
+         }
+      }
+      assertThat(ui("PATCH", "/table/blog_post/1", AssistantTestFixture.ADMIN, "{\"title\":\"Admin via the UI\"}").statusCode()).as("the admin may write in the UI").isBetween(200, 299);
 
       //////////////////////////////////////////////////////////////////
       // process: no tool, and no process has data access by default  //

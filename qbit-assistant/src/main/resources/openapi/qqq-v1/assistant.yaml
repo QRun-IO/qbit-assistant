@@ -112,6 +112,10 @@ components:
           type: "string"
         pinned:
           type: "boolean"
+        writeMode:
+          description: "Write mode (default Read-only): the write tools exist only\
+            \ in Write mode."
+          type: "boolean"
         lastMessageAt:
           description: "ISO-8601 instant."
           nullable: true
@@ -158,6 +162,18 @@ components:
             description: "A message part."
             type: "object"
           type: "array"
+      type: "object"
+    AssistantPreferencesV1:
+      description: "The user's own assistant preferences."
+      properties:
+        defaultWriteMode:
+          description: "New conversations start in Write mode (when write mode is\
+            \ available)."
+          type: "boolean"
+        autoConfirmLowRisk:
+          description: "Auto-confirm low-risk writes (only when the policy allows\
+            \ it; never deletes, bulk writes or processes)."
+          type: "boolean"
       type: "object"
     AssistantProfileV1:
       description: "How the assistant presents itself (admin-configured; text only,\
@@ -329,7 +345,8 @@ paths:
         content:
           application/json:
             schema:
-              description: "Optional title and the page context it starts from."
+              description: "Optional title, the page context it starts from, and the\
+                \ mode (default: the user's preference)."
               properties:
                 title:
                   type: "string"
@@ -337,6 +354,8 @@ paths:
                   additionalProperties: true
                   description: "route, tableName, recordId, filter, selectedIds."
                   type: "object"
+                writeMode:
+                  type: "boolean"
               type: "object"
         required: true
       responses:
@@ -533,6 +552,10 @@ paths:
                 status:
                   description: "ACTIVE or ARCHIVED."
                   type: "string"
+                writeMode:
+                  description: "Switch to Write mode (true) or Read-only (false);\
+                    \ 403 when write mode is not available to the user."
+                  type: "boolean"
               type: "object"
         required: true
       responses:
@@ -1086,3 +1109,114 @@ paths:
         - "N/A"
       summary: "Explain access: which UI API operations the assistant could call for\
         \ this user, and why not"
+  /qqq/v1/assistant/preferences:
+    get:
+      description: "The user's own assistant preferences"
+      responses:
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Invalid input"
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "No access to the assistant"
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Not found (or not the user's own)"
+        503:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Disabled, not configured, or the kill switch is on"
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantPreferencesV1"
+          description: "Successful Response"
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Already finished or decided"
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Budget or rate limit"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "The user's own assistant preferences"
+    patch:
+      description: "Change the user's own assistant preferences"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              description: "The changed preferences."
+              properties:
+                defaultWriteMode:
+                  type: "boolean"
+                autoConfirmLowRisk:
+                  type: "boolean"
+              type: "object"
+        required: true
+      responses:
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Invalid input"
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "No access to the assistant"
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Not found (or not the user's own)"
+        503:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Disabled, not configured, or the kill switch is on"
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantPreferencesV1"
+          description: "Successful Response"
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Already finished or decided"
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantErrorV1"
+          description: "Budget or rate limit"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Change the user's own assistant preferences"

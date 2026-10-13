@@ -44,6 +44,7 @@ import com.kingsrook.qbits.assistant.model.AssistantPendingAction;
 import com.kingsrook.qbits.assistant.model.AssistantToolCall;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
 import com.kingsrook.qbits.assistant.model.AssistantTurnEvent;
+import com.kingsrook.qbits.assistant.model.AssistantUserPreference;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolOutcome;
@@ -139,7 +140,10 @@ public class AssistantApi
       result.put("shortcut", config.getShortcut());
       result.put("model", reason == null ? activeProvider().model() : config.getModels().getMainModel());
       result.put("limits", Map.of("maxTurnSeconds", config.getMaxTurnSeconds(), "maxToolCallsPerTurn", config.getMaxToolCallsPerTurn()));
-      result.put("features", Map.of("writes", runtime.getToolbox().anyWritableTable(), "pendingActions", true));
+      boolean writeMode = reason == null && writeModeAvailable();
+      result.put("features", Map.of("writes", runtime.getToolbox().anyWritableTable(), "pendingActions", true, "writeMode", writeMode,
+         "autoConfirm", writeMode && runtime.getPolicyService().current(false).tools().autoConfirmAllowed()));
+      result.put("preferences", reason == null ? preferences() : Map.of());
       ProfileService.Persona persona = runtime.getProfileService().persona(session, null);
       Map<String, Object>    profile = new LinkedHashMap<>();
       profile.put("displayName", persona.displayName());
@@ -179,6 +183,12 @@ public class AssistantApi
       String title = body.get("title") instanceof String s && StringUtils.hasContent(s) ? truncate(s.trim(), 255) : null;
       Map<String, Object> context = body.get("context") instanceof Map<?, ?> m ? ContextBuilder.sanitizePageContext((Map<String, Object>) m) : null;
       AssistantConversation conversation = store.createConversation(userId, title, context == null || context.isEmpty() ? null : JsonUtils.toJson(context));
+      boolean write = body.get("writeMode") instanceof Boolean requested ? requested : defaultWriteMode();
+      if(write && writeModeAvailable())
+      {
+         store.updateFields(AssistantConversation.TABLE_NAME, new QRecord().withValue("id", conversation.getId()).withValue("writeMode", true));
+         conversation.setWriteMode(true);
+      }
       return (toJson(conversation));
    }
 
@@ -254,6 +264,19 @@ public class AssistantApi
          conversation.setStatus((String) status);
       }
 
+      if(body.containsKey("writeMode"))
+      {
+         if(!(body.get("writeMode") instanceof Boolean writeMode))
+         {
+            throw (new AssistantApiException(400, "writeMode must be true or false."));
+         }
+         if(writeMode && !writeModeAvailable())
+         {
+            throw (new AssistantApiException(403, "WRITE_MODE_UNAVAILABLE", "Write mode is not available to you. An administrator controls it in the assistant policy."));
+         }
+         update.setValue("writeMode", writeMode);
+         conversation.setWriteMode(writeMode);
+      }
       store.updateFields(AssistantConversation.TABLE_NAME, update);
       return (toJson(conversation));
    }
@@ -759,6 +782,82 @@ public class AssistantApi
 
 
    /*******************************************************************************
+    ** Whether this user may use Write mode at all: the policy allows it, they
+    ** hold its permission (when one is set), and some table is READ_WRITE.
+    *******************************************************************************/
+   public boolean writeModeAvailable() throws QException
+   {
+      return (runtime.getPolicyService().current(false).tools().writeModeAvailableTo(session) && runtime.getToolbox().anyWritableTable());
+   }
+
+
+
+   /*******************************************************************************
+    ** The default mode of the user's new conversations (Read-only unless they
+    ** chose Write).
+    *******************************************************************************/
+   private boolean defaultWriteMode() throws QException
+   {
+      AssistantUserPreference preference = store.getPreference(userId);
+      return (preference != null && Boolean.TRUE.equals(preference.getDefaultWriteMode()));
+   }
+
+
+
+   /*******************************************************************************
+    ** GET /preferences: the user's own preferences.
+    *******************************************************************************/
+   public Map<String, Object> preferences() throws QException
+   {
+      AssistantUserPreference preference = userId == null ? null : store.getPreference(userId);
+      Map<String, Object>     map        = new LinkedHashMap<>();
+      map.put("defaultWriteMode", preference != null && Boolean.TRUE.equals(preference.getDefaultWriteMode()));
+      map.put("autoConfirmLowRisk", preference != null && Boolean.TRUE.equals(preference.getAutoConfirmLowRisk()));
+      return (map);
+   }
+
+
+
+   /*******************************************************************************
+    ** PATCH /preferences: change the user's own preferences. Auto-confirm can
+    ** be turned on only when the policy allows it.
+    *******************************************************************************/
+   public Map<String, Object> patchPreferences(Map<String, Object> body) throws QException, AssistantApiException
+   {
+      requireAccess();
+      AssistantUserPreference preference = store.getPreference(userId);
+      if(preference == null)
+      {
+         preference = store.insert(new AssistantUserPreference().withUserId(userId).withDefaultWriteMode(false).withAutoConfirmLowRisk(false));
+      }
+      QRecord update = new QRecord().withValue("id", preference.getId());
+      if(body.containsKey("defaultWriteMode"))
+      {
+         if(!(body.get("defaultWriteMode") instanceof Boolean value))
+         {
+            throw (new AssistantApiException(400, "defaultWriteMode must be true or false."));
+         }
+         update.setValue("defaultWriteMode", value);
+      }
+      if(body.containsKey("autoConfirmLowRisk"))
+      {
+         if(!(body.get("autoConfirmLowRisk") instanceof Boolean value))
+         {
+            throw (new AssistantApiException(400, "autoConfirmLowRisk must be true or false."));
+         }
+         if(value && !runtime.getPolicyService().current(false).tools().autoConfirmAllowed())
+         {
+            throw (new AssistantApiException(403, "AUTO_CONFIRM_UNAVAILABLE", "Auto-confirm is not allowed by the assistant policy."));
+         }
+         update.setValue("autoConfirmLowRisk", value);
+      }
+      store.updateFields(AssistantUserPreference.TABLE_NAME, update);
+      return (preferences());
+   }
+
+
+
+   /*******************************************************************************
     ** The configured turn time limit (replay loops are capped by it).
     *******************************************************************************/
    public int maxTurnSeconds()
@@ -856,6 +955,7 @@ public class AssistantApi
       map.put("title", conversation.getTitle());
       map.put("status", conversation.getStatus());
       map.put("pinned", Boolean.TRUE.equals(conversation.getPinned()));
+      map.put("writeMode", Boolean.TRUE.equals(conversation.getWriteMode()));
       map.put("lastMessageAt", conversation.getLastMessageAt() == null ? null : conversation.getLastMessageAt().toString());
       map.put("unreadCount", conversation.getUnreadCount() == null ? 0 : conversation.getUnreadCount());
       map.put("createDate", conversation.getCreateDate() == null ? null : conversation.getCreateDate().toString());

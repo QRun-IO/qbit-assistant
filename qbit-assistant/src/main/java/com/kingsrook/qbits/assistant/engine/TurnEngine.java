@@ -39,6 +39,7 @@ import com.kingsrook.qbits.assistant.model.AssistantMessage;
 import com.kingsrook.qbits.assistant.model.AssistantPendingAction;
 import com.kingsrook.qbits.assistant.model.AssistantToolCall;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
+import com.kingsrook.qbits.assistant.model.AssistantUserPreference;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
 import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
 import com.kingsrook.qbits.assistant.provider.CacheHint;
@@ -137,6 +138,7 @@ public class TurnEngine implements Runnable
 
    private volatile boolean finished = false;
    private UiApiCredentials credentials;
+   private PolicyService.ToolPolicy toolPolicy;
 
 
 
@@ -230,7 +232,7 @@ public class TurnEngine implements Runnable
          String                  appName = runtime.appNameFor(pageContext);
          ProfileService.Persona  persona = runtime.getProfileService().persona(session, appName);
          String                  profileText = ProfileService.instructions(persona, runtime.getProfileService().relevantSkills(persona.profileId(), userText, appName));
-         ModelRequest request = runtime.getContextBuilder().build(session, model, policy.mainEffort(), history, userText, pageContext, policy.tools(), profileText);
+         ModelRequest request = runtime.getContextBuilder().build(session, model, policy.mainEffort(), history, userText, pageContext, toolPolicy(), profileText);
          Integer maxPerRequest = active.row() == null ? null : active.row().getMaxOutputTokensPerRequest();
          if(maxPerRequest != null && (request.getMaxTokens() == null || request.getMaxTokens() > maxPerRequest))
          {
@@ -240,7 +242,7 @@ public class TurnEngine implements Runnable
          {
             request.setParallelToolCalls(false);
          }
-         Set<String> allowedTools = runtime.getContextBuilder().toolNames(policy.tools());
+         Set<String> allowedTools = runtime.getContextBuilder().toolNames(toolPolicy());
 
          boolean toolLimitReached = false;
          while(true)
@@ -805,13 +807,41 @@ public class TurnEngine implements Runnable
 
 
    /*******************************************************************************
+    ** The policy's tool settings for this turn: Write mode only when the
+    ** conversation is in Write mode and write mode is available to this user;
+    ** auto-confirm only when the policy allows it and the user chose it.
+    *******************************************************************************/
+   PolicyService.ToolPolicy toolPolicy()
+   {
+      if(toolPolicy == null)
+      {
+         PolicyService.ToolPolicy base  = policy.tools();
+         boolean                  write = Boolean.TRUE.equals(conversation.getWriteMode()) && base.writeModeAvailableTo(session);
+         boolean                  auto  = false;
+         try
+         {
+            AssistantUserPreference preference = store.getPreference(userId);
+            auto = preference != null && Boolean.TRUE.equals(preference.getAutoConfirmLowRisk());
+         }
+         catch(QException | RuntimeException e)
+         {
+            LOG.debug("Could not read the user's assistant preferences", e);
+         }
+         toolPolicy = base.withWriteMode(write).withAutoConfirm(auto);
+      }
+      return (toolPolicy);
+   }
+
+
+
+   /*******************************************************************************
     ** Where a data tool runs: the user's own session (by its UUID, for the UI
     ** API), the gateway, the policy's tool settings, and the pending-action
     ** store for writes that need confirmation.
     *******************************************************************************/
    private UiApiToolbox.Context toolContext()
    {
-      return (new UiApiToolbox.Context(session.getUuid(), userTimezone(), runtime.getUiApiGateway(), policy.tools(), this::proposeWrite, credentials));
+      return (new UiApiToolbox.Context(session.getUuid(), userTimezone(), runtime.getUiApiGateway(), toolPolicy(), this::proposeWrite, credentials));
    }
 
 

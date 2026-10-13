@@ -38,6 +38,7 @@ import com.kingsrook.qbits.assistant.model.AssistantTurn;
 import com.kingsrook.qbits.assistant.model.AssistantTurnEvent;
 import com.kingsrook.qbits.assistant.model.AssistantUsage;
 import com.kingsrook.qbits.assistant.model.AssistantUsageDaily;
+import com.kingsrook.qbits.assistant.model.AssistantUserPreference;
 import com.kingsrook.qbits.assistant.processes.AssistantRetentionStep;
 import com.kingsrook.qqq.backend.core.actions.ai.AiExposure;
 import com.kingsrook.qqq.backend.core.actions.ai.AiTableMetaData;
@@ -203,6 +204,10 @@ public class AssistantMetaDataBuilder
       tables.add(profiles(base(AssistantProfileSkill.TABLE_NAME, "Assistant Profile Skill", "link", AssistantProfileSkill.class))
          .withUniqueKey(new UniqueKey("profileId", "skillId"))
          .withRecordLabelFormat("%s · %s").withRecordLabelFields("profileId", "skillId"));
+
+      tables.add(owned(base(AssistantUserPreference.TABLE_NAME, "Assistant User Preference", "tune", AssistantUserPreference.class), false)
+         .withUniqueKey(new UniqueKey("userId"))
+         .withRecordLabelFormat("%s").withRecordLabelFields("userId"));
 
       tables.add(readOnly(owned(base(AssistantPendingAction.TABLE_NAME, "Assistant Pending Action", "pending_actions", AssistantPendingAction.class), false))
          .withRecordLabelFormat("%s #%s").withRecordLabelFields("toolName", "id"));

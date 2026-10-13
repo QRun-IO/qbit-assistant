@@ -335,7 +335,8 @@ public class UiApiToolbox
       List<ModelToolDefinition> rs = new ArrayList<>();
       for(ModelToolDefinition definition : definitions())
       {
-         if((policy == null || policy.allows(definition.getName())) && (anyWritableTable || !WRITE_TOOLS.contains(definition.getName())))
+         boolean write = WRITE_TOOLS.contains(definition.getName());
+         if((policy == null || policy.allows(definition.getName())) && (!write || (anyWritableTable && (policy == null || policy.writeMode()))))
          {
             rs.add(definition);
          }
@@ -381,6 +382,11 @@ public class UiApiToolbox
          if(context.policy() != null && !context.policy().allows(toolName))
          {
             deny(result, "policy:tool", "The administrator has not allowed the " + toolName + " tool.");
+            return (outcome);
+         }
+         if(WRITE_TOOLS.contains(toolName) && context.policy() != null && !context.policy().writeMode())
+         {
+            deny(result, "mode:READ_ONLY", "This conversation is in Read-only mode: the assistant cannot change data. The user can switch it to Write mode in the panel.");
             return (outcome);
          }
          if(!context.gateway().isInvocable(operation[0], operation[1]))
@@ -1146,7 +1152,12 @@ public class UiApiToolbox
          }
       }
 
-      if(context.policy() == null || context.policy().writesRequireConfirmation())
+      ///////////////////////////////////////////////////////////////////
+      // auto-confirm: only when the policy allows it, the user chose   //
+      // it, and the admin marked the table low-risk; never deletes     //
+      ///////////////////////////////////////////////////////////////////
+      boolean autoConfirmed = context.policy() != null && context.policy().autoConfirm() && !DELETE_RECORD.equals(toolName) && dataAccess.autoConfirmOk(tableName);
+      if(!autoConfirmed && (context.policy() == null || context.policy().writesRequireConfirmation()))
       {
          String summary = describeWrite(toolName, table, recordId, values);
          Integer actionId = context.pendingActions() == null ? null

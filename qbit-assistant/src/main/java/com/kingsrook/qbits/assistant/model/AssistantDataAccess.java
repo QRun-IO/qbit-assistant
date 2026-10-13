@@ -49,6 +49,9 @@ public class AssistantDataAccess extends QRecordEntity
    @QField(maxLength = 500, valueTooLongBehavior = ValueTooLongBehavior.TRUNCATE_ELLIPSIS)
    private String notes;
 
+   @QField()
+   private Boolean autoConfirmOk;
+
    @QField(isEditable = false)
    private Instant createDate;
 
@@ -282,6 +285,36 @@ public class AssistantDataAccess extends QRecordEntity
    public AssistantDataAccess withModifyDate(Instant modifyDate)
    {
       this.modifyDate = modifyDate;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for autoConfirmOk (single-record inserts and updates here may be auto-confirmed (when the policy and the user allow it))
+    *******************************************************************************/
+   public Boolean getAutoConfirmOk()
+   {
+      return (this.autoConfirmOk);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for autoConfirmOk
+    *******************************************************************************/
+   public void setAutoConfirmOk(Boolean autoConfirmOk)
+   {
+      this.autoConfirmOk = autoConfirmOk;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for autoConfirmOk
+    *******************************************************************************/
+   public AssistantDataAccess withAutoConfirmOk(Boolean autoConfirmOk)
+   {
+      this.autoConfirmOk = autoConfirmOk;
       return (this);
    }
 

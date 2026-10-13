@@ -62,6 +62,9 @@ public class AssistantConversation extends QRecordEntity
    @QField(isEditable = false)
    private String contextJson;
 
+   @QField()
+   private Boolean writeMode;
+
    @QField(isEditable = false)
    private Long totalTokensIn;
 
@@ -496,6 +499,36 @@ public class AssistantConversation extends QRecordEntity
    public AssistantConversation withModifyDate(Instant modifyDate)
    {
       this.modifyDate = modifyDate;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for writeMode (Write mode for this conversation (default Read-only); the write tools exist only in Write mode)
+    *******************************************************************************/
+   public Boolean getWriteMode()
+   {
+      return (this.writeMode);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for writeMode
+    *******************************************************************************/
+   public void setWriteMode(Boolean writeMode)
+   {
+      this.writeMode = writeMode;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for writeMode
+    *******************************************************************************/
+   public AssistantConversation withWriteMode(Boolean writeMode)
+   {
+      this.writeMode = writeMode;
       return (this);
    }
 
