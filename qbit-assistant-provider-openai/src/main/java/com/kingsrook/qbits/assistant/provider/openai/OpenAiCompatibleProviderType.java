@@ -48,7 +48,7 @@ public class OpenAiCompatibleProviderType implements AssistantProviderType
    @Override
    public String getLabel()
    {
-      return ("OpenAI-compatible (OpenAI, Azure, OpenRouter, Ollama, LM Studio, vLLM, llama.cpp)");
+      return ("OpenAI-compatible");
    }
 
 
