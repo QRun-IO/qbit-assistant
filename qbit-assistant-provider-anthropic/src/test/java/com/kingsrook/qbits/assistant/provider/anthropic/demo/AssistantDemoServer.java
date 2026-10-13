@@ -160,6 +160,15 @@ public class AssistantDemoServer extends AbstractQQQApplication
       api.thenError(529, "overloaded.json").thenError(529, "overloaded.json").thenError(529, "overloaded.json");
       runner.run(AssistantTestFixture.OTHER_EDITOR, "Draft a post outline.");
 
+      ///////////////////////////////////////////////////////////////////
+      // the first question asked in the panel proposes a page change  //
+      // (page is READ_WRITE): the panel shows the confirmation card   //
+      ///////////////////////////////////////////////////////////////////
+      for(int i = 0; i < 8; i++)
+      {
+         api.thenStream("propose-page-update.sse", 0).thenStream("proposed-answer.sse", 0);
+      }
+
       instance.withInstanceDefaultAuthentication(new QAuthenticationMetaData().withName("mock").withType(QAuthenticationType.MOCK)
          .withCustomizer(new QCodeReference(DemoSessionCustomizer.class)));
       instance.setHomeAppName(AssistantMetaDataBuilder.APP_NAME);
