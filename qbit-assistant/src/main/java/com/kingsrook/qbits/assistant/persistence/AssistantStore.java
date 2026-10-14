@@ -51,6 +51,7 @@ import com.kingsrook.qbits.assistant.model.AssistantTurn;
 import com.kingsrook.qbits.assistant.model.AssistantTurnEvent;
 import com.kingsrook.qbits.assistant.model.AssistantUsage;
 import com.kingsrook.qbits.assistant.model.AssistantUsageDaily;
+import com.kingsrook.qbits.assistant.model.AssistantUserPreference;
 import com.kingsrook.qbits.assistant.provider.ModelUsage;
 import com.kingsrook.qbits.assistant.scheduled.ScheduledTasks;
 import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
@@ -380,6 +381,16 @@ public class AssistantStore
    public AssistantTurn getTurn(String userId, Integer id) throws QException
    {
       return (first(query(AssistantTurn.TABLE_NAME, owned(userId).withCriteria("id", QCriteriaOperator.EQUALS, id), AssistantTurn.class)));
+   }
+
+
+
+   /*******************************************************************************
+    ** The user's own preferences, or null.
+    *******************************************************************************/
+   public AssistantUserPreference getPreference(String userId) throws QException
+   {
+      return (first(query(AssistantUserPreference.TABLE_NAME, owned(userId).withLimit(1), AssistantUserPreference.class)));
    }
 
 

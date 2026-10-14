@@ -78,6 +78,8 @@ components:
           description: "writes: some table allows writes; pendingActions: writes wait\
             \ for confirmation."
           type: "object"
+        preferences:
+          $ref: "#/components/schemas/AssistantPreferencesV1"
         profile:
           $ref: "#/components/schemas/AssistantProfileV1"
       type: "object"
@@ -111,6 +113,10 @@ components:
           description: "ACTIVE or ARCHIVED."
           type: "string"
         pinned:
+          type: "boolean"
+        writeMode:
+          description: "Write mode (default Read-only): the write tools exist only\
+            \ in Write mode."
           type: "boolean"
         lastMessageAt:
           description: "ISO-8601 instant."
@@ -158,6 +164,18 @@ components:
             description: "A message part."
             type: "object"
           type: "array"
+      type: "object"
+    AssistantPreferencesV1:
+      description: "The user's own assistant preferences."
+      properties:
+        defaultWriteMode:
+          description: "New conversations start in Write mode (when write mode is\
+            \ available)."
+          type: "boolean"
+        autoConfirmLowRisk:
+          description: "Auto-confirm low-risk writes (only when the policy allows\
+            \ it; never deletes, bulk writes or processes)."
+          type: "boolean"
       type: "object"
     AssistantProfileV1:
       description: "How the assistant presents itself (admin-configured; text only,\
@@ -212,7 +230,7 @@ info:
   description: "QQQ Assistant: conversations, streamed turns, feedback, pending actions\
     \ and data access explanations"
   title: "QQQ Middleware API extension: assistant"
-  version: "1.0.0"
+  version: "1.1.0"
 openapi: "3.0.3"
 paths:
   /qqq/v1/assistant/config:
@@ -329,7 +347,8 @@ paths:
         content:
           application/json:
             schema:
-              description: "Optional title and the page context it starts from."
+              description: "Optional title, the page context it starts from, and the\
+                \ mode (default: the user's preference)."
               properties:
                 title:
                   type: "string"
@@ -337,6 +356,8 @@ paths:
                   additionalProperties: true
                   description: "route, tableName, recordId, filter, selectedIds."
                   type: "object"
+                writeMode:
+                  type: "boolean"
               type: "object"
         required: true
       responses:
@@ -533,6 +554,10 @@ paths:
                 status:
                   description: "ACTIVE or ARCHIVED."
                   type: "string"
+                writeMode:
+                  description: "Switch to Write mode (true) or Read-only (false);\
+                    \ 403 when write mode is not available to the user."
+                  type: "boolean"
               type: "object"
         required: true
       responses:
@@ -1038,6 +1063,12 @@ paths:
         required: false
         schema:
           type: "string"
+      - description: "Attribute this request to an owned turn."
+        in: "query"
+        name: "turnId"
+        required: false
+        schema:
+          type: "integer"
       responses:
         400:
           content:

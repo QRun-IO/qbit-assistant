@@ -238,7 +238,7 @@ The golden and red-team evals now run through the UI API too.
 - **Tools call core's `UiApiInvoker`** (`CoreUiApiGateway`), and the loopback stand-in is removed.
   - The request's credentials (`UiApiCredentials.fromContext`: session cookies, Authorization, API key, exactly as they came in) are captured by the spec that starts the turn, confirms an action or explains access. They are passed to the tools, so OAuth2, table auth and API-key sessions all work. They are never logged.
   - The gateway also refuses the assistant's own operations, so a turn can never start a turn.
-- QQQ 4.1.0-RC.6 (the default `qqq.snapshot.version`) contains #1128, so no local build is needed.
+- QQQ 4.1.0-RC.6 contains #1128; W1 now targets RC.8 for core Preferences (see W as built).
 
 ## Owner decisions (2026-10-13), continued: write mode, the hard wall, audit attribution, providers
 
@@ -263,6 +263,34 @@ Owner: *"the assistant should be able to go into 'write mode' too - with a user 
 - **Enforcement is beneath the assistant.** The UI API and core permission layer decide, exactly as for Next UI. The assistant only forwards the user's credentials (`UiApiInvoker`, `UiApiCredentials`, qqq#1128).
   - The ArchUnit rule (no core actions from the tool code) and the denial matrix stay.
   - The matrix is extended to every write operation, in both modes.
+
+### W as built (F13 / #29)
+
+- W1 is integrated with develop's spec'd operations, `CoreUiApiGateway`, client
+  attribution, provider routing, presentation and bulk-load tools. Conversation
+  `writeMode` and all policy/data-access gates remain in force.
+- `UserPreferencesMetaData` registers section `assistant` (Assistant, smart_toy),
+  scoped to `assistant.hasAccess`. It has no app scope because the Assistant app
+  requires admin access. `AssistantPreferencesProvider` implements core's SPI,
+  loads and updates `assistant_user_preference` through `AssistantStore`, and
+  obtains ownership only from the request context. The visible table remains the
+  administrative interface. No new preference storage is introduced.
+- Core serves `GET` / `PATCH /qqq/v1/preferences/assistant`; the bespoke
+  `/assistant/preferences` specs are removed. PATCH uses `values` and preserves
+  omitted settings. Policy rejects unavailable Write defaults and auto-confirm.
+  Fresh field metadata marks auto-confirm read-only with policy help text when
+  unavailable, without mutating shared metadata. Core validates types and names.
+- `/assistant/config.preferences` returns effective defaults for the panel;
+  new conversations apply the saved default only if Write mode is available.
+  The provider refuses `assistant` (including scheduled details) before accessing
+  rows: core only applies section channel rules through an app binding.
+- Bulk write tools are absent and forged calls are denied in Read-only mode.
+  Scheduled mode requires the task approval and policy's global/role permission;
+  scheduled tools always require confirmation, regardless of user auto-confirm.
+- HTTP tests cover permission visibility, own-user GET/PATCH, rejected identity
+  injection, policy metadata/validation, defaults and channel denial. W1's denial
+  matrix and both record and bulk mode paths remain covered. Build against QQQ
+  RC.8, or `-Dqqq.snapshot.version=4.1.0-PREFS-SNAPSHOT` before publication.
 
 ### X. The hard wall between the assistant and its configuration
 Owner: *"there should also be a hard wall between the assistant and the configuration for the assistant. he should never be able to see his own configuration tables etc."*
@@ -423,7 +451,7 @@ AI exposure NONE is not enough, because the assistant acts as the user and an ad
   model and effort. Empty slots retain provider row/default/policy selection.
 - The documented heuristic is a pure rule table: >600 characters, two distinct app
   table names, complexity keywords, pending write context, >8 previous turns or a
-  previous tool limit. This branch has no conversation write-mode field.
+  previous tool limit. W1 additionally persists conversation write mode.
 - Classifier transport is non-streaming, bounded to four output tokens/three seconds,
   and contains only the fixed instruction and user question. PHI guards apply before
   dispatch. Errors/unexpected replies use the heuristic. ROUTE usage enters budget
@@ -536,12 +564,8 @@ AI exposure NONE is not enough, because the assistant acts as the user and an ad
   failed calls and knowledge-query embeddings. STOP is checked at dispatch
   boundaries; an in-flight call can exceed the cap, and no next call is sent.
 - Every scheduled UI API request, including metadata and knowledge retrieval,
-  carries `X-QQQ-Client: assistant/scheduled/<taskId>`. The only uiapi change is
-  additive `LoopbackUiApiGateway.invokeWithClient`; custom gateways currently
-  fail closed for scheduled requests because their channel contract is unknown.
-  Tool-call rows also record `clientChannel`. Core channel deny enforcement
-  remains pending the client-channel RC; existing AI exposure/data-access
-  restrictions continue to apply on RC.5.
+  carries `X-QQQ-Client: assistant/scheduled/<taskId>` through `CoreUiApiGateway`.
+  Tool-call rows also record `clientChannel`; core enforces the configuration wall.
 - Approve write mode, Revoke write mode and Run now are admin record actions
   using standard streamed ETL Review/Result. Review shows the exact prompt's
   SHA-256 and run-as user. Result rereads and compares the complete reviewed
@@ -549,10 +573,9 @@ AI exposure NONE is not enough, because the assistant acts as the user and an ad
   A persisted approval hash additionally binds prompt, run-as user, credential
   reference, profile and requested mode. Editing any of these clears approval;
   ordinary saves cannot set approval or computed bookkeeping fields.
-- This base has create/update/delete tools, but no W1 conversation mode/policy
-  switch. Scheduled runs explicitly narrow the existing tool policy: write tools
-  require both request and matching approval, a READ_WRITE table and the policy's
-  allowed-tools list. All scheduled writes require panel confirmation, including
+- Scheduled runs narrow W1's tool policy: record and bulk write tools require
+  both request and matching approval, the designated user's global/role Write-mode
+  permission, a READ_WRITE table and the policy's allowed-tools list. All scheduled writes require panel confirmation, including
   when normal policy allows immediate writes. A pending proposal adds a waiting
   notice to the run summary; the scheduler never confirms it.
 - RECORD keeps the run and conversation; NOTIFICATION and BOTH also submit an

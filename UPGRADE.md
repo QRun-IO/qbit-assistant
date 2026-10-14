@@ -1,5 +1,33 @@
 # Upgrading qbit-assistant
 
+## W1 preferences migration (F13 / #29)
+
+Requires QQQ **4.1.0-RC.8** for core Preferences (qqq#1162). Until publication,
+verify with `.\mvnw.cmd -q verify "-Dqqq.snapshot.version=4.1.0-PREFS-SNAPSHOT"`.
+The root default is RC.8; do not commit the local snapshot override.
+
+Replace `GET` / `PATCH /qqq/v1/assistant/preferences` with
+`GET` / `PATCH /qqq/v1/preferences/assistant`. PATCH now wraps changed fields in
+`values`, for example `{"values":{"defaultWriteMode":true}}`; GET returns the
+core section metadata and `values`. Do not send a user id. Core returns 400 for
+invalid or policy-read-only values and 404 for a hidden section. These removed
+operations were on the unmerged W1 branch; the fragment and baseline now describe
+the core integration. The panel's initial toggle continues to use effective
+`preferences.defaultWriteMode` from `/qqq/v1/assistant/config`.
+
+Existing `assistant_user_preference` rows need no data migration. Hosts installing
+W1 for the first time must apply its DDL in `docs/schema-postgres.sql` (conversation
+`write_mode`, policy fields, data-access `auto_confirm_ok`, and the preference
+table). Keep it as a standard visible admin table. The Preferences page is scoped
+by `assistant.hasAccess`, not the admin-only Assistant app. The provider explicitly
+refuses the `assistant` channel because core's section channel checks only apply
+to app-bound sections.
+
+Scheduled writes now require task approval plus global/role Write-mode policy.
+Bulk write tools obey the same conversation mode. Record history stays default-off
+when running on core versions whose channel defaults allow audit reads.
+
+
 ## X1/Y1: channel wall and audit attribution
 
 Requires QQQ 4.1.0-RC.6. Every assistant table, process, report and widget is

@@ -38,6 +38,8 @@ import java.util.concurrent.Executors;
 import java.util.stream.Stream;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
+import com.kingsrook.qbits.assistant.engine.PolicyService;
+import com.kingsrook.qbits.assistant.model.AssistantPolicy;
 import com.kingsrook.qbits.assistant.AssistantSecurity;
 import com.kingsrook.qbits.assistant.model.AssistantDataAccess;
 import com.kingsrook.qbits.assistant.model.AssistantPendingAction;
@@ -343,6 +345,33 @@ class ScheduledTasksTest extends BaseAssistantTest
       QContext.init(qInstance, AssistantTestFixture.ownerSession(AssistantTestFixture.EDITOR, config));
       AssistantScheduledTask selected = task;
       assertThatThrownBy(() -> action(selected, "Approve")).hasMessageContaining("assistant.admin");
+   }
+
+
+
+   /*******************************************************************************
+    ** Per-task approval never overrides global or role write policy. User
+    ** auto-confirm preferences never bypass scheduled confirmation.
+    *******************************************************************************/
+   @Test
+   void approvedTaskStillRequiresWritePolicy() throws Exception
+   {
+      AssistantScheduledTask task = task();
+      runtime.getStore().updateFields(AssistantScheduledTask.TABLE_NAME, new QRecord().withValue("id", task.getId()).withValue("writeModeRequested", true));
+      task = runtime.getStore().scheduledTask(task.getId());
+      action(task, "Approve");
+      task = runtime.getStore().scheduledTask(task.getId());
+      QContext.init(qInstance, AssistantTestFixture.ownerSession(AssistantTestFixture.EDITOR, config));
+      PolicyService.ToolPolicy allowed = PolicyService.ToolPolicy.defaults();
+      PolicyService.ToolPolicy blocked = PolicyService.ToolPolicy.of(new AssistantPolicy().withWriteModeAllowed(false));
+      PolicyService.ToolPolicy role = PolicyService.ToolPolicy.of(new AssistantPolicy().withWriteModePermission("assistant.write"));
+      assertThat(ScheduledTurn.tools(runtime, task, blocked).writeMode()).isFalse();
+      assertThat(ScheduledTurn.tools(runtime, task, role).writeMode()).isFalse();
+      PolicyService.ToolPolicy effective = ScheduledTurn.tools(runtime, task, allowed);
+      assertThat(effective.writeMode()).isTrue();
+      assertThat(effective.writesRequireConfirmation()).isTrue();
+      assertThat(effective.autoConfirm()).isFalse();
+      assertThat(ScheduledTurn.tools(runtime, new AssistantScheduledTask(), allowed.withWriteMode(true)).writeMode()).isFalse();
    }
 
 

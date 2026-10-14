@@ -43,6 +43,7 @@ import com.kingsrook.qbits.assistant.model.AssistantPendingAction;
 import com.kingsrook.qbits.assistant.model.AssistantScheduledTask;
 import com.kingsrook.qbits.assistant.model.AssistantToolCall;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
+import com.kingsrook.qbits.assistant.model.AssistantUserPreference;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
 import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
 import com.kingsrook.qbits.assistant.provider.CacheHint;
@@ -134,7 +135,7 @@ public class TurnEngine implements Runnable
    private long                             lastTextFlush = System.currentTimeMillis();
 
    private AssistantScheduledTask scheduledTask;
-   private PolicyService.ToolPolicy toolPolicy;
+
 
    private Instant startedAt;
    private Instant deadline;
@@ -150,6 +151,7 @@ public class TurnEngine implements Runnable
 
    private volatile boolean finished = false;
    private UiApiCredentials credentials;
+   private PolicyService.ToolPolicy toolPolicy;
 
 
 
@@ -213,7 +215,7 @@ public class TurnEngine implements Runnable
          {
             throw (new QException("Scheduled execution context is no longer available; start a new conversation."));
          }
-         toolPolicy = scheduledTask == null ? policy.tools() : ScheduledTurn.tools(runtime, scheduledTask, policy.tools());
+         toolPolicy = scheduledTask == null ? toolPolicy() : ScheduledTurn.tools(runtime, scheduledTask, policy.tools());
          ScheduledTurn.checkCost(runtime, conversation.getId(), turn.getId());
          classification = new TurnClassification(config.getClassificationSource(), conversation, pageContext);
          store.saveClassification(userId, conversation.getId(), turn.getId(), classification);
@@ -906,6 +908,34 @@ public class TurnEngine implements Runnable
       {
          LOG.warn("Could not record assistant tool call", hipaaSafe(e), logPair("turnId", turn.getId()), logPair("tool", use.getToolName()));
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** The policy's tool settings for this turn: Write mode only when the
+    ** conversation is in Write mode and write mode is available to this user;
+    ** auto-confirm only when the policy allows it and the user chose it.
+    *******************************************************************************/
+   PolicyService.ToolPolicy toolPolicy()
+   {
+      if(toolPolicy == null)
+      {
+         PolicyService.ToolPolicy base  = policy.tools();
+         boolean                  write = Boolean.TRUE.equals(conversation.getWriteMode()) && base.writeModeAvailableTo(session);
+         boolean                  auto  = false;
+         try
+         {
+            AssistantUserPreference preference = store.getPreference(userId);
+            auto = preference != null && Boolean.TRUE.equals(preference.getAutoConfirmLowRisk());
+         }
+         catch(QException | RuntimeException e)
+         {
+            LOG.debug("Could not read the user's assistant preferences", e);
+         }
+         toolPolicy = base.withWriteMode(write).withAutoConfirm(auto);
+      }
+      return (toolPolicy);
    }
 
 

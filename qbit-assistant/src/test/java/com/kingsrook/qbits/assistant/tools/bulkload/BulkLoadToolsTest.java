@@ -129,7 +129,7 @@ class BulkLoadToolsTest extends BaseAssistantTest
       QContext.init(qInstance, AssistantTestFixture.ownerSession(AssistantTestFixture.ADMIN, config));
       try
       {
-         return (config.getRuntime().getBulkLoadTools().execute(new UiApiToolbox.Context("session-1", null, server, PolicyService.ToolPolicy.defaults(),
+         return (config.getRuntime().getBulkLoadTools().execute(new UiApiToolbox.Context("session-1", null, server, PolicyService.ToolPolicy.defaults().withWriteMode(true),
             write -> config.getRuntime().getStore().insert(new AssistantPendingAction().withUserId(AssistantTestFixture.ADMIN).withToolName(write.toolName())
                .withTableName(write.tableName()).withUiApiOperation(write.operation()).withParamsJson(JsonUtils.toJson(write.values()))
                .withSummary(write.summary()).withStatus(AssistantPendingAction.STATUS_PENDING).withExpiresAt(java.time.Instant.now().plusSeconds(600))).getId()),
@@ -151,10 +151,34 @@ class BulkLoadToolsTest extends BaseAssistantTest
    {
       List<String> names = config.getRuntime().getContextBuilder().tools().stream().map(d -> d.getName()).toList();
       assertThat(names).contains(BulkLoadTools.LIST, BulkLoadTools.DESCRIBE, BulkLoadTools.ATTACH, BulkLoadTools.SUGGEST, BulkLoadTools.DRY_RUN);
-      assertThat(config.getRuntime().getBulkLoadTools().definitions(PolicyService.ToolPolicy.defaults(), true))
+      assertThat(config.getRuntime().getBulkLoadTools().definitions(PolicyService.ToolPolicy.defaults().withWriteMode(true), true))
          .extracting(d -> d.getName()).containsExactlyInAnyOrderElementsOf(BulkLoadTools.NAMES);
       assertThat(config.getRuntime().getBulkLoadTools().definitions(PolicyService.ToolPolicy.defaults(), false))
          .extracting(d -> d.getName()).doesNotContain(BulkLoadTools.SAVE, BulkLoadTools.RUN);
+   }
+
+
+
+   /*******************************************************************************
+    ** Read-only suppresses both bulk write tools and denies forged calls before
+    ** a proposal or request, even for an administrator with READ_WRITE access.
+    *******************************************************************************/
+   @Test
+   void testReadOnlyDeniesBulkWrites()
+   {
+      PolicyService.ToolPolicy policy = PolicyService.ToolPolicy.defaults();
+      assertThat(config.getRuntime().getBulkLoadTools().definitions(policy, true))
+         .extracting(d -> d.getName()).doesNotContain(BulkLoadTools.SAVE, BulkLoadTools.RUN);
+      for(String name : BulkLoadTools.WRITE_TOOLS)
+      {
+         UiApiToolbox.Context context = new UiApiToolbox.Context("session-1", null, server, policy,
+            write -> { throw new AssertionError("Read-only must not propose a write"); });
+         UiApiToolbox.Outcome outcome = config.getRuntime().getBulkLoadTools().execute(context, "forged", name, Map.of("tableName", "blog_post"), false);
+         assertThat(outcome.getResult().getOutcome()).isEqualTo(AiToolOutcome.DENIED);
+         assertThat(outcome.getHttpStatus()).isNull();
+         assertThat(outcome.getPendingActionId()).isNull();
+      }
+      assertThat(runs).isEmpty();
    }
 
 
@@ -292,7 +316,10 @@ class BulkLoadToolsTest extends BaseAssistantTest
          })
          .thenText("The file maps cleanly once Status defaults to DRAFT (2 rows, no errors). Confirm to save the profile \"CMS post export\".");
 
-      TurnRunner.Outcome first = runner.run(AssistantTestFixture.ADMIN, null, "Load the attached posts.csv into blog posts and save the mapping for next time.", attachments);
+      QContext.init(qInstance, AssistantTestFixture.sessionFor(AssistantTestFixture.ADMIN));
+      Integer conversationId = (Integer) new AssistantApi(config.getRuntime(), QContext.getQSession()).createConversation(Map.of("writeMode", true)).get("id");
+      QContext.clear();
+      TurnRunner.Outcome first = runner.run(AssistantTestFixture.ADMIN, conversationId, "Load the attached posts.csv into blog posts and save the mapping for next time.", attachments);
       List<String> tools = first.toolCalls().stream().map(AssistantToolCall::getToolName).toList();
       assertThat(tools).containsExactly(BulkLoadTools.ATTACH, BulkLoadTools.SUGGEST, BulkLoadTools.DRY_RUN, BulkLoadTools.DRY_RUN, BulkLoadTools.SAVE);
 

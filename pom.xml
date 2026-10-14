@@ -215,7 +215,8 @@
             <activeByDefault>true</activeByDefault>
          </activation>
          <properties>
-            <qqq.snapshot.version>4.1.0-RC.6</qqq.snapshot.version>
+            <!-- requires QQQ RC.8 (core Preferences, qqq#1162); until it is published build with -Dqqq.snapshot.version=4.1.0-PREFS-SNAPSHOT -->
+            <qqq.snapshot.version>4.1.0-RC.8</qqq.snapshot.version>
          </properties>
          <dependencyManagement>
             <dependencies>

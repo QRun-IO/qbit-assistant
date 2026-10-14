@@ -1,6 +1,6 @@
 # QBit Assistant
 
-An in-app AI assistant for any QQQ application. The user asks a question in a chat panel in the Next UI. The assistant reads the application's data **with exactly that user's permissions**, answers with numbers taken from the data, and links to the records and lists it used. This first version only reads data and opens screens. It cannot change anything.
+An in-app AI assistant for any QQQ application. The user asks a question in a chat panel in the Next UI. The assistant reads the application's data **with exactly that user's permissions**, answers with numbers taken from the data, and links to the records and lists it used. Conversations start Read-only. Users can select Write mode when policy permits it; changes normally wait for their confirmation.
 
 Design spec: `QRun-IO/qqq` `docs/specs/2026-10-11-qqq-assistant-qbit-design.md`.
 
@@ -29,9 +29,33 @@ Hosts register providers through `AssistantQBitConfig` in `qbit-assistant`.
 
 Data tools use the QQQ UI API (`/qqq/v1`) with the signed-in user's session. The UI API enforces permissions and record locks; assistant data-access policy and field exposure can only narrow access. Only record-free navigation and help use the core AI tool kernel. Every tool result reaches the model wrapped as untrusted data.
 
+## Write mode and personal preferences
+
+The **Assistant** section on the core Preferences page controls **Start conversations
+in Write mode** and **Auto-confirm low-risk changes**. It is available to users
+with `assistant.hasAccess`, without requiring `assistant.admin` or permission on
+the backing table. The standard visible `assistant_user_preference` table remains
+available to administrators.
+
+Clients read and partially update settings through `GET` / `PATCH
+/qqq/v1/preferences/assistant`, with a PATCH body such as
+`{"values":{"defaultWriteMode":true}}`. There is no user-id parameter. The former
+`/qqq/v1/assistant/preferences` operations are removed. The panel reads effective
+defaults from `/qqq/v1/assistant/config` under `preferences`; conversation responses
+include `writeMode`. Policy can make the effective default Read-only even when
+the saved preference is Write.
+
+Write tools, including bulk profile saves and bulk loads, are absent in Read-only
+mode. Write mode requires policy permission and READ_WRITE data access. Low-risk
+auto-confirm is limited to single-record inserts/updates on `auto_confirm_ok`
+tables, with both policy and user opt-in. Its preference is read-only with a reason
+when policy disallows it. Scheduled tasks additionally require their own approval
+and always wait for confirmation. The assistant client channel cannot access the
+preferences section.
+
 ## Host audit attribution (X1/Y1)
 
-Use QQQ **4.1.0-RC.6 or later**. The QBit explicitly denies every assistant
+Use QQQ **4.1.0-RC.8 or later** (core Preferences, qqq#1162). Until RC.8 is published, build with `-Dqqq.snapshot.version=4.1.0-PREFS-SNAPSHOT`. The QBit explicitly denies every assistant
 configuration table, process, report and widget to the `assistant` channel;
 runtime initialization fails if an assistant object is exposed. The same human
 can still administer it through Next UI (`next-ui`). Core's security-surface
@@ -354,7 +378,7 @@ Table names follow the QRun-IO naming rule: lowercase snake_case with the `assis
 
 ```bash
 ./mvnw verify                                                    # against the committed QQQ version
-./mvnw verify -Dqqq.snapshot.version=4.1.0-ASSISTDEV-SNAPSHOT     # against a local QQQ build with #1078 + #1076
+./mvnw verify -Dqqq.snapshot.version=4.1.0-PREFS-SNAPSHOT        # local core Preferences build until RC.8 is published
 ```
 
 Two test groups run in every build and fail it on any error:

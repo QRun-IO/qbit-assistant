@@ -23,14 +23,13 @@ package com.kingsrook.qbits.assistant.scheduled;
 
 import java.math.BigDecimal;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
 import com.kingsrook.qbits.assistant.engine.BudgetService;
 import com.kingsrook.qbits.assistant.engine.PolicyService;
 import com.kingsrook.qbits.assistant.model.AssistantScheduledTask;
 import com.kingsrook.qbits.assistant.model.AssistantUsage;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
@@ -103,14 +102,9 @@ public class ScheduledTurn
     *******************************************************************************/
    public static PolicyService.ToolPolicy tools(AssistantRuntime runtime, AssistantScheduledTask task, PolicyService.ToolPolicy policy) throws QException
    {
-      Set<String> allowed = runtime.getContextBuilder().toolNames(policy).stream()
-         .filter(name -> !Set.of("create_record", "update_record", "delete_record").contains(name) || approved(task))
-         .collect(Collectors.toSet());
-      if(allowed.isEmpty())
-      {
-         allowed = Set.of("__no_tools__");
-      }
-      return (new PolicyService.ToolPolicy(true, allowed, policy.maxRowsPerCall(), policy.redactPii()));
+      boolean write = approved(task) && policy.writeModeAvailableTo(QContext.getQSession());
+      return (new PolicyService.ToolPolicy(true, policy.allowedTools(), policy.maxRowsPerCall(), policy.redactPii(),
+         policy.writeModeAllowed(), policy.writeModePermission(), policy.autoConfirmAllowed(), write, false));
    }
 
 

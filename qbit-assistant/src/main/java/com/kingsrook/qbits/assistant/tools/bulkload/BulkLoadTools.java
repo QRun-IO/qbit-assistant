@@ -151,7 +151,7 @@ public class BulkLoadTools
          AiJsonSchema.object(AiJsonSchema.properties("uploadRef", upload, "tableName", table, "profile", profile,
             "mode", AiJsonSchema.enumOf(List.of("SAMPLE", "FULL"), "SAMPLE (default) or FULL.")), List.of("uploadRef", "tableName", "profile")));
 
-      if(anyWritable)
+      if(anyWritable && (policy == null || policy.writeMode()))
       {
          Map<String, Object> share = AiJsonSchema.object(AiJsonSchema.properties(
             "audienceType", AiJsonSchema.enumOf(List.of("user", "group"), "Share with a user (email) or a group."),
@@ -202,6 +202,12 @@ public class BulkLoadTools
          if(context.policy() != null && !context.policy().allows(toolName))
          {
             deny(result, "policy:tool", "The administrator has not allowed the " + toolName + " tool.");
+            return (UiApiToolbox.Outcome.of(result, null, null, null));
+         }
+
+         if(WRITE_TOOLS.contains(toolName) && context.policy() != null && !context.policy().writeMode())
+         {
+            deny(result, "mode:readOnly", "This conversation is Read-only. Switch to Write mode to make changes.");
             return (UiApiToolbox.Outcome.of(result, null, null, null));
          }
 

@@ -133,6 +133,18 @@ public class DataAccessService
 
 
    /*******************************************************************************
+    ** Whether an admin marked the table's single-record inserts and updates as
+    ** low-risk (auto-confirmable, when the policy and the user allow it).
+    *******************************************************************************/
+   public boolean autoConfirmOk(String tableName)
+   {
+      AssistantDataAccess row = rows().get(key(AssistantDataAccess.TYPE_TABLE, tableName));
+      return (row != null && Boolean.TRUE.equals(row.getAutoConfirmOk()) && forTable(tableName).mode().allowsWrite());
+   }
+
+
+
+   /*******************************************************************************
     ** Drop the cache (after a change to the table).
     *******************************************************************************/
    public void invalidate()

@@ -199,9 +199,10 @@ public final class AssistantSpecs
          "model", string("The model that answers."),
          "limits", freeObject("maxTurnSeconds and maxToolCallsPerTurn."),
          "features", freeObject("writes: some table allows writes; pendingActions: writes wait for confirmation."),
+         "preferences", ref("AssistantPreferencesV1"),
          "profile", ref("AssistantProfileV1")));
       rs.put("AssistantConversationV1", object("One of the user's own conversations.",
-         "id", integer(null), "title", string(null).withNullable(true), "status", string("ACTIVE or ARCHIVED."), "pinned", bool(null),
+         "id", integer(null), "title", string(null).withNullable(true), "status", string("ACTIVE or ARCHIVED."), "pinned", bool(null), "writeMode", bool("Write mode (default Read-only): the write tools exist only in Write mode."),
          "lastMessageAt", string("ISO-8601 instant.").withNullable(true), "unreadCount", integer(null), "createDate", string("ISO-8601 instant.").withNullable(true)));
       rs.put("AssistantConversationListResponseV1", object("The user's conversations, newest first.", "conversations", array(ref("AssistantConversationV1"), null)));
       rs.put("AssistantMessageV1", object("A message: the user's text or the assistant's reply as parts (text, tool, record_refs, navigate, notice).",
@@ -221,6 +222,9 @@ public final class AssistantSpecs
       rs.put("AssistantTurnEventV1", object("One server-sent event of a turn (event: <type>, id: <seq>, data: this object). Types: message.start, text.delta, tool.start, tool.result, ui.navigate, notice, usage, message.end, error, ping.",
          "seq", integer("Sequence number; resume with ?after=<seq>."), "type", string("The event type (also the SSE event name)."),
          "data", freeObject("The event's fields, by type.")));
+      rs.put("AssistantPreferencesV1", object("The user's own assistant preferences.",
+         "defaultWriteMode", bool("New conversations start in Write mode (when write mode is available)."),
+         "autoConfirmLowRisk", bool("Auto-confirm low-risk writes (only when the policy allows it; never deletes, bulk writes or processes).")));
       rs.put("AssistantErrorV1", object("An error.", "error", string("A message for the user."), "code", string("BUDGET, RATE_LIMIT, NOT_CONFIGURED, KILL_SWITCH, DISABLED, NO_PERMISSION...").withNullable(true)));
       return (rs);
    }
@@ -594,7 +598,8 @@ public final class AssistantSpecs
       @Override
       protected Schema defineRequestBodySchema()
       {
-         return (object("Optional title and the page context it starts from.", "title", string(null), "context", freeObject("route, tableName, recordId, filter, selectedIds.")));
+         return (object("Optional title, the page context it starts from, and the mode (default: the user's preference).", "title", string(null),
+            "context", freeObject("route, tableName, recordId, filter, selectedIds."), "writeMode", bool(null)));
       }
 
 
@@ -719,7 +724,8 @@ public final class AssistantSpecs
       @Override
       protected Schema defineRequestBodySchema()
       {
-         return (object("The changed properties.", "title", string(null), "pinned", bool(null), "status", string("ACTIVE or ARCHIVED.")));
+         return (object("The changed properties.", "title", string(null), "pinned", bool(null), "status", string("ACTIVE or ARCHIVED."),
+            "writeMode", bool("Switch to Write mode (true) or Read-only (false); 403 when write mode is not available to the user.")));
       }
 
 
@@ -1332,5 +1338,7 @@ public final class AssistantSpecs
          return (api.access(StringUtils.hasContent(table) ? table : null, input.getQueryParam("prompt"), input.getQueryParamInteger("turnId")));
       }
    }
+
+
 
 }

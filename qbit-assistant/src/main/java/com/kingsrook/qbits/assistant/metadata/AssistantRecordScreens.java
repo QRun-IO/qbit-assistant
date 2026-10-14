@@ -574,8 +574,10 @@ public final class AssistantRecordScreens
          .withHelpContent(new QHelpContent("The table or process name, e.g. blog_post. Tables without a row use the default: NONE for sensitive tables, READ for the others. Processes default to NONE."));
       table.getField("mode").withLabel("Assistant access").withDefaultValue(DataAccessMode.READ.name())
          .withHelpContent(new QHelpContent("NONE: the assistant never sees it. READ: the read tools may use it. READ and write: the create, update and delete tools may too. The assistant always acts with the user's own permissions and record locks; this can only narrow them. A sensitive table (AI exposure NONE) stays NONE."));
+      table.getField("autoConfirmOk").withLabel("Auto-confirm OK")
+         .withHelpContent(new QHelpContent("Single-record inserts and updates here count as low-risk: users who chose auto-confirm (where the policy allows it) skip the confirmation card. Never deletes."));
       sections(table,
-         section("access", "Data Access", "admin_panel_settings", Tier.T1, "id", "objectType", "objectName", "mode"),
+         section("access", "Data Access", "admin_panel_settings", Tier.T1, "id", "objectType", "objectName", "mode", "autoConfirmOk"),
          section("notes", "Notes", "notes", Tier.T2, "notes"));
    }
 
@@ -712,6 +714,9 @@ public final class AssistantRecordScreens
       help(table, "killSwitch", "On: the assistant takes no new requests from anyone.");
       help(table, "killSwitchReason", "Shown to users while the kill switch is on.");
       help(table, "writesRequireConfirmation", "On (or empty): every create, update or delete the assistant proposes waits for the user to confirm it in the panel. Off: writes run at once, still with the user's own permissions.");
+      help(table, "writeModeAllowed", "On (or empty): users may switch a conversation to Write mode, where the create, update and delete tools exist. Off: every conversation stays Read-only.");
+      help(table, "writeModePermission", "Optional: only users holding this permission (a role) may use Write mode.");
+      help(table, "autoConfirmAllowed", "On: users may choose to auto-confirm low-risk writes (single-record inserts and updates on tables marked auto-confirm OK). Never deletes, bulk writes or processes. Off (or empty): every write waits for confirmation.");
       help(table, "allowedTools", "Comma-separated tool names the assistant may use (e.g. list_tables, query_records, count_records). Empty allows every tool.");
       help(table, "maxRowsPerCall", "Most rows one tool call returns to the model. Empty: 50; at most 200.");
       help(table, "redactPii", "On (or empty): API keys, tokens, private keys, card numbers and social security numbers are redacted from tool results before the model sees them.");
@@ -728,7 +733,7 @@ public final class AssistantRecordScreens
       sections(table,
          section("policy", "Policy", "policy", Tier.T1, "id", "name", "killSwitch", "killSwitchReason"),
          section("model", "Model", "smart_toy", Tier.T2, "mainModel", "mainEffort"),
-         section("tools", "Tools and data", "build", Tier.T2, "writesRequireConfirmation", "allowedTools", "maxRowsPerCall", "redactPii"),
+         section("tools", "Tools and data", "build", Tier.T2, "writeModeAllowed", "writeModePermission", "writesRequireConfirmation", "autoConfirmAllowed", "allowedTools", "maxRowsPerCall", "redactPii"),
          section("userDaily", "Per user, per day", "person", Tier.T2, "userDailyTokensSoft", "userDailyTokensHard", "userDailyCostMicrosSoft", "userDailyCostMicrosHard"),
          section("instanceMonthly", "Whole instance, per month", "domain", Tier.T2, "instanceMonthlyTokensSoft", "instanceMonthlyTokensHard", "instanceMonthlyCostMicrosSoft", "instanceMonthlyCostMicrosHard"));
    }

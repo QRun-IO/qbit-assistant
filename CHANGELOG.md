@@ -1,5 +1,17 @@
 # Changelog
 
+### Changed: W1 core Preferences (F13 / #29)
+- Replace the bespoke assistant preferences operations with the core `assistant`
+  section at `/qqq/v1/preferences/assistant`, backed by the existing visible table.
+  User ownership, partial updates, policy validation, read-only explanations and
+  explicit assistant-channel denial apply to the section.
+- Keep effective defaults on `/assistant/config`; preserve Read-only/Write tools,
+  low-risk auto-confirm, develop's core invoker, provider routing and audit context.
+- Require per-task approval and Write-mode policy for scheduled writes; gate bulk
+  write definitions and calls by mode. Preserve default-off audit history on core develop.
+- Target QQQ 4.1.0-RC.8; use the local PREFS snapshot override until publication.
+
+
 ## Unreleased - X1/Y1
 
 - Add default-off `withRecordHistory(true)` host opt-in: remove only `audit*` on RC.6, or invoke core #1193 audit-read/write-deny support when available. Preserve user permissions and all other channel denials; kof22 does not opt in.
@@ -105,6 +117,12 @@ All notable changes to this project are documented here. The format follows Keep
 Phase 0/1 of the QQQ Assistant: read-only Q&A and navigation. Requires QQQ 4.1 with:
 - the AI tool kernel (`qqq-backend-core` `actions.ai`, QRun-IO/qqq#1078)
 - the developer-panel contract (QRun-IO/qqq#1076).
+
+### Added (0.1.0-RC.7): write mode (owner decision 2026-10-13)
+- Per-conversation **Read-only** (default) or **Write** mode: `writeMode` on conversations (PATCH, create), the write tools exist only in Write mode, and a write tool called in Read-only mode is refused before any request (`mode:READ_ONLY`).
+- Policy: `writeModeAllowed`, `writeModePermission` (role), `autoConfirmAllowed`. Data access: `autoConfirmOk` per table.
+- `assistant_user_preference` (own rows): default mode of new conversations, auto-confirm of low-risk writes (single-record insert/update on auto-confirm-OK tables; never deletes). Core `GET`/`PATCH /qqq/v1/preferences/assistant`; `/config` reports `features.writeMode`, `features.autoConfirm` and `preferences`.
+- The denial matrix covers the write tools in both modes.
 
 ### Changed (0.1.0-RC.7, needs QQQ with QRun-IO/qqq#1128)
 - The assistant's endpoints are spec'd `/qqq/v1` operations (UI API extension `assistant` 1.0.0, prefix `/assistant`): same URLs, bodies and statuses, now in the served OpenAPI; turns and events are `text/event-stream`. The raw routes are gone.

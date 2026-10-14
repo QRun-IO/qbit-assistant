@@ -29,6 +29,7 @@ import com.kingsrook.qbits.assistant.metadata.AssistantChannelWall;
 import com.kingsrook.qbits.assistant.metadata.AssistantInstanceMetaData;
 import com.kingsrook.qbits.assistant.metadata.AssistantMetaDataBuilder;
 import com.kingsrook.qbits.assistant.metadata.AssistantRecordScreens;
+import com.kingsrook.qbits.assistant.metadata.AssistantPreferencesProvider;
 import com.kingsrook.qbits.assistant.model.AssistantBudget;
 import com.kingsrook.qbits.assistant.processes.DiscoverModelsProcess;
 import com.kingsrook.qbits.assistant.processes.KnowledgeIndexProcess;
@@ -203,10 +204,15 @@ public class AssistantQBitProducer implements QBitMetaDataProducer<AssistantQBit
       QAppMetaData app = builder.buildAdminApp(tables);
       qInstance.addApp(app);
 
+      AssistantPreferencesProvider.register(qInstance);
       AssistantChannelWall.register(qInstance);
       if(Boolean.TRUE.equals(qBitConfig.getRecordHistory()))
       {
          enableRecordHistory(ClientChannelsMetaData.ofOrWithNew(qInstance));
+      }
+      else
+      {
+         ClientChannelsMetaData.ofOrWithNew(qInstance).withDeniedPattern("assistant", "audit*");
       }
       postProduceActions(new MetaDataProducerMultiOutput(), qInstance);
       return (new MetaDataProducerMultiOutput());

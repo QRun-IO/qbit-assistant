@@ -369,6 +369,22 @@ CREATE TABLE assistant_profile_skill
    CONSTRAINT assistant_profile_skill_pair UNIQUE (profile_id, skill_id)
 );
 
+-- 0.1.0-RC.7: write mode (per conversation, user preference, policy) and auto-confirm.
+ALTER TABLE assistant_conversation ADD COLUMN IF NOT EXISTS write_mode BOOLEAN;
+ALTER TABLE assistant_policy ADD COLUMN IF NOT EXISTS write_mode_allowed BOOLEAN;
+ALTER TABLE assistant_policy ADD COLUMN IF NOT EXISTS write_mode_permission VARCHAR(128);
+ALTER TABLE assistant_policy ADD COLUMN IF NOT EXISTS auto_confirm_allowed BOOLEAN;
+ALTER TABLE assistant_data_access ADD COLUMN IF NOT EXISTS auto_confirm_ok BOOLEAN;
+CREATE TABLE assistant_user_preference
+(
+   id SERIAL PRIMARY KEY,
+   user_id VARCHAR(255) NOT NULL UNIQUE,
+   default_write_mode BOOLEAN,
+   auto_confirm_low_risk BOOLEAN,
+   create_date TIMESTAMP WITH TIME ZONE,
+   modify_date TIMESTAMP WITH TIME ZONE
+);
+
 CREATE TABLE assistant_data_audit
 (
    id SERIAL PRIMARY KEY,

@@ -24,6 +24,7 @@ import com.kingsrook.qbits.assistant.model.AssistantUsageDaily;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import java.time.Clock;
 import java.time.Instant;
@@ -81,8 +82,50 @@ public class PolicyService
     ** @param redactPii redact secrets and personal identifiers from tool
     **        results (default true)
     *******************************************************************************/
-   public record ToolPolicy(boolean writesRequireConfirmation, Set<String> allowedTools, int maxRowsPerCall, boolean redactPii)
+   public record ToolPolicy(boolean writesRequireConfirmation, Set<String> allowedTools, int maxRowsPerCall, boolean redactPii,
+                            boolean writeModeAllowed, String writeModePermission, boolean autoConfirmAllowed, boolean writeMode, boolean autoConfirm)
    {
+      /*******************************************************************************
+       ** Write mode on, no auto-confirm, write mode allowed for everyone (tests
+       ** and hosts that build a policy by hand).
+       *******************************************************************************/
+      public ToolPolicy(boolean writesRequireConfirmation, Set<String> allowedTools, int maxRowsPerCall, boolean redactPii)
+      {
+         this(writesRequireConfirmation, allowedTools, maxRowsPerCall, redactPii, true, null, false, true, false);
+      }
+
+
+
+      /*******************************************************************************
+       ** This policy for a conversation in Write (true) or Read-only (false) mode.
+       *******************************************************************************/
+      public ToolPolicy withWriteMode(boolean writeMode)
+      {
+         return (new ToolPolicy(writesRequireConfirmation, allowedTools, maxRowsPerCall, redactPii, writeModeAllowed, writeModePermission, autoConfirmAllowed, writeMode, autoConfirm));
+      }
+
+
+
+      /*******************************************************************************
+       ** This policy with the user's auto-confirm (only effective when the policy
+       ** allows it).
+       *******************************************************************************/
+      public ToolPolicy withAutoConfirm(boolean autoConfirm)
+      {
+         return (new ToolPolicy(writesRequireConfirmation, allowedTools, maxRowsPerCall, redactPii, writeModeAllowed, writeModePermission, autoConfirmAllowed, writeMode,
+            autoConfirm && autoConfirmAllowed));
+      }
+
+
+
+      /*******************************************************************************
+       ** Whether this user may switch a conversation to Write mode (the policy
+       ** allows it, and they hold the write-mode permission when one is set).
+       *******************************************************************************/
+      public boolean writeModeAvailableTo(QSession session)
+      {
+         return (writeModeAllowed && (!StringUtils.hasContent(writeModePermission) || (session != null && session.hasPermission(writeModePermission.strip()))));
+      }
       public static final int DEFAULT_MAX_ROWS_PER_CALL = 50;
       public static final int MAX_ROWS_PER_CALL_CEILING = 200;
 
@@ -93,7 +136,7 @@ public class PolicyService
        *******************************************************************************/
       public static ToolPolicy defaults()
       {
-         return (new ToolPolicy(true, Set.of(), DEFAULT_MAX_ROWS_PER_CALL, true));
+         return (new ToolPolicy(true, Set.of(), DEFAULT_MAX_ROWS_PER_CALL, true, true, null, false, false, false));
       }
 
 
@@ -129,7 +172,8 @@ public class PolicyService
             }
          }
          int maxRows = row.getMaxRowsPerCall() == null || row.getMaxRowsPerCall() < 1 ? DEFAULT_MAX_ROWS_PER_CALL : Math.min(MAX_ROWS_PER_CALL_CEILING, row.getMaxRowsPerCall());
-         return (new ToolPolicy(!Boolean.FALSE.equals(row.getWritesRequireConfirmation()), allowed, maxRows, !Boolean.FALSE.equals(row.getRedactPii())));
+         return (new ToolPolicy(!Boolean.FALSE.equals(row.getWritesRequireConfirmation()), allowed, maxRows, !Boolean.FALSE.equals(row.getRedactPii()),
+            !Boolean.FALSE.equals(row.getWriteModeAllowed()), row.getWriteModePermission(), Boolean.TRUE.equals(row.getAutoConfirmAllowed()), false, false));
       }
    }
 

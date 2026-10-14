@@ -94,6 +94,15 @@ public class AssistantPolicy extends QRecordEntity
    @QField()
    private Boolean redactPii;
 
+   @QField()
+   private Boolean writeModeAllowed;
+
+   @QField(maxLength = 128)
+   private String writeModePermission;
+
+   @QField()
+   private Boolean autoConfirmAllowed;
+
    @QField(isEditable = false)
    private Instant createDate;
 
@@ -732,6 +741,96 @@ public class AssistantPolicy extends QRecordEntity
    public AssistantPolicy withRedactPii(Boolean redactPii)
    {
       this.redactPii = redactPii;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for writeModeAllowed (whether any conversation may switch to Write mode (default true))
+    *******************************************************************************/
+   public Boolean getWriteModeAllowed()
+   {
+      return (this.writeModeAllowed);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for writeModeAllowed
+    *******************************************************************************/
+   public void setWriteModeAllowed(Boolean writeModeAllowed)
+   {
+      this.writeModeAllowed = writeModeAllowed;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for writeModeAllowed
+    *******************************************************************************/
+   public AssistantPolicy withWriteModeAllowed(Boolean writeModeAllowed)
+   {
+      this.writeModeAllowed = writeModeAllowed;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for writeModePermission (only holders of this permission may switch to Write mode (empty: everyone))
+    *******************************************************************************/
+   public String getWriteModePermission()
+   {
+      return (this.writeModePermission);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for writeModePermission
+    *******************************************************************************/
+   public void setWriteModePermission(String writeModePermission)
+   {
+      this.writeModePermission = writeModePermission;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for writeModePermission
+    *******************************************************************************/
+   public AssistantPolicy withWriteModePermission(String writeModePermission)
+   {
+      this.writeModePermission = writeModePermission;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for autoConfirmAllowed (whether users may auto-confirm low-risk writes (default false))
+    *******************************************************************************/
+   public Boolean getAutoConfirmAllowed()
+   {
+      return (this.autoConfirmAllowed);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for autoConfirmAllowed
+    *******************************************************************************/
+   public void setAutoConfirmAllowed(Boolean autoConfirmAllowed)
+   {
+      this.autoConfirmAllowed = autoConfirmAllowed;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for autoConfirmAllowed
+    *******************************************************************************/
+   public AssistantPolicy withAutoConfirmAllowed(Boolean autoConfirmAllowed)
+   {
+      this.autoConfirmAllowed = autoConfirmAllowed;
       return (this);
    }
 
