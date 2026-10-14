@@ -385,7 +385,7 @@ Apache 2.0.
 
 ## Data classification and HIPAA mode
 
-On QQQ 4.1.0-RC.4, classify application tables/fields in the host configuration:
+On QQQ 4.1.0-RC.5, classify application tables/fields in the host configuration:
 
 ```java
 import com.kingsrook.qbits.assistant.classification.DataClassification;
@@ -439,3 +439,51 @@ Both modes audit each PII/PHI model call and every routing block in
 PHI conversations use `hipaaRetentionDays` even with HIPAA mode off. A null value
 uses normal retention; tool-result/replay cleanup remains independently configured.
 See [UPGRADE.md](UPGRADE.md) for schema changes, plaintext migration, and key handling.
+
+## Data-driven budgets
+
+Admins configure **Assistant > Budgets** for UTC DAY or MONTH allowances in USD or
+TOKENS, scoped to INSTANCE, USER, ROLE (a permission), PROVIDER or MODEL. Provider
+and model scope values are registry record ids. Warnings default to 80%; at 100%
+the default action is DOWNGRADE, and the hard ceiling defaults to 120% (always
+STOP). Multiple budgets apply together and STOP wins.
+
+An explicit downgrade model is optional. Otherwise the cheapest enabled usable
+model is selected, preferring LOCAL providers. PHI never goes to a provider that
+is not HIPAA-eligible. No eligible target means STOP. Administrators can grant
+extra allowance or temporary unlimited use from the budget's Overrides child list,
+with a required reason and expiry; the session sets the grantor.
+
+Budget state changes appear once per scope/period/state in the Events child list,
+as panel notices and, through core QAlerts, bell alerts when an alerts sink is installed (logging otherwise).
+The Assistant home shows budgets, overrides, daily cost and tokens, and breakdowns
+by user, model, provider and tool. Existing `AssistantBudgets`/policy limits and
+provider monthly caps continue to apply independently of these rows and overrides.
+See [UPGRADE.md](UPGRADE.md) for the required additive schema.
+
+
+### Profile routing and provider fallback
+
+On an Assistant Profile, **Model routing** defaults to OFF. HEURISTIC selects the
+complex slot for long questions (>600 characters), two mentioned app tables,
+analysis/comparison/explanation/trend/planning requests, pending writes, more than
+eight previous turns, or a previous tool limit; otherwise it selects the simple
+slot. CLASSIFIER uses an optional registry model with just the question and a
+fixed instruction, four output tokens and a three-second timeout. An invalid reply,
+error, unavailable classifier or PHI-ineligible classifier uses HEURISTIC. ROUTE
+usage counts toward budgets. Empty model slots keep the provider/policy default;
+budgets may downgrade either choice. Without a profile, enabled code-level
+`AssistantModelRouting.escalation*` supplies the complex default.
+
+A model's **Fallback model** points to its next candidate, including another
+provider. Chains are cycle-free and bounded to four hops. Only retryable failures
+before any text or tool start from that call permit fallback. Disabled, down,
+PHI-ineligible or budget-blocked candidates are skipped. Without explicit links,
+only another LOCAL model in the same adapter family is eligible; local requests
+never automatically move to cloud. Provider state/signatures are removed when
+switching, preserving neutral tool history. Each attempted call is audited as usage.
+
+NETWORK/TIMEOUT marks a provider DOWN for 60 seconds; success marks it UP. Local
+health is probed when unknown/stale with a two-second timeout. Provider cards show
+health and down-until, failures show fallback totals, and turn records show the
+route and final destination. See [UPGRADE.md](UPGRADE.md) for the additive schema.

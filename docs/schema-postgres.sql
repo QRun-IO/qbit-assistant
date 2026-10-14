@@ -388,3 +388,92 @@ CREATE TABLE assistant_data_audit
 CREATE INDEX assistant_data_audit_user_id ON assistant_data_audit (user_id);
 CREATE INDEX assistant_data_audit_conversation_id ON assistant_data_audit (conversation_id);
 CREATE INDEX assistant_data_audit_turn_id ON assistant_data_audit (turn_id);
+
+-- P-d: data-driven budgets (UTC periods, USD or whole-token allowances).
+CREATE TABLE assistant_budget
+(
+   id SERIAL PRIMARY KEY,
+   name VARCHAR(200) NOT NULL,
+   enabled BOOLEAN DEFAULT TRUE,
+   scope_type VARCHAR(16) NOT NULL,
+   scope_value VARCHAR(200),
+   period VARCHAR(16) NOT NULL,
+   metric VARCHAR(16) NOT NULL,
+   limit_value NUMERIC NOT NULL CHECK (limit_value > 0),
+   warn_percent INTEGER DEFAULT 80 CHECK (warn_percent >= 0 AND warn_percent < 100),
+   at_limit_action VARCHAR(16) DEFAULT 'DOWNGRADE',
+   downgrade_model_id INTEGER REFERENCES assistant_model(id),
+   hard_ceiling_percent INTEGER DEFAULT 120 CHECK (hard_ceiling_percent >= 100),
+   notes VARCHAR(2000),
+   create_date TIMESTAMP WITH TIME ZONE,
+   modify_date TIMESTAMP WITH TIME ZONE
+);
+CREATE TABLE assistant_budget_override
+(
+   id SERIAL PRIMARY KEY,
+   budget_id INTEGER NOT NULL REFERENCES assistant_budget(id),
+   scope_value VARCHAR(200),
+   extra_value NUMERIC,
+   unlimited_until TIMESTAMP WITH TIME ZONE,
+   reason VARCHAR(1000) NOT NULL,
+   granted_by VARCHAR(200),
+   expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+   create_date TIMESTAMP WITH TIME ZONE,
+   modify_date TIMESTAMP WITH TIME ZONE,
+   CHECK ((extra_value > 0 AND unlimited_until IS NULL) OR (extra_value IS NULL AND unlimited_until IS NOT NULL))
+);
+CREATE INDEX assistant_budget_override_budget_id ON assistant_budget_override(budget_id);
+CREATE TABLE assistant_budget_event
+(
+   id SERIAL PRIMARY KEY,
+   budget_id INTEGER NOT NULL REFERENCES assistant_budget(id),
+   scope_key VARCHAR(400) NOT NULL,
+   period_start TIMESTAMP WITH TIME ZONE NOT NULL,
+   state VARCHAR(16) NOT NULL,
+   used_value NUMERIC,
+   limit_value NUMERIC,
+   user_id VARCHAR(200),
+   create_date TIMESTAMP WITH TIME ZONE,
+   UNIQUE (budget_id, scope_key, period_start, state)
+);
+CREATE INDEX assistant_usage_budget_period ON assistant_usage(create_date, user_id, provider_id, model);
+
+-- Private projection: standard admin permissions, AI NONE, no owner lock.
+-- No conversation identifiers, text, request ids or credentials are copied.
+CREATE TABLE assistant_budget_usage
+(
+   id SERIAL PRIMARY KEY,
+   usage_id INTEGER NOT NULL UNIQUE,
+   user_id VARCHAR(255),
+   provider_id INTEGER,
+   model VARCHAR(200),
+   occurred_at TIMESTAMP WITH TIME ZONE NOT NULL,
+   cost_micros BIGINT,
+   input_tokens BIGINT,
+   output_tokens BIGINT,
+   cache_read_tokens BIGINT,
+   cache_write_tokens BIGINT
+);
+CREATE INDEX assistant_budget_usage_period ON assistant_budget_usage(occurred_at, provider_id, model);
+-- Run once before enabling P-d, with writes paused, to include existing usage.
+INSERT INTO assistant_budget_usage
+   (usage_id, user_id, provider_id, model, occurred_at, cost_micros, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens)
+SELECT id, user_id, provider_id, model, create_date, cost_micros, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens
+FROM assistant_usage
+ON CONFLICT (usage_id) DO NOTHING;
+
+
+-- P-e: profile routing, bounded fallback chains, provider health and turn outcome.
+ALTER TABLE assistant_profile ADD COLUMN routing_mode VARCHAR(16) DEFAULT 'OFF'
+   CHECK (routing_mode IN ('OFF', 'HEURISTIC', 'CLASSIFIER'));
+ALTER TABLE assistant_profile ADD COLUMN simple_model_id INTEGER REFERENCES assistant_model(id);
+ALTER TABLE assistant_profile ADD COLUMN complex_model_id INTEGER REFERENCES assistant_model(id);
+ALTER TABLE assistant_profile ADD COLUMN classifier_model_id INTEGER REFERENCES assistant_model(id);
+ALTER TABLE assistant_model ADD COLUMN fallback_model_id INTEGER REFERENCES assistant_model(id);
+ALTER TABLE assistant_provider ADD COLUMN health_state VARCHAR(8) CHECK (health_state IN ('UP', 'DOWN'));
+ALTER TABLE assistant_provider ADD COLUMN health_checked_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE assistant_provider ADD COLUMN down_until TIMESTAMP WITH TIME ZONE;
+ALTER TABLE assistant_turn ADD COLUMN route_decision VARCHAR(16);
+ALTER TABLE assistant_turn ADD COLUMN route_source VARCHAR(16);
+ALTER TABLE assistant_turn ADD COLUMN fallback_count INTEGER DEFAULT 0;
+ALTER TABLE assistant_turn ADD COLUMN provider_id INTEGER REFERENCES assistant_provider(id);

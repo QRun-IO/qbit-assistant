@@ -17,8 +17,6 @@
 package com.kingsrook.qbits.assistant;
 
 
-import java.util.ArrayList;
-import java.util.List;
 import com.kingsrook.qbits.assistant.metadata.AssistantAdminPermissionChecker;
 import com.kingsrook.qbits.assistant.metadata.AssistantMetaDataBuilder;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
@@ -28,6 +26,9 @@ import com.kingsrook.qbits.assistant.testing.AssistantTestFixture;
 import com.kingsrook.qbits.assistant.testing.BaseAssistantTest;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionCheckResult;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.alerts.AlertsInstanceMetaData;
+import com.kingsrook.qqq.backend.core.alerts.AlertSeverity;
+import com.kingsrook.qqq.backend.core.alerts.QAlertTypeMetaData;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
@@ -44,6 +45,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryBackendModule;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -85,7 +88,7 @@ class AssistantQBitProducerTest extends BaseAssistantTest
       // the nav: the home plus the main tables; processes are actions    //
       //////////////////////////////////////////////////////////////////////
       assertThat(qInstance.getApp(AssistantMetaDataBuilder.APP_NAME).getChildren()).extracting(c -> c.getName())
-         .containsExactly("assistant_provider", "assistant_profile", "assistant_skill", "assistant_data_access", "assistant_conversation", "assistant_model_price", "assistant_policy");
+         .containsExactly("assistant_budget", "assistant_provider", "assistant_profile", "assistant_skill", "assistant_data_access", "assistant_conversation", "assistant_model_price", "assistant_policy");
       assertThat(qInstance.getApp(AssistantMetaDataBuilder.APP_NAME).getWidgets()).containsExactly("assistantHome", "assistantAccess");
       assertThat(qInstance.getProcess(AssistantMetaDataBuilder.RETENTION_PROCESS_NAME).getTableName()).isEqualTo("assistant_conversation");
       assertThat(qInstance.getProcess(AssistantMetaDataBuilder.RETENTION_PROCESS_NAME)).isNotNull();
@@ -99,6 +102,28 @@ class AssistantQBitProducerTest extends BaseAssistantTest
       assertThat(config.getRuntime()).isNotNull();
       assertThat(AssistantRuntime.of(qInstance)).isSameAs(config.getRuntime());
       assertThat(AssistantQBitProducer.getVersion()).isNotBlank();
+   }
+
+
+
+   /*******************************************************************************
+    ** Budget types are discoverable through core with admin-only visibility.
+    *******************************************************************************/
+   @Test
+   void budgetAlertTypes()
+   {
+      var types = AlertsInstanceMetaData.of(qInstance).getAlertTypes();
+      assertThat(types).containsOnlyKeys("assistant.budget.warning", "assistant.budget.downgraded", "assistant.budget.stopped");
+      for(QAlertTypeMetaData type : types.values())
+      {
+         assertThat(type.getLabel()).isNotBlank();
+         assertThat(type.getDescription()).isNotBlank();
+         assertThat(type.getDefaultSeverity()).isEqualTo(type.getName().endsWith("stopped") ? AlertSeverity.ERROR : AlertSeverity.WARNING);
+         assertThat(type.getHowToFix()).isEqualTo("Raise the budget or grant an override in Assistant → Budgets");
+         assertThat(type.getSourceQBitName()).isEqualTo("assistant");
+         assertThat(type.getVisibilityPermission()).isEqualTo("assistant.admin");
+         assertThat(type.getSubjectTableName()).isEqualTo("assistant_budget");
+      }
    }
 
 

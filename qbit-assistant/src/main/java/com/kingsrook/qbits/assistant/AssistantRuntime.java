@@ -17,14 +17,9 @@
 package com.kingsrook.qbits.assistant;
 
 
-import java.time.Clock;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.regex.Pattern;
 import com.kingsrook.qbits.assistant.access.AccessExplainer;
 import com.kingsrook.qbits.assistant.access.DataAccessService;
+import com.kingsrook.qbits.assistant.engine.BudgetService;
 import com.kingsrook.qbits.assistant.engine.ContextBuilder;
 import com.kingsrook.qbits.assistant.engine.PolicyService;
 import com.kingsrook.qbits.assistant.engine.ProfileService;
@@ -42,6 +37,12 @@ import com.kingsrook.qqq.backend.core.actions.ai.output.AiRedactor;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitMetaData;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import java.time.Clock;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.regex.Pattern;
 
 
 /*******************************************************************************
@@ -57,6 +58,7 @@ public class AssistantRuntime
    private final AssistantStore                   store;
    private final PolicyService                    policyService;
    private final ProviderService                  providerService;
+   private final BudgetService                    budgetService;
    private final RateLimiter                      rateLimiter;
    private final AiToolKernel                     kernel;
    private final ContextBuilder                   contextBuilder;
@@ -92,6 +94,8 @@ public class AssistantRuntime
       this.store = new AssistantStore(config);
       this.policyService = new PolicyService(config, store, clock);
       this.providerService = new ProviderService(config, store, clock);
+      this.budgetService = new BudgetService(store, providerService, clock);
+      this.policyService.withBudgetService(budgetService, providerService);
       this.rateLimiter = new RateLimiter(clock);
       AiToolKernelSettings settings = kernelSettings(config);
       this.kernel = new AiToolKernel(qInstance, settings);
@@ -405,4 +409,12 @@ public class AssistantRuntime
       return (providerService);
    }
 
+
+   /*******************************************************************************
+    ** Data-driven budget enforcement.
+    *******************************************************************************/
+   public BudgetService getBudgetService()
+   {
+      return (budgetService);
+   }
 }

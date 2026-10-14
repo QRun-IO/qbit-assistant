@@ -278,6 +278,26 @@ public class AnthropicModelProvider implements AssistantModelProvider
          return (handle);
       }
 
+      if(Boolean.FALSE.equals(request.getStreaming()))
+      {
+         java.util.concurrent.Future<?> completion = executor.submit(() ->
+         {
+            try
+            {
+               handle.complete(AnthropicMapping.toResponse(client.messages().create(params)));
+            }
+            catch(Throwable error)
+            {
+               if(!handle.isCancelled())
+               {
+                  handle.fail(AnthropicMapping.toProviderException(error));
+               }
+            }
+         });
+         handle.setOnCancel(() -> completion.cancel(true));
+         return (handle);
+      }
+
       AtomicReference<ModelUsage> seen = new AtomicReference<>();
       handle.setPartialUsage(seen::get);
 

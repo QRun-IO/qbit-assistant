@@ -92,6 +92,15 @@ public class AssistantProfileCustomizer implements TableCustomizerInterface
     *******************************************************************************/
    private static void checkProfile(QRecord record, QRecord merged)
    {
+      String routingMode = merged.getValueString("routingMode");
+      if(routingMode == null)
+      {
+         record.setValue("routingMode", "OFF");
+      }
+      else if(!List.of("OFF", "HEURISTIC", "CLASSIFIER").contains(routingMode))
+      {
+         record.addError(new BadInputStatusMessage("Routing mode must be OFF, HEURISTIC or CLASSIFIER."));
+      }
       String personality = merged.getValueString("personality");
       if(personality != null && personality.length() > ProfileService.MAX_PERSONALITY_CHARS)
       {

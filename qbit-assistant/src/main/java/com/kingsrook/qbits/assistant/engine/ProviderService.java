@@ -17,6 +17,18 @@
 package com.kingsrook.qbits.assistant.engine;
 
 
+import com.kingsrook.qbits.assistant.AssistantQBitConfig;
+import com.kingsrook.qbits.assistant.model.AssistantModel;
+import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
+import com.kingsrook.qbits.assistant.model.AssistantProvider;
+import com.kingsrook.qbits.assistant.persistence.AssistantStore;
+import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
+import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
+import com.kingsrook.qbits.assistant.provider.ProviderSettings;
+import com.kingsrook.qbits.assistant.provider.RegistryModelProvider;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
@@ -31,18 +43,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
-import com.kingsrook.qbits.assistant.AssistantQBitConfig;
-import com.kingsrook.qbits.assistant.model.AssistantModel;
-import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
-import com.kingsrook.qbits.assistant.model.AssistantProvider;
-import com.kingsrook.qbits.assistant.persistence.AssistantStore;
-import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
-import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
-import com.kingsrook.qbits.assistant.provider.ProviderSettings;
-import com.kingsrook.qbits.assistant.provider.RegistryModelProvider;
-import com.kingsrook.qqq.backend.core.exceptions.QException;
-import com.kingsrook.qqq.backend.core.logging.QLogger;
-import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
@@ -731,5 +731,89 @@ public class ProviderService
    public java.util.Optional<Active> eligibleAlternative(com.kingsrook.qbits.assistant.classification.DataClassification classification, AssistantProvider blockedProvider)
    {
       return (java.util.Optional.empty());
+   }
+
+
+
+   /*******************************************************************************
+    ** Resolve a specific enabled registry model and provider without changing
+    ** the default. Copy the row so the shared provider cache is never mutated.
+    *******************************************************************************/
+   public Active resolveModel(Integer modelId, boolean requiresHipaa) throws QException
+   {
+      return (resolveModel(modelId, requiresHipaa, true));
+   }
+
+
+
+   /*******************************************************************************
+    ** Classifiers may use models without tool support.
+    *******************************************************************************/
+   public Active resolveModel(Integer modelId, Boolean requiresHipaa, Boolean requireTools) throws QException
+   {
+      AssistantModel model = store.listModels().stream().filter(m -> modelId.equals(m.getId()) && Boolean.TRUE.equals(m.getEnabled())).findFirst().orElse(null);
+      if(model == null)
+      {
+         return (null);
+      }
+      AssistantProvider row = store.getProvider(model.getProviderId());
+      if(row == null || !Boolean.TRUE.equals(row.getEnabled()) || ((requiresHipaa || Boolean.TRUE.equals(config.getHipaaMode())) && !Boolean.TRUE.equals(row.getHipaaEligible())))
+      {
+         return (null);
+      }
+      AssistantProvider selected = new AssistantProvider(row.toQRecord()).withModel(model.getModelId());
+      try
+      {
+         Active active = forRow(selected, model.getModelId());
+         return (requireTools && active.provider().getCapabilities(active.model()) != null && Boolean.FALSE.equals(active.provider().getCapabilities(active.model()).getTools()) ? null : active);
+      }
+      catch(ProviderSetupException e)
+      {
+         return (null);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Cheapest usable enabled registry model, with local providers first.
+    *******************************************************************************/
+   public Active budgetDowngrade(Integer explicitModelId, boolean requiresHipaa, Active original) throws QException
+   {
+      if(explicitModelId != null)
+      {
+         Active explicit = resolveModel(explicitModelId, requiresHipaa);
+         return (sameModel(explicit, original) ? null : explicit);
+      }
+      Active best = null;
+      double bestPrice = Double.MAX_VALUE;
+      for(AssistantModel model : store.listModels())
+      {
+         Active candidate = resolveModel(model.getId(), requiresHipaa);
+         if(candidate == null || sameModel(candidate, original))
+         {
+            continue;
+         }
+         ModelPricing price = pricing(candidate, candidate.model());
+         double total = (price.getInputUsdPerMTok() == null ? 0 : price.getInputUsdPerMTok()) + (price.getOutputUsdPerMTok() == null ? 0 : price.getOutputUsdPerMTok());
+         boolean local = "LOCAL".equals(location(candidate.row()));
+         boolean bestLocal = best != null && "LOCAL".equals(location(best.row()));
+         if(best == null || (local && !bestLocal) || (local == bestLocal && total < bestPrice))
+         {
+            best = candidate;
+            bestPrice = total;
+         }
+      }
+      return (best);
+   }
+
+
+
+   /*******************************************************************************
+    ** A downgrade must choose another provider/model pair.
+    *******************************************************************************/
+   private static boolean sameModel(Active left, Active right)
+   {
+      return (left != null && right != null && java.util.Objects.equals(left.providerId(), right.providerId()) && java.util.Objects.equals(left.model(), right.model()));
    }
 }

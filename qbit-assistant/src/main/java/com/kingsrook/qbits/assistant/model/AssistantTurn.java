@@ -44,6 +44,18 @@ public class AssistantTurn extends QRecordEntity
    @QField(isEditable = false, maxLength = 500)
    private String classificationTables;
 
+   @QField(isEditable = false, maxLength = 16)
+   private String routeDecision;
+
+   @QField(isEditable = false, maxLength = 16)
+   private String routeSource;
+
+   @QField(isEditable = false)
+   private Integer fallbackCount;
+
+   @QField(isEditable = false)
+   private Integer providerId;
+
    @QField(isEditable = false, isPrimaryKey = true)
    private Integer id;
 
@@ -875,4 +887,128 @@ public class AssistantTurn extends QRecordEntity
 
 
 
+
+
+
+   /*******************************************************************************
+    ** Get routeDecision.
+    *******************************************************************************/
+   public String getRouteDecision()
+   {
+      return (this.routeDecision);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set routeDecision.
+    *******************************************************************************/
+   public void setRouteDecision(String routeDecision)
+   {
+      this.routeDecision = routeDecision;
+   }
+
+
+
+   /*******************************************************************************
+    ** With routeDecision.
+    *******************************************************************************/
+   public AssistantTurn withRouteDecision(String routeDecision)
+   {
+      this.routeDecision = routeDecision;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Get routeSource.
+    *******************************************************************************/
+   public String getRouteSource()
+   {
+      return (this.routeSource);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set routeSource.
+    *******************************************************************************/
+   public void setRouteSource(String routeSource)
+   {
+      this.routeSource = routeSource;
+   }
+
+
+
+   /*******************************************************************************
+    ** With routeSource.
+    *******************************************************************************/
+   public AssistantTurn withRouteSource(String routeSource)
+   {
+      this.routeSource = routeSource;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Get fallbackCount.
+    *******************************************************************************/
+   public Integer getFallbackCount()
+   {
+      return (this.fallbackCount);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set fallbackCount.
+    *******************************************************************************/
+   public void setFallbackCount(Integer fallbackCount)
+   {
+      this.fallbackCount = fallbackCount;
+   }
+
+
+
+   /*******************************************************************************
+    ** With fallbackCount.
+    *******************************************************************************/
+   public AssistantTurn withFallbackCount(Integer fallbackCount)
+   {
+      this.fallbackCount = fallbackCount;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Get providerId.
+    *******************************************************************************/
+   public Integer getProviderId()
+   {
+      return (this.providerId);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set providerId.
+    *******************************************************************************/
+   public void setProviderId(Integer providerId)
+   {
+      this.providerId = providerId;
+   }
+
+
+
+   /*******************************************************************************
+    ** With providerId.
+    *******************************************************************************/
+   public AssistantTurn withProviderId(Integer providerId)
+   {
+      this.providerId = providerId;
+      return (this);
+   }
 }

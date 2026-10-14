@@ -28,6 +28,9 @@ import com.kingsrook.qbits.assistant.metadata.AssistantRecordScreens;
 import com.kingsrook.qbits.assistant.processes.DiscoverModelsProcess;
 import com.kingsrook.qbits.assistant.processes.TestConnectionProcess;
 import com.kingsrook.qbits.assistant.processes.TestModelConnectionProcess;
+import com.kingsrook.qqq.backend.core.alerts.AlertSeverity;
+import com.kingsrook.qqq.backend.core.alerts.QAlertTypeMetaData;
+import com.kingsrook.qbits.assistant.model.AssistantBudget;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducerMultiOutput;
@@ -155,6 +158,9 @@ public class AssistantQBitProducer implements QBitMetaDataProducer<AssistantQBit
          qInstance.addTable(customized);
          tables.add(customized);
       }
+      qInstance.add(budgetAlertType("warning", "Assistant budget warning", "Assistant usage has reached the budget warning threshold.", AlertSeverity.WARNING));
+      qInstance.add(budgetAlertType("downgraded", "Assistant budget downgraded", "Assistant usage has reached the budget limit and switched to a cheaper model.", AlertSeverity.WARNING));
+      qInstance.add(budgetAlertType("stopped", "Assistant budget stopped", "Assistant dispatch has stopped because a budget limit was reached.", AlertSeverity.ERROR));
       qInstance.addPossibleValueSource(builder.buildConversationPossibleValueSource());
       AssistantRecordScreens.buildPossibleValueSources().forEach(qInstance::addPossibleValueSource);
       AssistantRecordScreens.buildSettingsPossibleValueSources(qBitConfig).forEach(qInstance::addPossibleValueSource);
@@ -181,6 +187,18 @@ public class AssistantQBitProducer implements QBitMetaDataProducer<AssistantQBit
 
       postProduceActions(new MetaDataProducerMultiOutput(), qInstance);
       return (new MetaDataProducerMultiOutput());
+   }
+
+
+
+   /*******************************************************************************
+    ** Declare budget alerts as top-level core metadata for admin visibility.
+    *******************************************************************************/
+   private QAlertTypeMetaData budgetAlertType(String state, String label, String description, AlertSeverity severity)
+   {
+      return (new QAlertTypeMetaData().withName("assistant.budget." + state).withLabel(label).withDescription(description)
+         .withDefaultSeverity(severity).withHowToFix("Raise the budget or grant an override in Assistant → Budgets")
+         .withSourceQBitName(ARTIFACT_ID).withVisibilityPermission("assistant.admin").withSubjectTableName(AssistantBudget.TABLE_NAME));
    }
 
 

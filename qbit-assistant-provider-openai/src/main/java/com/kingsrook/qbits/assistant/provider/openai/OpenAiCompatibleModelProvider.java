@@ -157,7 +157,7 @@ public class OpenAiCompatibleModelProvider implements AssistantModelProvider
          {
             throw (http.error(response.statusCode(), new String(response.body().readNBytes(64 * 1024), StandardCharsets.UTF_8), result.requestId, strict));
          }
-         if(Boolean.TRUE.equals(caps.getStreaming()))
+         if(!Boolean.FALSE.equals(request.getStreaming()) && Boolean.TRUE.equals(caps.getStreaming()))
          {
             readEvents(response.body(), lastRead, result, strict, handle);
          }

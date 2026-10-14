@@ -376,6 +376,52 @@ AI exposure NONE is not enough, because the assistant acts as the user and an ad
   to 2190 days in either mode; shorter tool-result/replay cleanup is unchanged.
   The app home shows HIPAA mode and PHI retention.
 
+### P-d as built
+
+- ROLE allowances are per permission holder. Shared scopes sum a private immutable
+  accounting projection of usage counters; owner-locked source rows stay locked.
+  Migration backfills existing usage before writes resume. No sessions are elevated.
+
+- Standard admin budget rows add daily/monthly cost or token allowances above the
+  existing config/policy budgets and provider monthly caps. Overrides carry a
+  reason, session grantor and expiry; they never waive the other limit layers.
+- Start-turn checks use the existing 429 BUDGET path through PolicyService.
+  Every dispatch, including strict retries, evaluates current usage and overrides.
+  Events deduplicate WARNED, DOWNGRADED and STOPPED.
+- QQQ RC.5 core QAlerts sends budget signals alongside panel notices, with three
+  admin-visible alert types and a default logging sink. Resolution awaits active
+  alert/recurrence tracking so overrides cannot clear shared alerts incorrectly.
+- Explicit registry model selection leaves provider defaults untouched. Automatic
+  downgrades prefer LOCAL, then price. PHI eligibility and destination provider caps
+  still apply; a missing eligible target stops the turn.
+- The home owns the budget cards and 30-day cost/token bars, with user, model,
+  provider and tool breakdowns, inherited colors and empty states.
+
+### P-e as built
+
+- Profiles select OFF (the migration default), HEURISTIC or CLASSIFIER and optional
+  simple/complex/classifier registry models. Selection uses ProfileService's existing
+  specificity. Without a profile, enabled escalation config supplies the complex
+  model and effort. Empty slots retain provider row/default/policy selection.
+- The documented heuristic is a pure rule table: >600 characters, two distinct app
+  table names, complexity keywords, pending write context, >8 previous turns or a
+  previous tool limit. This branch has no conversation write-mode field.
+- Classifier transport is non-streaming, bounded to four output tokens/three seconds,
+  and contains only the fixed instruction and user question. PHI guards apply before
+  dispatch. Errors/unexpected replies use the heuristic. ROUTE usage enters budget
+  accounting; normal dispatch budgets may override the selected route.
+- FallbackChain follows at most four edges on retryable failures, only before any
+  text/tool start of that call. Candidates are checked for enablement, health,
+  PHI/HIPAA eligibility and budgets. Without explicit links only the same LOCAL
+  adapter family is considered. Provider switches rebuild neutral messages and
+  discard providerState; failed attempts remain visible in usage.
+- ProviderHealth persists UP/DOWN, checked-at and a 60-second connection-failure
+  circuit. Local stale/unknown health uses a bounded two-second probe. Successful
+  completions close the breaker. Turn rows persist route/source, fallback count and
+  final provider/model; notices name only the unavailable and answering providers.
+- Admin record screens, additive Postgres DDL and the flow-layout home expose these
+  settings and counters without granting AI access to assistant configuration.
+
 ### Phases (each a green PR)
 | | Scope | Depends on |
 |---|---|---|

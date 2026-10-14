@@ -193,7 +193,7 @@
    </build>
 
    <profiles>
-      <!-- The assistant needs QQQ 4.1.0-RC.4: the AI tool kernel (package        -->
+      <!-- The assistant needs QQQ 4.1.0-RC.5: the AI tool kernel (package        -->
       <!-- actions.ai, qqq#1078) and the developer panels (qqq#1076). Until        -->
       <!-- qbit-build-parent imports the 4.1 BOM, this                              -->
       <!-- profile is active by default and imports qqq-bom-pom ahead of the        -->
@@ -205,7 +205,7 @@
             <activeByDefault>true</activeByDefault>
          </activation>
          <properties>
-            <qqq.snapshot.version>4.1.0-RC.4</qqq.snapshot.version>
+            <qqq.snapshot.version>4.1.0-RC.5</qqq.snapshot.version>
          </properties>
          <dependencyManagement>
             <dependencies>

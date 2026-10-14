@@ -32,6 +32,9 @@ public class AssistantModel extends QRecordEntity
 {
    public static final String TABLE_NAME = "assistant_model";
 
+   @QField()
+   private Integer fallbackModelId;
+
    @QField(isEditable = false, isPrimaryKey = true)
    private Integer id;
 
@@ -764,4 +767,35 @@ public class AssistantModel extends QRecordEntity
       return (this);
    }
 
+
+
+
+   /*******************************************************************************
+    ** Get fallbackModelId.
+    *******************************************************************************/
+   public Integer getFallbackModelId()
+   {
+      return (this.fallbackModelId);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set fallbackModelId.
+    *******************************************************************************/
+   public void setFallbackModelId(Integer fallbackModelId)
+   {
+      this.fallbackModelId = fallbackModelId;
+   }
+
+
+
+   /*******************************************************************************
+    ** With fallbackModelId.
+    *******************************************************************************/
+   public AssistantModel withFallbackModelId(Integer fallbackModelId)
+   {
+      this.fallbackModelId = fallbackModelId;
+      return (this);
+   }
 }

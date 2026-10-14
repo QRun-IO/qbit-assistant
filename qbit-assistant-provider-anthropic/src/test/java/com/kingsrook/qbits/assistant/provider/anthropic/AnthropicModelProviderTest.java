@@ -51,6 +51,39 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *******************************************************************************/
 class AnthropicModelProviderTest
 {
+   /*******************************************************************************
+    ** Routing requests use a single JSON reply without text deltas.
+    *******************************************************************************/
+   @Test
+   void nonStreamingClassifier() throws Exception
+   {
+      server.thenError(200, "classifier-response.json");
+      ModelRequest request = new ModelRequest().withModel("claude-sonnet-5-5").withMaxTokens(4).withStreaming(false)
+         .withMessages(List.of(ModelMessage.user("hello")));
+      List<String> deltas = new ArrayList<>();
+      ModelResponse response = provider.stream(request, deltas::add).await(Duration.ofSeconds(3));
+      assertThat(response.getText()).isEqualTo("SIMPLE");
+      assertThat(response.getUsage().getOutputTokens()).isEqualTo(1L);
+      assertThat(deltas).isEmpty();
+      assertThat(sentBody(0).get("stream")).isIn(null, false);
+      assertThat(sentBody(0).get("max_tokens")).isEqualTo(4);
+   }
+
+
+
+   /*******************************************************************************
+    ** Non-streaming errors retain the normal exception mapping.
+    *******************************************************************************/
+   @Test
+   void nonStreamingError() throws Exception
+   {
+      server.thenError(401, "unauthorized.json");
+      assertThatThrownBy(() -> provider.stream(request().withStreaming(false), new StringBuilder()::append).await(Duration.ofSeconds(3)))
+         .isInstanceOfSatisfying(ModelProviderException.class, error -> assertThat(error.getKind()).isEqualTo(ModelProviderException.Kind.AUTHENTICATION));
+   }
+
+
+
    private static final String TEST_KEY = "sk-ant-test-0000000000000000000000";
 
    private RecordedAnthropicServer server;
