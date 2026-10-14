@@ -25,7 +25,6 @@ import java.util.Objects;
 import java.util.concurrent.Semaphore;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
 import com.kingsrook.qbits.assistant.AssistantSecurity;
-import com.kingsrook.qbits.assistant.classification.DataClassification;
 import com.kingsrook.qbits.assistant.engine.BudgetService;
 import com.kingsrook.qbits.assistant.engine.PolicyService;
 import com.kingsrook.qbits.assistant.engine.ProviderService;
@@ -36,6 +35,7 @@ import com.kingsrook.qbits.assistant.provider.EmbeddingResponse;
 import com.kingsrook.qbits.assistant.provider.ModelProviderException;
 import com.kingsrook.qbits.assistant.provider.ModelResponse;
 import com.kingsrook.qbits.assistant.scheduled.ScheduledTurn;
+import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 

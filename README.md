@@ -466,10 +466,10 @@ Apache 2.0.
 
 ## Data classification and HIPAA mode
 
-On QQQ 4.1.0-RC.5, classify application tables/fields in the host configuration:
+Classify application tables and fields in core's AI metadata (`AiTableMetaData` / `AiFieldMetaData`, QQQ 4.1.0-RC.6), or in the host configuration (a configured value wins when both are set):
 
 ```java
-import com.kingsrook.qbits.assistant.classification.DataClassification;
+import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 
 AssistantQBitConfig config = new AssistantQBitConfig()
    .withDataClassification("patient", DataClassification.PHI)
@@ -487,8 +487,8 @@ The existing server-side `withSecretResolver` hook also resolves this reference.
 Startup validates the key. HIPAA mode defaults off; encryption can also be enabled
 with the key reference while HIPAA mode is off.
 
-The qbit `DataClassification` enum is a stand-in for core QRun-IO/qqq#1142, with
-PUBLIC < CONFIDENTIAL < PII < PHI. Unconfigured tables default to PUBLIC; a field
+The levels are core's `DataClassification` (PUBLIC < CONFIDENTIAL < PII < PHI); the
+qbit's former stand-in enum is gone. Unconfigured tables default to PUBLIC; a field
 falls back to its table unless explicitly overridden. A field subset uses its
 selected fields; unrestricted reads and record page contexts use the highest
 classification across the table and its fields. Returned columns and record-label
@@ -497,10 +497,9 @@ explicitly if the host considers it safe for that subset. Cross-table results wi
 tables use the highest classification anywhere. Metadata-only tools remain PUBLIC.
 The assistant's own tables remain denied to tools.
 
-Hosts can supply `withClassificationSource(ClassificationSource)` instead. When
-upgrading to an RC containing core #1142, implement that interface with
-`AiDataClassifications`/`AiTableMetaData`/`AiFieldMetaData` (map enum names), then
-replace the stand-in once the qbit's minimum core version includes it.
+The default `ClassificationSource` reads core's metadata (`AiDataClassifications`,
+`AiTableMetaData`, `AiFieldMetaData`) merged with the configured map; configuration
+wins when both are set. Hosts can still supply `withClassificationSource(ClassificationSource)`.
 
 PHI is sent only to a persisted provider row explicitly marked `hipaaEligible`.
 Every model dispatch rechecks eligibility, including calls after tools and strict
@@ -620,3 +619,20 @@ skills can extend the built-in presentation instructions. See the
 The image-breakdown golden task also runs in the existing opt-in live provider suite:
 `./mvnw verify -Dassistant.live=true -Dtest.excludedGroups= -Dgroups=live -Djacoco.skip=true -pl qbit-assistant-provider-anthropic -am`
 (with `ANTHROPIC_API_KEY` set). Live calls are excluded from normal verification.
+
+### Record history and the assistant channel
+
+Core's default `ClientChannelsMetaData` denies `audit*` to the `assistant`
+channel. Accordingly, `get_record_history` is offered only when all three audit
+tables it queries (`auditTable`, `audit`, and `auditDetail`) exist and are not
+channel-denied, including their effective permission rules. A host that intends
+to expose record history can opt in during instance configuration:
+
+```java
+ClientChannelsMetaData.ofOrWithNew(qInstance)
+   .getDeniedPatterns().get("assistant").remove("audit*");
+```
+
+This removes only the default audit pattern; other channel denials and the
+signed-in user's audit permissions still apply. Keep explicit denials for audit
+surfaces the host does not intend to expose. The default remains unchanged.

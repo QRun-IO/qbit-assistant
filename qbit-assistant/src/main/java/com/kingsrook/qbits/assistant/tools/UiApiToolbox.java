@@ -47,6 +47,7 @@ import com.kingsrook.qqq.backend.core.actions.ai.output.AiRedactor;
 import com.kingsrook.qqq.backend.core.actions.ai.tools.AiJsonSchema;
 import com.kingsrook.qqq.backend.core.actions.ai.tools.AiToolContext;
 import com.kingsrook.qqq.backend.core.actions.ai.tools.AiToolException;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
@@ -56,9 +57,11 @@ import com.kingsrook.qqq.backend.core.model.audits.AuditsMetaDataProvider;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.ClientChannelsMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiCredentials;
 
 
 /*******************************************************************************
@@ -150,8 +153,37 @@ public class UiApiToolbox
     ** Where a tool call runs: the user's session, the gateway, the policy, and
     ** what to do with a write that needs confirmation.
     *******************************************************************************/
-   public record Context(String sessionUUID, String userTimezone, UiApiGateway gateway, PolicyService.ToolPolicy policy, PendingActions pendingActions)
+   public record Context(String sessionUUID, String userTimezone, UiApiGateway gateway, PolicyService.ToolPolicy policy, PendingActions pendingActions, UiApiCredentials credentials, String turnId)
    {
+      /*******************************************************************************
+       ** With the session UUID only (no request credentials captured).
+       *******************************************************************************/
+      public Context(String sessionUUID, String userTimezone, UiApiGateway gateway, PolicyService.ToolPolicy policy, PendingActions pendingActions)
+      {
+         this(sessionUUID, userTimezone, gateway, policy, pendingActions, null, null);
+      }
+
+
+
+      /*******************************************************************************
+       ** With the request credentials, outside a turn.
+       *******************************************************************************/
+      public Context(String sessionUUID, String userTimezone, UiApiGateway gateway, PolicyService.ToolPolicy policy, PendingActions pendingActions, UiApiCredentials credentials)
+      {
+         this(sessionUUID, userTimezone, gateway, policy, pendingActions, credentials, null);
+      }
+
+
+
+      /*******************************************************************************
+       ** A call made by this context: the caller's credentials, timezone and
+       ** the client detail (the turn id, labelled assistant/turnId in the access
+       ** log) filled in.
+       *******************************************************************************/
+      public UiApiCall prepare(UiApiCall call)
+      {
+         return (call.withSessionUUID(sessionUUID).withCredentials(credentials).withUserTimezone(userTimezone).withClientDetail(turnId));
+      }
    }
 
 
@@ -328,7 +360,30 @@ public class UiApiToolbox
       byName.put(DELETE_RECORD, tool(DELETE_RECORD, "Delete a record. The user confirms it in the panel before anything is deleted, unless the administrator turned confirmation off.",
          AiJsonSchema.object(AiJsonSchema.properties("table", AiJsonSchema.string("Table name from list_tables"), "id", AiJsonSchema.string("The record's primary key value.")), List.of("table", "id"))));
 
+      if(!historyAllowed())
+      {
+         byName.remove(RECORD_HISTORY);
+      }
       return (new ArrayList<>(byName.values()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Offer history only when every audit table it queries is available to the
+    ** assistant channel, including inherited permission rules.
+    *******************************************************************************/
+   private boolean historyAllowed()
+   {
+      for(String name : List.of(AuditsMetaDataProvider.TABLE_NAME_AUDIT_TABLE, AuditsMetaDataProvider.TABLE_NAME_AUDIT, AuditsMetaDataProvider.TABLE_NAME_AUDIT_DETAIL))
+      {
+         QTableMetaData table = qInstance.getTable(name);
+         if(table == null || ClientChannelsMetaData.of(qInstance).isDenied("assistant", table.getName(), PermissionsHelper.getEffectivePermissionRules(table, qInstance)))
+         {
+            return (false);
+         }
+      }
+      return (true);
    }
 
 
@@ -658,7 +713,7 @@ public class UiApiToolbox
       if(truncated)
       {
          UiApiResult counted = context.gateway().invoke(new UiApiCall("POST", "/table/{tableName}/count").withPathParam("tableName", tableName).withJsonBody(filterBody(linkFilter))
-            .withSessionUUID(context.sessionUUID()).withUserTimezone(context.userTimezone()));
+            .withSessionUUID(context.sessionUUID()).withCredentials(context.credentials()).withUserTimezone(context.userTimezone()).withClientDetail(context.turnId()));
          totalCount = counted.isSuccess() ? asMap(counted.json()).get("count") : null;
       }
 
@@ -1255,7 +1310,7 @@ public class UiApiToolbox
     *******************************************************************************/
    private UiApiResult call(Context context, Outcome outcome, UiApiCall call) throws QException
    {
-      call.withSessionUUID(context.sessionUUID()).withUserTimezone(context.userTimezone()).withInvokedBy("assistant");
+      context.prepare(call).withInvokedBy("assistant");
       outcome.operation = call.operation();
       UiApiResult response = context.gateway().invoke(call);
       outcome.httpStatus = response.status();

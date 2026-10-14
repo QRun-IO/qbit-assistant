@@ -58,8 +58,8 @@ import com.kingsrook.qbits.assistant.provider.StreamHandle;
 import com.kingsrook.qbits.assistant.scheduled.ScheduledTurn;
 import com.kingsrook.qbits.assistant.tools.KnowledgeTool;
 import com.kingsrook.qbits.assistant.tools.PresentResultsTool;
-import com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadTools;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
+import com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadTools;
 import com.kingsrook.qqq.backend.core.actions.ai.AiRecordRef;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolCall;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolOutcome;
@@ -72,6 +72,7 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiCredentials;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
@@ -148,6 +149,7 @@ public class TurnEngine implements Runnable
    private ProviderService.Active budgetOrigin;
 
    private volatile boolean finished = false;
+   private UiApiCredentials credentials;
 
 
 
@@ -172,6 +174,19 @@ public class TurnEngine implements Runnable
       this.policy = policy;
       this.running = running;
       this.softBudgetNotice = softBudgetNotice;
+   }
+
+
+
+   /*******************************************************************************
+    ** The credentials of the request that started the turn, forwarded to the
+    ** UI API by the tools (session cookies, Authorization, API key as they came
+    ** in). Without them the session UUID is used. Never logged.
+    *******************************************************************************/
+   public TurnEngine withCredentials(UiApiCredentials credentials)
+   {
+      this.credentials = credentials;
+      return (this);
    }
 
 
@@ -917,7 +932,7 @@ public class TurnEngine implements Runnable
     *******************************************************************************/
    private UiApiToolbox.Context toolContext()
    {
-      return (new UiApiToolbox.Context(session.getUuid(), userTimezone(), runtime.getUiApiGateway(), toolPolicy, this::proposeWrite));
+      return (new UiApiToolbox.Context(session.getUuid(), userTimezone(), runtime.getUiApiGateway(), toolPolicy, this::proposeWrite, credentials, turn.getId() == null ? null : String.valueOf(turn.getId())));
    }
 
 

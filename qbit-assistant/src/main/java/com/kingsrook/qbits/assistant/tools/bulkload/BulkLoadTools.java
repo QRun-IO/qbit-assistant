@@ -541,7 +541,7 @@ public class BulkLoadTools
    private void run(Call call, AiToolResult result, UiApiToolbox.Context context, String tableName, Map<String, Object> values) throws QException
    {
       BulkLoadRunner.RunHandle handle = runner.start(new BulkLoadRunner.Request(context.sessionUUID(), context.userTimezone(), context.gateway(), tableName,
-         String.valueOf(values.get("uploadRef")), ValueUtils.getValueAsInteger(values.get("profileId"))));
+         String.valueOf(values.get("uploadRef")), ValueUtils.getValueAsInteger(values.get("profileId")), context.credentials(), context.turnId()));
       call.operation = handle.operation();
       call.httpStatus = handle.httpStatus();
       boolean ok = !"FAILED".equals(handle.status()) && !"NOT_AVAILABLE".equals(handle.status());
@@ -863,7 +863,7 @@ public class BulkLoadTools
          {
             return (null);
          }
-         uiApiCall.withSessionUUID(context.sessionUUID()).withUserTimezone(context.userTimezone()).withInvokedBy("assistant")
+         context.prepare(uiApiCall).withInvokedBy("assistant")
             .withHeader(ROUTE_HEADER, hipaaRoute ? "hipaa" : "standard");
          UiApiResult response = context.gateway().invoke(uiApiCall);
          httpStatus = response.status();

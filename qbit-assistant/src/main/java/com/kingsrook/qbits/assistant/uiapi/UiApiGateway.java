@@ -25,9 +25,8 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
  ** user's own session, so every tool call passes the same authentication,
  ** permission, record-lock, validation and audit path as the UI.
  **
- ** {@link LoopbackUiApiGateway} is a stand-in until core's `UiApiInvoker`
- ** (QRun-IO/qqq#1128) is released. Then an adapter over the invoker replaces
- ** it, and nothing else changes.
+ ** {@link CoreUiApiGateway} implements it over core's `UiApiInvoker`
+ ** (QRun-IO/qqq#1128); a host may inject another (tests).
  *******************************************************************************/
 public interface UiApiGateway
 {

@@ -70,6 +70,8 @@ public class JobsLaunchBulkLoadRunner implements BulkLoadRunner
          .withPathParam("processName", processName)
          .withJsonBody(body)
          .withSessionUUID(request.sessionUUID())
+         .withCredentials(request.credentials())
+         .withClientDetail(request.turnId())
          .withUserTimezone(request.userTimezone())
          .withInvokedBy("assistant"));
 

@@ -137,7 +137,7 @@ public class AssistantTestFixture
          .withField(new QFieldMetaData("statDate", QFieldType.DATE).withLabel("Stat Date"))
          .withField(new QFieldMetaData("pageviews", QFieldType.INTEGER).withLabel("Pageviews")));
 
-      if(config.getClassificationSource().ofTable("patient") == com.kingsrook.qbits.assistant.classification.DataClassification.PHI)
+      if(config.getClassificationSource().ofTable("patient") == com.kingsrook.qqq.backend.core.actions.ai.DataClassification.PHI)
       {
          qInstance.addTable(table("patient", "Patient", "status")
             .withField(new QFieldMetaData("email", QFieldType.STRING))

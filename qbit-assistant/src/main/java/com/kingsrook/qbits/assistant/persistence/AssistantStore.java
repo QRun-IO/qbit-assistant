@@ -29,7 +29,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
-import com.kingsrook.qbits.assistant.classification.DataClassification;
+import com.kingsrook.qbits.assistant.classification.Classifications;
 import com.kingsrook.qbits.assistant.engine.TurnClassification;
 import com.kingsrook.qbits.assistant.model.AssistantBudget;
 import com.kingsrook.qbits.assistant.model.AssistantBudgetEvent;
@@ -788,8 +788,8 @@ public class AssistantStore
          .withValue("classification", classification.getClassification().name()).withValue("classificationTables", classification.getTables()));
       if(current != null)
       {
-         var maximum = DataClassification.max(
-            DataClassification.stored(current.getMaxClassification()), classification.getClassification());
+         var maximum = Classifications.max(
+            Classifications.stored(current.getMaxClassification()), classification.getClassification());
          if(!maximum.name().equals(current.getMaxClassification()))
          {
             updateFields(AssistantConversation.TABLE_NAME, new QRecord().withValue("id", conversationId).withValue("maxClassification", maximum.name()));

@@ -55,6 +55,7 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiCredentials;
 
 
 /*******************************************************************************
@@ -71,6 +72,7 @@ public class AssistantApi
    private final AssistantStore      store;
    private final QSession            session;
    private final String              userId;
+   private UiApiCredentials          credentials;
 
 
 
@@ -89,6 +91,18 @@ public class AssistantApi
       {
          AssistantSecurity.ownerKey(session, config);
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** The credentials of the request this API serves, exactly as they came in;
+    ** the tools forward them to the UI API. Never logged.
+    *******************************************************************************/
+   public AssistantApi withCredentials(UiApiCredentials credentials)
+   {
+      this.credentials = credentials;
+      return (this);
    }
 
 
@@ -373,7 +387,7 @@ public class AssistantApi
 
          RunningTurn runningTurn = runtime.register(new RunningTurn(turn.getId(), userId));
          TurnEngine  engine      = new TurnEngine(runtime, session, userId, conversation, userMessage, assistantMessage, turn, text, pageContext, policy, runningTurn,
-            budget.softExceeded() ? budget.message() : null);
+            budget.softExceeded() ? budget.message() : null).withCredentials(credentials);
          runtime.getExecutor().submit(engine);
          return (runningTurn);
       }
@@ -598,7 +612,7 @@ public class AssistantApi
          throw (new QException("The stored values of action " + id + " are not valid JSON", e));
       }
       PolicyService.EffectivePolicy policy = runtime.getPolicyService().current(true);
-      UiApiToolbox.Context context = new UiApiToolbox.Context(session.getUuid(), session.getValue(QSession.VALUE_KEY_USER_TIMEZONE), runtime.getUiApiGateway(), policy.tools(), null);
+      UiApiToolbox.Context context = new UiApiToolbox.Context(session.getUuid(), session.getValue(QSession.VALUE_KEY_USER_TIMEZONE), runtime.getUiApiGateway(), policy.tools(), null, credentials, action.getTurnId() == null ? null : String.valueOf(action.getTurnId()));
       UiApiToolbox.Outcome outcome = BulkLoadTools.WRITE_TOOLS.contains(action.getToolName())
          ? runtime.getBulkLoadTools().executeConfirmed(context, action.getToolCallId(), action.getToolName(), action.getTableName(), values)
          : runtime.getToolbox().executeConfirmedWrite(context, action.getToolCallId(), action.getToolName(), action.getTableName(), action.getRecordId(), values);
@@ -722,7 +736,7 @@ public class AssistantApi
    {
       requireAccess();
       List<Map<String, Object>> tables = new ArrayList<>();
-      for(AccessExplainer.TableAccess access : runtime.getAccessExplainer().explain(runtime.getUiApiGateway(), session.getUuid(), runtime.getPolicyService().current(false).tools(), table, prompt))
+      for(AccessExplainer.TableAccess access : runtime.getAccessExplainer().explain(runtime.getUiApiGateway(), session.getUuid(), credentials, runtime.getPolicyService().current(false).tools(), table, prompt))
       {
          if(!access.uiVisible() && access.mode() == DataAccessMode.NONE)
          {

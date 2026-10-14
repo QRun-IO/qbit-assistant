@@ -66,7 +66,7 @@
 - Add HIPAA mode, eligible-provider enforcement, AES-256-GCM conversation storage,
   provider diagnostic redaction, and independent PHI conversation retention.
 - Add owner-locked, admin read-only data routing audits and HIPAA status on the home.
-- Keep QQQ RC.4 compatibility with a classification stand-in and core #1142 adapter seam.
+- Classification levels are core's `DataClassification` (the qbit stand-in is removed); the default source reads core AI metadata merged with configuration.
 
 All notable changes to this project are documented here. The format follows Keep a Changelog, and versions follow semantic versioning.
 
@@ -83,6 +83,11 @@ All notable changes to this project are documented here. The format follows Keep
 Phase 0/1 of the QQQ Assistant: read-only Q&A and navigation. Requires QQQ 4.1 with:
 - the AI tool kernel (`qqq-backend-core` `actions.ai`, QRun-IO/qqq#1078)
 - the developer-panel contract (QRun-IO/qqq#1076).
+
+### Changed (0.1.0-RC.7, needs QQQ with QRun-IO/qqq#1128)
+- The assistant's endpoints are spec'd `/qqq/v1` operations (UI API extension `assistant` 1.0.0, prefix `/assistant`): same URLs, bodies and statuses, now in the served OpenAPI; turns and events are `text/event-stream`. The raw routes are gone.
+- Tools call core's `UiApiInvoker` with the caller's own request credentials (`UiApiCredentials`); the loopback stand-in is removed. The assistant's own operations are never invocable by its tools.
+- The OpenAPI fragment is committed (`openapi/qqq-v1/assistant.yaml`) and contract-tested.
 
 ### Changed (0.1.0-RC.6): tools go through the UI API (owner decision 2026-10-13)
 - **Every data tool runs a spec'd `/qqq/v1` operation with the user's own session** (`UiApiGateway`, loopback HTTP with the `sessionUUID` cookie): the same authentication, permissions, record locks, validation, audit and errors as the UI. A user without a permission gets the identical denial through the assistant. `navigate` and `search_help` (no records) stay on the core kernel. `LoopbackUiApiGateway` is a stand-in for core's `UiApiInvoker` (QRun-IO/qqq#1128).

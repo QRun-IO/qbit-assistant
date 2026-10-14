@@ -40,6 +40,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiCredentials;
 
 
 /*******************************************************************************
@@ -118,7 +119,7 @@ public class ScheduledTaskRunner
       {
          session = login.login(runtime, task);
          QContext.init(runtime.getQInstance(), session);
-         AssistantApi api = new AssistantApi(runtime, session);
+         AssistantApi api = new AssistantApi(runtime, session).withCredentials(UiApiCredentials.ofSessionUUID(session.getUuid()));
          Integer conversationId = ((Number) api.createConversation(Map.of("title", task.getName())).get("id")).intValue();
          run.setConversationId(conversationId);
          store.updateFields(AssistantConversation.TABLE_NAME, new QRecord().withValue("id", conversationId)

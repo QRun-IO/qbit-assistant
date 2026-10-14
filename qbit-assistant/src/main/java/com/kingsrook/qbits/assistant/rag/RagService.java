@@ -223,7 +223,7 @@ public class RagService
             checkKillSwitch();
             filter.setSkip(skip);
             UiApiResult page = runtime.getUiApiGateway().invoke(new UiApiCall("POST", "/table/{tableName}/query").withPathParam("tableName", source.getTableName())
-               .withSessionUUID(context.sessionUUID()).withUserTimezone(context.userTimezone()).withJsonBody("{\"filter\":" + JsonUtils.toJson(filter) + "}"));
+               .withSessionUUID(context.sessionUUID()).withCredentials(context.credentials()).withUserTimezone(context.userTimezone()).withJsonBody("{\"filter\":" + JsonUtils.toJson(filter) + "}"));
             if(!page.isSuccess())
             {
                throw (new QException("Index query answered HTTP " + page.status() + "; existing chunks were preserved."));

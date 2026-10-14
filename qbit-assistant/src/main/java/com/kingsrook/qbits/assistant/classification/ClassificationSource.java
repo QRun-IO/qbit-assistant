@@ -22,11 +22,12 @@ package com.kingsrook.qbits.assistant.classification;
 
 
 import java.util.Collection;
+import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qqq.backend.core.context.QContext;
 
 
 /*******************************************************************************
- ** Host seam for table and field classifications; a core metadata adapter can replace the configured source.
+ ** Host seam for table and field classifications; the default reads core metadata merged with configuration.
  *******************************************************************************/
 public interface ClassificationSource
 {
@@ -63,7 +64,7 @@ public interface ClassificationSource
       DataClassification result = DataClassification.PUBLIC;
       for(String field : fields)
       {
-         result = DataClassification.max(result, field == null || "*".equals(field) ? highest(table) : ofField(table, field));
+         result = Classifications.max(result, field == null || "*".equals(field) ? highest(table) : ofField(table, field));
       }
       return (result);
    }
@@ -80,7 +81,7 @@ public interface ClassificationSource
       {
          if(!table.startsWith("assistant_"))
          {
-            result = DataClassification.max(result, highest(table));
+            result = Classifications.max(result, highest(table));
          }
       }
       return (result);
