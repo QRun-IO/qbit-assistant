@@ -71,6 +71,15 @@ public class AssistantProvider extends QRecordEntity
 
    public static final String TABLE_NAME = "assistant_provider";
 
+   @QField(isEditable = false, maxLength = 8)
+   private String healthState;
+
+   @QField(isEditable = false)
+   private Instant healthCheckedAt;
+
+   @QField(isEditable = false)
+   private Instant downUntil;
+
    @QField(isEditable = false, isPrimaryKey = true)
    private Integer id;
 
@@ -1114,6 +1123,99 @@ public class AssistantProvider extends QRecordEntity
    public AssistantProvider withCloudProject(String cloudProject)
    {
       this.cloudProject = cloudProject;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Get healthState.
+    *******************************************************************************/
+   public String getHealthState()
+   {
+      return (this.healthState);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set healthState.
+    *******************************************************************************/
+   public void setHealthState(String healthState)
+   {
+      this.healthState = healthState;
+   }
+
+
+
+   /*******************************************************************************
+    ** With healthState.
+    *******************************************************************************/
+   public AssistantProvider withHealthState(String healthState)
+   {
+      this.healthState = healthState;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Get healthCheckedAt.
+    *******************************************************************************/
+   public Instant getHealthCheckedAt()
+   {
+      return (this.healthCheckedAt);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set healthCheckedAt.
+    *******************************************************************************/
+   public void setHealthCheckedAt(Instant healthCheckedAt)
+   {
+      this.healthCheckedAt = healthCheckedAt;
+   }
+
+
+
+   /*******************************************************************************
+    ** With healthCheckedAt.
+    *******************************************************************************/
+   public AssistantProvider withHealthCheckedAt(Instant healthCheckedAt)
+   {
+      this.healthCheckedAt = healthCheckedAt;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Get downUntil.
+    *******************************************************************************/
+   public Instant getDownUntil()
+   {
+      return (this.downUntil);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set downUntil.
+    *******************************************************************************/
+   public void setDownUntil(Instant downUntil)
+   {
+      this.downUntil = downUntil;
+   }
+
+
+
+   /*******************************************************************************
+    ** With downUntil.
+    *******************************************************************************/
+   public AssistantProvider withDownUntil(Instant downUntil)
+   {
+      this.downUntil = downUntil;
       return (this);
    }
 }

@@ -69,6 +69,7 @@ Always use the wrapper: Maven 3.10 cannot read the parent POM. The committed def
 - **Links:** only `/app` or `/app/...` hrefs are emitted (`TurnEngine.isAppHref`).
 - **PHI routing:** PHI only to `hipaaEligible` providers; checked before every model call. Conversation classification never decreases.
 - **HIPAA storage:** Conversation storage encrypted in HIPAA mode, only in `AssistantStore`; encryption keys are environment references and never logged or stored in tables.
+- **Fallback:** fallback never crosses the PHI rule; never local-to-cloud by default. No retry after partial output from that call; provider switches rebuild neutral history without providerState.
 - **Budgets:** budgets are checked before every model call; downgrade never crosses the PHI rule.
 - **Kill switch:** read fresh before every model call and every tool step.
 

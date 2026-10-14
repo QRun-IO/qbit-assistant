@@ -741,6 +741,16 @@ public class ProviderService
     *******************************************************************************/
    public Active resolveModel(Integer modelId, boolean requiresHipaa) throws QException
    {
+      return (resolveModel(modelId, requiresHipaa, true));
+   }
+
+
+
+   /*******************************************************************************
+    ** Classifiers may use models without tool support.
+    *******************************************************************************/
+   public Active resolveModel(Integer modelId, Boolean requiresHipaa, Boolean requireTools) throws QException
+   {
       AssistantModel model = store.listModels().stream().filter(m -> modelId.equals(m.getId()) && Boolean.TRUE.equals(m.getEnabled())).findFirst().orElse(null);
       if(model == null)
       {
@@ -755,7 +765,7 @@ public class ProviderService
       try
       {
          Active active = forRow(selected, model.getModelId());
-         return (active.provider().getCapabilities(active.model()) != null && Boolean.FALSE.equals(active.provider().getCapabilities(active.model()).getTools()) ? null : active);
+         return (requireTools && active.provider().getCapabilities(active.model()) != null && Boolean.FALSE.equals(active.provider().getCapabilities(active.model()).getTools()) ? null : active);
       }
       catch(ProviderSetupException e)
       {

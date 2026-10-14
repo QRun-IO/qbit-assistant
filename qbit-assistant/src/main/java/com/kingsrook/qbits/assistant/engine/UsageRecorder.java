@@ -39,6 +39,7 @@ public final class UsageRecorder
 
    public static final String PURPOSE_TURN = "TURN";
    public static final String PURPOSE_TEST = "TEST";
+   public static final String PURPOSE_ROUTE = "ROUTE";
 
    public static final String STATUS_OK        = "OK";
    public static final String STATUS_ERROR     = "ERROR";

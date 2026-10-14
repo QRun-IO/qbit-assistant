@@ -45,6 +45,27 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *******************************************************************************/
 class OpenAiContractTest
 {
+   /*******************************************************************************
+    ** Classifiers opt out of streaming even when the model supports it.
+    *******************************************************************************/
+   @Test
+   void nonStreamingClassifier() throws Exception
+   {
+      try(MockOpenAiServer server = new MockOpenAiServer())
+      {
+         server.enqueue(200, "{\"model\":\"test\",\"choices\":[{\"message\":{\"content\":\"SIMPLE\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":18,\"completion_tokens\":1}}");
+         var provider = new OpenAiCompatibleModelProvider(settings(server, "OPENAI"));
+         ModelResponse response = provider.stream(request().withStreaming(false).withMaxTokens(4), new StringBuilder()::append).await(Duration.ofSeconds(3));
+         assertThat(response.getText()).isEqualTo("SIMPLE");
+         JsonNode body = OpenAiHttp.JSON.readTree(server.requests.getFirst().body());
+         assertThat(body.path("stream").asBoolean()).isFalse();
+         assertThat(body.path("max_completion_tokens").asInt()).isEqualTo(4);
+         assertThat(body.has("stream_options")).isFalse();
+      }
+   }
+
+
+
    static final String TEXT = "data: {\"model\":\"test\",\"choices\":[{\"delta\":{\"content\":\"OK\"},\"finish_reason\":\"stop\"}]}\r\n\r\ndata: [DONE]\r\n\r\n";
 
 

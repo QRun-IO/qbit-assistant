@@ -17,6 +17,7 @@
 package com.kingsrook.qbits.assistant.home;
 
 
+import com.kingsrook.qbits.assistant.model.AssistantTurn;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
 import com.kingsrook.qbits.assistant.AssistantSecurity;
 import com.kingsrook.qbits.assistant.engine.BudgetService;
@@ -73,6 +74,7 @@ public class AssistantHomeData
    private final List<BudgetService.Snapshot> budgets = new ArrayList<>();
    private final List<Totals> byProvider = new ArrayList<>();
 
+   private Long fallbackCount = 0L;
    private Boolean hipaaMode;
    private Integer hipaaRetentionDays;
    private LocalDate today;
@@ -239,6 +241,16 @@ public class AssistantHomeData
       // conversations started per day      //
       ////////////////////////////////////////
       Instant dayOneAt = firstDay.atStartOfDay().toInstant(ZoneOffset.UTC);
+      List<QRecord> routedTurns = runtime.getStore().queryRecords(AssistantTurn.TABLE_NAME, new QQueryFilter()
+         .withCriteria("startedAt", QCriteriaOperator.GREATER_THAN_OR_EQUALS, dayOneAt), max);
+      data.truncated |= routedTurns.size() >= max;
+      for(QRecord row : routedTurns)
+      {
+         if(row.getValueInteger("fallbackCount") != null)
+         {
+            data.fallbackCount += row.getValueInteger("fallbackCount");
+         }
+      }
       List<QRecord> conversations = runtime.getStore().queryRecords(AssistantConversation.TABLE_NAME, new QQueryFilter()
          .withCriteria("createDate", QCriteriaOperator.GREATER_THAN_OR_EQUALS, dayOneAt), max);
       data.truncated |= conversations.size() >= max;
@@ -555,5 +567,15 @@ public class AssistantHomeData
    public List<Totals> getByProvider()
    {
       return (byProvider);
+   }
+
+
+
+   /*******************************************************************************
+    ** Provider switches in the displayed period, including recovered failures.
+    *******************************************************************************/
+   public Long getFallbackCount()
+   {
+      return (fallbackCount);
    }
 }

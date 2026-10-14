@@ -461,3 +461,19 @@ INSERT INTO assistant_budget_usage
 SELECT id, user_id, provider_id, model, create_date, cost_micros, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens
 FROM assistant_usage
 ON CONFLICT (usage_id) DO NOTHING;
+
+
+-- P-e: profile routing, bounded fallback chains, provider health and turn outcome.
+ALTER TABLE assistant_profile ADD COLUMN routing_mode VARCHAR(16) DEFAULT 'OFF'
+   CHECK (routing_mode IN ('OFF', 'HEURISTIC', 'CLASSIFIER'));
+ALTER TABLE assistant_profile ADD COLUMN simple_model_id INTEGER REFERENCES assistant_model(id);
+ALTER TABLE assistant_profile ADD COLUMN complex_model_id INTEGER REFERENCES assistant_model(id);
+ALTER TABLE assistant_profile ADD COLUMN classifier_model_id INTEGER REFERENCES assistant_model(id);
+ALTER TABLE assistant_model ADD COLUMN fallback_model_id INTEGER REFERENCES assistant_model(id);
+ALTER TABLE assistant_provider ADD COLUMN health_state VARCHAR(8) CHECK (health_state IN ('UP', 'DOWN'));
+ALTER TABLE assistant_provider ADD COLUMN health_checked_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE assistant_provider ADD COLUMN down_until TIMESTAMP WITH TIME ZONE;
+ALTER TABLE assistant_turn ADD COLUMN route_decision VARCHAR(16);
+ALTER TABLE assistant_turn ADD COLUMN route_source VARCHAR(16);
+ALTER TABLE assistant_turn ADD COLUMN fallback_count INTEGER DEFAULT 0;
+ALTER TABLE assistant_turn ADD COLUMN provider_id INTEGER REFERENCES assistant_provider(id);

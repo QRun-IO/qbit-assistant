@@ -130,11 +130,10 @@ public class TurnEngine implements Runnable
    private long    costMicros     = 0;
 
    private TurnClassification classification;
+   private FallbackChain fallback;
    private ProviderService.Active active;
    private String                 model;
    private ProviderService.Active budgetOrigin;
-   private Long                   capMicros;
-   private long                   monthCostAtStart = 0;
 
    private volatile boolean finished = false;
 
@@ -193,19 +192,26 @@ public class TurnEngine implements Runnable
          persistPendingEvents();
 
          model = policy.mainModel();
-         TurnDataRouting.beforeResolve(runtime, classification, turn, policy.mainModel());
-         active = runtime.getProviderService().resolve(policy.mainModel());
+         ModelRouter router = new ModelRouter(runtime);
+         ModelRouter.Route route;
+         try
+         {
+            route = router.route(session, conversation, turn, userText, pageContext, policy, classification, running, deadline, text -> notice("warning", text));
+         }
+         finally
+         {
+            usage.add(router.accounting().usage());
+            costMicros += router.accounting().costMicros();
+            modelCallCount += router.accounting().calls();
+         }
+         active = route.active();
+         fallback = new FallbackChain(runtime, classification, turn, text -> notice("warning", text));
          if(active == null)
          {
             throw (new ModelProviderException(ModelProviderException.Kind.AUTHENTICATION, null, "No usable assistant provider is configured."));
          }
          model = active.model();
          budgetOrigin = active;
-         capMicros = ProviderService.capMicros(active.row());
-         if(capMicros != null)
-         {
-            monthCostAtStart = runtime.getProviderService().monthToDateCostMicros(active.providerId());
-         }
          AssistantModelProvider provider = active.provider();
          ModelCapabilities      caps     = provider.getCapabilities(model);
 
@@ -221,7 +227,7 @@ public class TurnEngine implements Runnable
          String                  appName = runtime.appNameFor(pageContext);
          ProfileService.Persona  persona = runtime.getProfileService().persona(session, appName);
          String                  profileText = ProfileService.instructions(persona, runtime.getProfileService().relevantSkills(persona.profileId(), userText, appName));
-         ModelRequest request = runtime.getContextBuilder().build(session, model, policy.mainEffort(), history, userText, pageContext, policy.tools(), profileText);
+         ModelRequest request = runtime.getContextBuilder().build(session, model, route.effort(), history, userText, pageContext, policy.tools(), profileText);
          Integer maxPerRequest = active.row() == null ? null : active.row().getMaxOutputTokensPerRequest();
          if(maxPerRequest != null && (request.getMaxTokens() == null || request.getMaxTokens() > maxPerRequest))
          {
@@ -246,15 +252,7 @@ public class TurnEngine implements Runnable
                break;
             }
 
-            if(capMicros != null && monthCostAtStart + costMicros >= capMicros)
-            {
-               status = "ERROR";
-               errorCode = "BUDGET";
-               errorText = "The assistant has reached this provider's monthly cost cap. Ask an administrator.";
-               break;
-            }
-
-            ModelResponse response = callModelWithStrictFallback(provider, request);
+            ModelResponse response = fallback.call(request, () -> active, selected -> callModelWithStrictFallback(selected, request));
             stopReason = response.getStopReason();
 
             if(ModelResponse.STOP_CANCELLED.equals(stopReason))
@@ -351,11 +349,6 @@ public class TurnEngine implements Runnable
       }
       catch(ModelProviderException e)
       {
-         if(e.getPartialUsage() != null)
-         {
-            usage.add(e.getPartialUsage());
-            costMicros += pricing().costMicros(e.getPartialUsage());
-         }
          status = "ERROR";
          errorCode = e.getKind() == ModelProviderException.Kind.TIMEOUT ? "TIMEOUT" : "PROVIDER";
          errorText = e.getKind() == ModelProviderException.Kind.TIMEOUT
@@ -369,7 +362,7 @@ public class TurnEngine implements Runnable
             errorText += " The provider said: " + UsageRecorder.errorText(e);
          }
          LOG.warn("Assistant model call failed", logPair("turnId", turn.getId()), logPair("kind", e.getKind()), logPair("httpStatus", e.getHttpStatus()),
-            logPair("errorType", hipaaSafe(e).getProviderErrorType()), logPair("errorMessage", hipaaSafe(e).getProviderMessage()), logPair("requestId", hipaaSafe(e).getRequestId()));
+            logPair("errorType", hipaaSafe(e.getProviderErrorType())), logPair("errorMessage", hipaaSafe(e.getProviderMessage())), logPair("requestId", hipaaSafe(e.getRequestId())));
       }
       catch(InterruptedException e)
       {
@@ -514,23 +507,23 @@ public class TurnEngine implements Runnable
     ** tool schemas, retry once (and for the rest of the turn) with no strict
     ** tools. The kernel validates every tool input either way.
     *******************************************************************************/
-   private ModelResponse callModelWithStrictFallback(AssistantModelProvider provider, ModelRequest request) throws QException, ModelProviderException, InterruptedException
+   private ModelResponse callModelWithStrictFallback(ProviderService.Active candidate, ModelRequest request) throws QException, ModelProviderException, InterruptedException
    {
       try
       {
-         return (callModel(provider, request));
+         return (callModel(candidate, request));
       }
       catch(ModelProviderException e)
       {
          boolean anyStrict = request.getTools().stream().anyMatch(tool -> Boolean.TRUE.equals(tool.getStrict()));
-         if(!e.isStrictSchemaRejected() || !anyStrict)
+         if(!e.isStrictSchemaRejected() || !anyStrict || fallback.hasOutput())
          {
             throw (e);
          }
          LOG.warn("Assistant provider refused the strict tool schemas; retrying without strict tools", logPair("turnId", turn.getId()), logPair("model", model),
-            logPair("errorMessage", hipaaSafe(e).getProviderMessage()), logPair("requestId", hipaaSafe(e).getRequestId()));
+            logPair("errorMessage", hipaaSafe(e.getProviderMessage())), logPair("requestId", hipaaSafe(e.getRequestId())));
          request.getTools().forEach(tool -> tool.setStrict(false));
-         return (callModel(provider, request));
+         return (callModel(candidate, request));
       }
    }
 
@@ -539,11 +532,19 @@ public class TurnEngine implements Runnable
    /*******************************************************************************
     ** One streamed model call.
     *******************************************************************************/
-   private ModelResponse callModel(AssistantModelProvider provider, ModelRequest request) throws QException, ModelProviderException, InterruptedException
+   private ModelResponse callModel(ProviderService.Active candidate, ModelRequest request) throws QException, ModelProviderException, InterruptedException
    {
+      if(checkStop() != null)
+      {
+         return (new ModelResponse().withStopReason(ModelResponse.STOP_CANCELLED));
+      }
+      PolicyService.BudgetStatus configuredBudget = runtime.getPolicyService().checkConfiguredBudget(policy, userId, usage.billableTokens(), costMicros);
+      if(configuredBudget.hardExceeded())
+      {
+         throw (new BudgetService.Blocked(configuredBudget.message()));
+      }
       classification.inherit(store.getConversation(userId, conversation.getId()));
-      BudgetService.Decision budgetDecision = runtime.getBudgetService().evaluate(userId, budgetOrigin,
-         classification.getClassification() == com.kingsrook.qbits.assistant.classification.DataClassification.PHI, false);
+      BudgetService.Decision budgetDecision = fallback.budget(budgetOrigin, candidate);
       budgetDecision.notices().forEach(text -> notice("warning", text));
       if(budgetDecision.stopped())
       {
@@ -555,7 +556,7 @@ public class TurnEngine implements Runnable
          active = selected;
          model = active.model();
          request.setModel(model);
-         request.getMessages().forEach(message -> message.withProviderState(null));
+         FallbackChain.neutralHistory(request);
          request.getTools().forEach(tool -> tool.setStrict(false));
          ModelCapabilities capabilities = active.provider().getCapabilities(model);
          if(capabilities != null && Boolean.FALSE.equals(capabilities.getParallelToolCalls()))
@@ -567,9 +568,8 @@ public class TurnEngine implements Runnable
          {
             request.setMaxTokens(maxTokens);
          }
-         capMicros = null;
       }
-      provider = active.provider();
+      AssistantModelProvider provider = active.provider();
       Long selectedCap = ProviderService.capMicros(active.row());
       if(selectedCap != null && runtime.getProviderService().monthToDateCostMicros(active.providerId()) >= selectedCap)
       {
@@ -599,8 +599,9 @@ public class TurnEngine implements Runnable
       try
       {
          TurnDataRouting.beforeModelCall(runtime, classification, turn, active);
+         fallback.beforeCall(active);
          modelCallCount++;
-         StreamHandle handle = provider.stream(request.copy(), listener);
+         StreamHandle handle = provider.stream(request.copy(), fallback.listener(listener));
          running.setCurrentHandle(handle);
          try
          {
@@ -616,6 +617,11 @@ public class TurnEngine implements Runnable
       catch(ModelProviderException e)
       {
          recordUsage(null, e, started);
+         if(e.getPartialUsage() != null)
+         {
+            usage.add(e.getPartialUsage());
+            costMicros += pricing().costMicros(e.getPartialUsage());
+         }
          throw (e);
       }
       finally
@@ -982,6 +988,10 @@ public class TurnEngine implements Runnable
                .withValue("errorCode", errorCode)
                .withValue("cancelReason", running.getCancelReason())
                .withValue("model", model)
+               .withValue("providerId", active == null ? null : active.providerId())
+               .withValue("routeDecision", turn.getRouteDecision())
+               .withValue("routeSource", turn.getRouteSource())
+               .withValue("fallbackCount", turn.getFallbackCount())
                .withValue("endedAt", now)
                .withValue("toolCallCount", toolCallCount)
                .withValue("modelCallCount", modelCallCount)
