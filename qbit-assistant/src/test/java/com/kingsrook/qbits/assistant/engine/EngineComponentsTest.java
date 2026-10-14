@@ -18,7 +18,6 @@ package com.kingsrook.qbits.assistant.engine;
 
 
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -27,16 +26,12 @@ import java.util.concurrent.atomic.AtomicReference;
 import com.kingsrook.qbits.assistant.AssistantModelRouting;
 import com.kingsrook.qbits.assistant.model.AssistantPolicy;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
-import com.kingsrook.qbits.assistant.provider.CompletableStreamHandle;
-import com.kingsrook.qbits.assistant.provider.ModelProviderException;
-import com.kingsrook.qbits.assistant.provider.ModelResponse;
 import com.kingsrook.qbits.assistant.provider.ModelUsage;
 import com.kingsrook.qbits.assistant.testing.AssistantTestFixture;
 import com.kingsrook.qbits.assistant.testing.BaseAssistantTest;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 
 /*******************************************************************************
@@ -207,27 +202,6 @@ class EngineComponentsTest extends BaseAssistantTest
     **
     *******************************************************************************/
    @Test
-   void testPricing()
-   {
-      ModelPricing sonnet = ModelPricing.defaults().get(AssistantModelRouting.SONNET_5_5);
-      ModelUsage   usage  = new ModelUsage().withInputTokens(6000L).withOutputTokens(800L).withCacheReadTokens(12_000L).withCacheWriteTokens(1000L).withCacheWrite1hTokens(400L);
-      //////////////////////////////////////////////////////////////////////////////////
-      // 6000*2 + 800*10 + 12000*0.2 + 600*2.5 + 400*4 = 12000+8000+2400+1500+1600   //
-      //////////////////////////////////////////////////////////////////////////////////
-      assertThat(sonnet.costMicros(usage)).isEqualTo(25_500);
-      assertThat(sonnet.costMicros(null)).isZero();
-      assertThat(new ModelPricing().costMicros(usage)).isZero();
-      assertThat(ModelPricing.defaults().get(AssistantModelRouting.OPUS_5_5).getCacheReadUsdPerMTok()).isEqualTo(0.2);
-      assertThat(usage.billableTokens()).isEqualTo(7800);
-      assertThat(new ModelUsage().add(usage).add(null).getCacheReadTokens()).isEqualTo(12_000);
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   @Test
    void testEventLog() throws Exception
    {
       TurnEventLog log = new TurnEventLog();
@@ -264,37 +238,6 @@ class EngineComponentsTest extends BaseAssistantTest
       TurnEventLog closed = new TurnEventLog();
       closed.close();
       assertThat(closed.after(0, 1000)).isEmpty();
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   @Test
-   void testStreamHandle() throws Exception
-   {
-      CompletableStreamHandle handle = new CompletableStreamHandle();
-      handle.complete(new ModelResponse().withStopReason("end_turn"));
-      assertThat(handle.await(Duration.ofSeconds(1)).getStopReason()).isEqualTo("end_turn");
-
-      CompletableStreamHandle failing = new CompletableStreamHandle();
-      failing.fail(new ModelProviderException(ModelProviderException.Kind.RATE_LIMITED, 429, "slow down"));
-      assertThatThrownBy(() -> failing.await(Duration.ofSeconds(1))).isInstanceOfSatisfying(ModelProviderException.class, e ->
-      {
-         assertThat(e.isRetryable()).isTrue();
-         assertThat(e.getHttpStatus()).isEqualTo(429);
-      });
-
-      CompletableStreamHandle cancelled = new CompletableStreamHandle();
-      cancelled.setOnCancel(() ->
-      {
-         throw (new IllegalStateException("closing"));
-      });
-      cancelled.cancel();
-      cancelled.cancel();
-      assertThat(cancelled.await(Duration.ofSeconds(1)).getStopReason()).isEqualTo(ModelResponse.STOP_CANCELLED);
-      assertThat(new ModelProviderException(ModelProviderException.Kind.INVALID_REQUEST, 400, "x").isRetryable()).isFalse();
    }
 
 

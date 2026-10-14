@@ -19,7 +19,6 @@ package com.kingsrook.qbits.assistant.provider.vertex;
 
 import java.util.ArrayList;
 import java.util.List;
-import com.kingsrook.qbits.assistant.model.AssistantProvider;
 import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
 import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
 import com.kingsrook.qbits.assistant.provider.DiscoveredModel;
@@ -104,18 +103,18 @@ public class VertexProviderType implements AssistantProviderType
     ** Validate cloud settings without loading credentials.
     *******************************************************************************/
    @Override
-   public List<String> validate(AssistantProvider row)
+   public List<String> validate(ProviderSettings settings)
    {
       List<String> errors = new ArrayList<>();
-      if(row.getRegion() == null || row.getRegion().isBlank())
+      if(settings.getRegion() == null || settings.getRegion().isBlank())
       {
          errors.add("Region is required for VERTEX.");
       }
-      if(row.getApiKeyEnvName() != null && !row.getApiKeyEnvName().isBlank())
+      if(settings.getApiKeyEnvName() != null && !settings.getApiKeyEnvName().isBlank())
       {
          errors.add("Leave API key variable empty: Google Vertex AI (Claude, Gemini) uses Google Application Default Credentials (GOOGLE_APPLICATION_CREDENTIALS or workload identity).");
       }
-      if(row.getCloudProject() == null || row.getCloudProject().isBlank())
+      if(settings.getCloudProject() == null || settings.getCloudProject().isBlank())
       {
          errors.add("GCP project id (cloudProject) is required for VERTEX.");
       }

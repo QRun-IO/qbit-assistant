@@ -18,7 +18,6 @@ package com.kingsrook.qbits.assistant.provider;
 
 
 import java.util.List;
-import com.kingsrook.qbits.assistant.model.AssistantProvider;
 
 
 /*******************************************************************************
@@ -140,8 +139,10 @@ public interface AssistantProviderType
 
    /*******************************************************************************
     ** Additional settings errors, without resolving credentials or doing I/O.
+    ** Settings contain configured values and apiKeyEnvName; apiKey, the bearer
+    ** token supplier and SSLContext are not resolved for validation.
     *******************************************************************************/
-   default List<String> validate(AssistantProvider row)
+   default List<String> validate(ProviderSettings settings)
    {
       return (List.of());
    }
