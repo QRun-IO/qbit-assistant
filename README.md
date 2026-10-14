@@ -501,7 +501,7 @@ Apache 2.0.
 
 When the optional [qbit-email](https://github.com/QRun-IO/qbit-email) is on the classpath **and** produced in the instance, a finished scheduled-task run can be emailed to its owner. Without it nothing changes: `AssistantEmail.sendScheduledResult` returns `NOT_AVAILABLE`. The dependency is `optional`; every reference to it is in `AssistantEmailSender`.
 
-This integration uses qbit-email **0.1.0-RC.1**. Scheduled tasks (P-g) are available, but the runner does not yet wire email delivery. Hosts can call `AssistantEmail.sendScheduledResult(qInstance, config, new ScheduledResultNotice(...))` after a run, supplying its owner, classification, absolute run link and explicit opt-in as `emailResult`. Persisting a task-level email opt-in and wiring the runner remain a separate integration step.
+This integration uses qbit-email **0.1.0-RC.2** through its published `com.kingsrook.qbits.email.api` package. Scheduled tasks (P-g) are available, but the runner does not yet wire email delivery. Hosts can call `AssistantEmail.sendScheduledResult(qInstance, config, new ScheduledResultNotice(...))` after a run, supplying its owner, classification, absolute run link and explicit opt-in as `emailResult`. Persisting a task-level email opt-in and wiring the runner remain a separate integration step.
 
 Gates, in order (each returns a status and queues nothing):
 1. the task opted in (`NOT_REQUESTED`);

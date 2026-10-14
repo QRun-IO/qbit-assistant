@@ -20,6 +20,7 @@
 
 ### Changed
 
+- Switch scheduled-result email delivery to qbit-email 0.1.0-RC.2's published `com.kingsrook.qbits.email.api` package, preserving templates, categories, idempotency keys, linked records and status mapping.
 - Add optional qbit-email 0.1.0-RC.1 delivery of a scheduled task's result (`AssistantEmail.sendScheduledResult`): template `assistant_scheduled_result`, link-only secure message for results above PUBLIC using core's `DataClassification`, owner-recipient hook, opt-in and `emailExternalApproved` gates. Scheduled-task wiring remains a separate integration step.
 
 ## Unreleased - Provider API extraction (#30)

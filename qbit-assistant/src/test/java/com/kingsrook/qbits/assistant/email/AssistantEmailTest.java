@@ -26,14 +26,15 @@ import java.util.List;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.email.EmailQBitConfig;
 import com.kingsrook.qbits.email.EmailQBitProducer;
-import com.kingsrook.qbits.email.metadata.EmailTables;
-import com.kingsrook.qbits.email.permissions.EmailPermissions;
-import com.kingsrook.qbits.email.support.SystemWrites;
+import com.kingsrook.qbits.email.api.EmailApi;
+import com.kingsrook.qbits.email.api.EmailApiCategory;
+import com.kingsrook.qbits.email.api.EmailApiMessage;
 import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
+import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
-import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
@@ -101,8 +102,8 @@ class AssistantEmailTest
       }
       if(withEmail)
       {
-         QContext.init(qInstance, new QSession().withPermissions(EmailPermissions.ALL));
-         new InsertAction().execute(new InsertInput(EmailTables.PROVIDER).withRecords(List.of(new QRecord().withValue("name", "relay").withValue("label", "Relay")
+         QContext.init(qInstance, new QSession().withPermissions(List.of("email.view", "email.send", "email.manage", "email.admin", "email.hasAccess")));
+         new InsertAction().execute(new InsertInput("email_provider").withRecords(List.of(new QRecord().withValue("name", "relay").withValue("label", "Relay")
             .withValue("kind", "SMTP").withValue("host", "127.0.0.1").withValue("port", 25).withValue("security", "NONE")
             .withValue("fromAddress", "sender@example.com").withValue("enabled", true).withValue("isDefault", true))));
       }
@@ -125,9 +126,20 @@ class AssistantEmailTest
    /*******************************************************************************
     **
     *******************************************************************************/
-   private List<QRecord> messages() throws Exception
+   private List<EmailApiMessage> messages() throws Exception
    {
-      return (SystemWrites.query(EmailTables.MESSAGE, new QQueryFilter()));
+      return (EmailApi.findMessagesByIdempotencyKeyPrefix("assistant:scheduled:", 100));
+   }
+
+
+
+   /*******************************************************************************
+    ** Inspect the test outbox through core as the authorized email administrator.
+    ** The public email API deliberately excludes bodies and recipient addresses.
+    *******************************************************************************/
+   private QRecord storedMessage() throws Exception
+   {
+      return (new QueryAction().execute(new QueryInput("email_message")).getRecords().getFirst());
    }
 
 
@@ -142,18 +154,20 @@ class AssistantEmailTest
       assertThat(AssistantEmail.isAvailable(instance)).isTrue();
       assertThat(AssistantEmail.sendScheduledResult(instance, config, notice(7, "Three items need attention.", null, true))).isEqualTo(ScheduledEmailStatus.QUEUED);
 
-      List<QRecord> messages = messages();
+      List<EmailApiMessage> messages = messages();
       assertThat(messages).hasSize(1);
-      QRecord message = messages.get(0);
-      assertThat(message.getValueString("category")).isEqualTo("NOTIFICATION");
+      EmailApiMessage metadata = messages.getFirst();
+      assertThat(metadata.category()).isEqualTo(EmailApiCategory.NOTIFICATION);
+      assertThat(metadata.idempotencyKey()).isEqualTo("assistant:scheduled:7");
+      assertThat(metadata.linkedTableName()).isEqualTo(RUN_TABLE);
+      assertThat(metadata.linkedRecordId()).isEqualTo("7");
+      assertThat(metadata.templateName()).isEqualTo("assistant_scheduled_result");
+      QRecord message = storedMessage();
       assertThat(message.getValueString("toAddresses")).isEqualTo("owner@example.com");
-      assertThat(message.getValueString("idempotencyKey")).isEqualTo("assistant:scheduled:7");
-      assertThat(message.getValueString("linkedTableName")).isEqualTo(RUN_TABLE);
-      assertThat(message.getValueString("linkedRecordId")).isEqualTo("7");
       assertThat(message.getValueString("senderQbit")).isEqualTo("assistant");
       assertThat(message.getValueString("subject")).contains("Weekly review");
       assertThat(message.getValueString("htmlBody")).contains("Three items need attention.").contains("https://app.example.com/app/assistant_scheduled_run/7");
-      QRecord template = SystemWrites.query(EmailTables.TEMPLATE, new QQueryFilter()).stream().filter(t -> "assistant_scheduled_result".equals(t.getValueString("name"))).findFirst().orElseThrow();
+      QRecord template = new QueryAction().execute(new QueryInput("email_template")).getRecords().stream().filter(t -> "assistant_scheduled_result".equals(t.getValueString("name"))).findFirst().orElseThrow();
       assertThat(template.getValueString("category")).isEqualTo("NOTIFICATION");
       assertThat(template.getValueString("ownerQbit")).isEqualTo("assistant");
       assertThat(message.getValueInteger("templateId")).isEqualTo(template.getValueInteger("id"));
@@ -173,13 +187,15 @@ class AssistantEmailTest
    {
       assertThat(AssistantEmail.sendScheduledResult(instance, config, notice(8, "Patient Jane Doe has diabetes", DataClassification.PHI, true))).isEqualTo(ScheduledEmailStatus.QUEUED);
 
-      QRecord message = messages().get(0);
-      assertThat(message.getValueString("category")).isEqualTo("SECURITY");
+      EmailApiMessage metadata = messages().getFirst();
+      assertThat(metadata.category()).isEqualTo(EmailApiCategory.SECURITY);
+      assertThat(metadata.idempotencyKey()).isEqualTo("assistant:scheduled:8");
+      assertThat(metadata.linkedRecordId()).isEqualTo("8");
+      assertThat(metadata.templateName()).isEqualTo("email_secure_message");
+      QRecord message = storedMessage();
       assertThat(message.getValueString("htmlBody")).contains("https://app.example.com/app/assistant_scheduled_run/8").doesNotContain("Jane Doe").doesNotContain("Weekly review");
       assertThat(message.getValueString("textBody")).doesNotContain("Jane Doe");
       assertThat(message.getValueString("subject")).doesNotContain("Weekly review");
-      assertThat(message.getValueString("idempotencyKey")).isEqualTo("assistant:scheduled:8");
-      assertThat(message.getValueString("linkedRecordId")).isEqualTo("8");
    }
 
 
@@ -201,7 +217,7 @@ class AssistantEmailTest
 
       config.withEmailRecipientResolver(id -> "user-17".equals(id) ? " user17@example.com " : null);
       assertThat(AssistantEmail.sendScheduledResult(instance, config, noAddress)).isEqualTo(ScheduledEmailStatus.QUEUED);
-      assertThat(messages().get(0).getValueString("toAddresses")).isEqualTo("user17@example.com");
+      assertThat(storedMessage().getValueString("toAddresses")).isEqualTo("user17@example.com");
    }
 
 
@@ -230,7 +246,7 @@ class AssistantEmailTest
       assertThat(AssistantEmailSender.summary("x".repeat(1000))).hasSize(280).endsWith("...");
 
       AssistantEmail.sendScheduledResult(instance, config, notice(5, "y".repeat(2000), null, true));
-      assertThat(messages().get(0).getValueString("htmlBody")).doesNotContain("y".repeat(281));
+      assertThat(storedMessage().getValueString("htmlBody")).doesNotContain("y".repeat(281));
    }
 
 
