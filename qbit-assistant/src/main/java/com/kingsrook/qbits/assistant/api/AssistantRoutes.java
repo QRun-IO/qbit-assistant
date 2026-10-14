@@ -17,12 +17,12 @@
 package com.kingsrook.qbits.assistant.api;
 
 
+import com.kingsrook.qbits.assistant.api.specs.AssistantSpecs;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
-import com.kingsrook.qbits.assistant.api.specs.AssistantSpecs;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
-import com.kingsrook.qqq.middleware.javalin.specs.extensions.MiddlewareSpecExtensionsMetaData;
 import com.kingsrook.qqq.middleware.javalin.QJavalinMetaData;
+import com.kingsrook.qqq.middleware.javalin.specs.extensions.MiddlewareSpecExtensionsMetaData;
 
 
 /*******************************************************************************
