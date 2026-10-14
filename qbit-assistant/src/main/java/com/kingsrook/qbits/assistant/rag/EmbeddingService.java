@@ -35,6 +35,7 @@ import com.kingsrook.qbits.assistant.provider.EmbeddingRequest;
 import com.kingsrook.qbits.assistant.provider.EmbeddingResponse;
 import com.kingsrook.qbits.assistant.provider.ModelProviderException;
 import com.kingsrook.qbits.assistant.provider.ModelResponse;
+import com.kingsrook.qbits.assistant.scheduled.ScheduledTurn;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 
@@ -106,6 +107,7 @@ public class EmbeddingService
    private List<float[]> batch(Integer modelId, List<String> texts, DataClassification classification, String tables, Integer conversationId, Integer turnId) throws QException
    {
       String userId = AssistantSecurity.userId(QContext.getQSession());
+      ScheduledTurn.checkCost(runtime, conversationId, turnId);
       ProviderService.Active active = resolve(modelId, classification, tables, conversationId, turnId);
       PolicyService.EffectivePolicy policy = runtime.getPolicyService().current(true);
       BudgetService.Decision budget = runtime.getBudgetService().evaluate(userId, active, classification == DataClassification.PHI, false);

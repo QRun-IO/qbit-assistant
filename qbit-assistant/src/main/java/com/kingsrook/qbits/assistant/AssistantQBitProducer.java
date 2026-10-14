@@ -21,17 +21,21 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import com.kingsrook.qbits.assistant.api.AssistantRoutes;
+import com.kingsrook.qbits.assistant.developer.AssistantDeveloperPanels;
 import com.kingsrook.qbits.assistant.home.AssistantAccessWidget;
 import com.kingsrook.qbits.assistant.home.AssistantHome;
+import com.kingsrook.qbits.assistant.metadata.AssistantInstanceMetaData;
 import com.kingsrook.qbits.assistant.metadata.AssistantMetaDataBuilder;
 import com.kingsrook.qbits.assistant.metadata.AssistantRecordScreens;
+import com.kingsrook.qbits.assistant.model.AssistantBudget;
 import com.kingsrook.qbits.assistant.processes.DiscoverModelsProcess;
 import com.kingsrook.qbits.assistant.processes.KnowledgeIndexProcess;
+import com.kingsrook.qbits.assistant.processes.ScheduledTaskProcess;
 import com.kingsrook.qbits.assistant.processes.TestConnectionProcess;
 import com.kingsrook.qbits.assistant.processes.TestModelConnectionProcess;
 import com.kingsrook.qqq.backend.core.alerts.AlertSeverity;
 import com.kingsrook.qqq.backend.core.alerts.QAlertTypeMetaData;
-import com.kingsrook.qbits.assistant.model.AssistantBudget;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducerMultiOutput;
@@ -174,7 +178,7 @@ public class AssistantQBitProducer implements QBitMetaDataProducer<AssistantQBit
       QProcessMetaData testConnection = TestConnectionProcess.process();
       testConnection.setSourceQBitName(qBitMetaData.getName());
       qInstance.addProcess(testConnection);
-      for(QProcessMetaData process : java.util.List.of(DiscoverModelsProcess.process(), TestModelConnectionProcess.process()))
+      for(QProcessMetaData process : List.of(DiscoverModelsProcess.process(), TestModelConnectionProcess.process()))
       {
          process.setSourceQBitName(qBitMetaData.getName());
          qInstance.addProcess(process);
@@ -186,6 +190,11 @@ public class AssistantQBitProducer implements QBitMetaDataProducer<AssistantQBit
          qInstance.addProcess(process);
       }
 
+      for(QProcessMetaData process : ScheduledTaskProcess.processes(qBitConfig))
+      {
+         process.setSourceQBitName(qBitMetaData.getName());
+         qInstance.addProcess(process);
+      }
       qInstance.addWidget(AssistantHome.widget());
       qInstance.addWidget(AssistantAccessWidget.widget());
 
@@ -226,19 +235,19 @@ public class AssistantQBitProducer implements QBitMetaDataProducer<AssistantQBit
       boolean routes = false;
       if(Boolean.TRUE.equals(qBitConfig.getRegisterRoutes()) && isJavalinAvailable())
       {
-         com.kingsrook.qbits.assistant.api.AssistantRoutes.register(qInstance);
+         AssistantRoutes.register(qInstance);
          routes = true;
       }
 
       if(qBitConfig.isEffectivelyEnabled())
       {
-         com.kingsrook.qbits.assistant.metadata.AssistantInstanceMetaData.register(qInstance);
+         AssistantInstanceMetaData.register(qInstance);
       }
 
       boolean developerPanel = false;
-      if(com.kingsrook.qbits.assistant.developer.AssistantDeveloperPanels.isContractAvailable())
+      if(AssistantDeveloperPanels.isContractAvailable())
       {
-         com.kingsrook.qbits.assistant.developer.AssistantDeveloperPanels.register(qInstance);
+         AssistantDeveloperPanels.register(qInstance);
          developerPanel = true;
       }
 

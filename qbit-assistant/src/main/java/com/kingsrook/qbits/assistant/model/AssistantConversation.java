@@ -38,6 +38,12 @@ public class AssistantConversation extends QRecordEntity
    @Deprecated(since = "0.1.0-RC.3")
    public static final String LEGACY_TABLE_NAME = "assistantConversation";
 
+   @QField(isEditable = false)
+   private Integer scheduledTaskId;
+
+   @QField(isEditable = false, maxLength = 64)
+   private String channel = "panel";
+
    @QField(isEditable = false, maxLength = 16)
    private String maxClassification;
 
@@ -535,4 +541,66 @@ public class AssistantConversation extends QRecordEntity
 
 
 
+
+
+
+   /*******************************************************************************
+    ** Getter for scheduledTaskId
+    *******************************************************************************/
+   public Integer getScheduledTaskId()
+   {
+      return (scheduledTaskId);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for scheduledTaskId
+    *******************************************************************************/
+   public void setScheduledTaskId(Integer scheduledTaskId)
+   {
+      this.scheduledTaskId = scheduledTaskId;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for scheduledTaskId
+    *******************************************************************************/
+   public AssistantConversation withScheduledTaskId(Integer scheduledTaskId)
+   {
+      this.scheduledTaskId = scheduledTaskId;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for channel
+    *******************************************************************************/
+   public String getChannel()
+   {
+      return (channel);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for channel
+    *******************************************************************************/
+   public void setChannel(String channel)
+   {
+      this.channel = channel;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for channel
+    *******************************************************************************/
+   public AssistantConversation withChannel(String channel)
+   {
+      this.channel = channel;
+      return (this);
+   }
 }

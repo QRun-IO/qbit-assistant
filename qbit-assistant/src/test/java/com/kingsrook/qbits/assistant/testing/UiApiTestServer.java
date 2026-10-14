@@ -19,6 +19,9 @@ package com.kingsrook.qbits.assistant.testing;
 
 import java.io.IOException;
 import java.net.ServerSocket;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.instances.AbstractQQQApplication;
@@ -34,6 +37,8 @@ import com.kingsrook.qqq.middleware.javalin.QApplicationJavalinServer;
  *******************************************************************************/
 public final class UiApiTestServer
 {
+   public static final List<Map<String, String>> SCHEDULED_REQUESTS = new CopyOnWriteArrayList<>();
+
    private static QApplicationJavalinServer current;
    private static QInstance                 currentInstance;
    private static int                       currentPort;
@@ -89,6 +94,7 @@ public final class UiApiTestServer
       if(current == null || currentInstance != qInstance)
       {
          stop();
+         SCHEDULED_REQUESTS.clear();
          try
          {
             currentPort = freePort();
@@ -96,7 +102,15 @@ public final class UiApiTestServer
                .withPort(currentPort)
                .withServeFrontendNext(false)
                .withServeFrontendMaterialDashboard(false)
-               .withServeLegacyUnversionedMiddlewareAPI(false);
+               .withServeLegacyUnversionedMiddlewareAPI(false)
+               .withJavalinConfigCustomizer(app -> app.routes.before(context ->
+               {
+                  String client = context.header("X-QQQ-Client");
+                  if(client != null && !context.path().endsWith("manageSession"))
+                  {
+                     SCHEDULED_REQUESTS.add(Map.of("client", client, "session", String.valueOf(context.cookie("sessionUUID")), "path", context.path()));
+                  }
+               }));
             current.start();
             currentInstance = qInstance;
          }

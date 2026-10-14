@@ -17,7 +17,10 @@
 package com.kingsrook.qbits.assistant;
 
 
+import java.util.ArrayList;
+import java.util.List;
 import com.kingsrook.qbits.assistant.metadata.AssistantAdminPermissionChecker;
+import com.kingsrook.qbits.assistant.metadata.AssistantInstanceMetaData;
 import com.kingsrook.qbits.assistant.metadata.AssistantMetaDataBuilder;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantPolicy;
@@ -26,8 +29,8 @@ import com.kingsrook.qbits.assistant.testing.AssistantTestFixture;
 import com.kingsrook.qbits.assistant.testing.BaseAssistantTest;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionCheckResult;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
-import com.kingsrook.qqq.backend.core.alerts.AlertsInstanceMetaData;
 import com.kingsrook.qqq.backend.core.alerts.AlertSeverity;
+import com.kingsrook.qqq.backend.core.alerts.AlertsInstanceMetaData;
 import com.kingsrook.qqq.backend.core.alerts.QAlertTypeMetaData;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -44,9 +47,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.security.QSecurityKeyType;
 import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.backend.core.model.session.QUser;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryBackendModule;
-import java.util.ArrayList;
-import java.util.List;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -88,7 +90,7 @@ class AssistantQBitProducerTest extends BaseAssistantTest
       // the nav: the home plus the main tables; processes are actions    //
       //////////////////////////////////////////////////////////////////////
       assertThat(qInstance.getApp(AssistantMetaDataBuilder.APP_NAME).getChildren()).extracting(c -> c.getName())
-         .containsExactly("assistant_rag_source", "assistant_budget", "assistant_provider", "assistant_profile", "assistant_skill", "assistant_data_access", "assistant_conversation", "assistant_model_price", "assistant_policy");
+         .containsExactly("assistant_scheduled_task", "assistant_rag_source", "assistant_budget", "assistant_provider", "assistant_profile", "assistant_skill", "assistant_data_access", "assistant_conversation", "assistant_model_price", "assistant_policy");
       assertThat(qInstance.getApp(AssistantMetaDataBuilder.APP_NAME).getWidgets()).containsExactly("assistantHome", "assistantAccess");
       assertThat(qInstance.getProcess(AssistantMetaDataBuilder.RETENTION_PROCESS_NAME).getTableName()).isEqualTo("assistant_conversation");
       assertThat(qInstance.getProcess(AssistantMetaDataBuilder.RETENTION_PROCESS_NAME)).isNotNull();
@@ -96,9 +98,9 @@ class AssistantQBitProducerTest extends BaseAssistantTest
       assertThat(qInstance.getPossibleValueSource(AssistantConversation.TABLE_NAME)).isNotNull();
       assertThat(qInstance.getQBits().values()).anyMatch(q -> "assistant".equals(q.getArtifactId()));
 
-      assertThat(com.kingsrook.qbits.assistant.metadata.AssistantInstanceMetaData.of(qInstance)).isNotNull();
-      assertThat(com.kingsrook.qbits.assistant.metadata.AssistantInstanceMetaData.of(qInstance).getVersion()).isEqualTo(1);
-      assertThat(com.kingsrook.qbits.assistant.metadata.AssistantInstanceMetaData.of(qInstance).getBasePath()).isEqualTo("/qqq/v1/assistant");
+      assertThat(AssistantInstanceMetaData.of(qInstance)).isNotNull();
+      assertThat(AssistantInstanceMetaData.of(qInstance).getVersion()).isEqualTo(1);
+      assertThat(AssistantInstanceMetaData.of(qInstance).getBasePath()).isEqualTo("/qqq/v1/assistant");
       assertThat(config.getRuntime()).isNotNull();
       assertThat(AssistantRuntime.of(qInstance)).isSameAs(config.getRuntime());
       assertThat(AssistantQBitProducer.getVersion()).isNotBlank();
@@ -192,7 +194,7 @@ class AssistantQBitProducerTest extends BaseAssistantTest
       assertThat(editor.getSecurityKeyValues(AssistantQBitConfig.DEFAULT_OWNER_KEY_TYPE)).containsExactly(AssistantTestFixture.EDITOR);
       assertThat(editor.getSecurityKeyValues("assistant_user_id_all_access")).isNullOrEmpty();
 
-      QSession admin = new QSession().withUser(new com.kingsrook.qqq.backend.core.model.session.QUser().withIdReference("boss"));
+      QSession admin = new QSession().withUser(new QUser().withIdReference("boss"));
       admin.withPermission(AssistantQBitConfig.ADMIN_PERMISSION);
       AssistantSecurity.applySessionKeys(admin, config);
       assertThat(admin.getSecurityKeyValues("assistant_user_id_all_access")).containsExactly(true);
@@ -277,7 +279,7 @@ class AssistantQBitProducerTest extends BaseAssistantTest
       AssistantQBitConfig hostConfig = new AssistantQBitConfig().withBackendName("memory").withOwnerSecurityKeyType("userKey").withRetentionSchedulerName("quartz").withRegisterRoutes(false);
       hostConfig.setEnabled(false);
       new AssistantQBitProducer().withQBitConfig(hostConfig).produce(instance);
-      assertThat(com.kingsrook.qbits.assistant.metadata.AssistantInstanceMetaData.of(instance)).as("not advertised when disabled").isNull();
+      assertThat(AssistantInstanceMetaData.of(instance)).as("not advertised when disabled").isNull();
       assertThat(instance.getSecurityKeyType("userKey").getAllAccessKeyName()).isEqualTo("userKeyAll");
       assertThat(instance.getProcess(AssistantMetaDataBuilder.RETENTION_PROCESS_NAME).getSchedule().getSchedulerName()).isEqualTo("quartz");
       hostConfig.getRuntime().close();
