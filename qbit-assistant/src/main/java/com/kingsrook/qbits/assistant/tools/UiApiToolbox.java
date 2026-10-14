@@ -372,6 +372,9 @@ public class UiApiToolbox
    /*******************************************************************************
     ** Offer history only when every audit table it queries is available to the
     ** assistant channel, including inherited permission rules.
+    ** RC.6 isDenied checks the all-operation wall, with no operation argument.
+    ** Core #1193 must keep write-only denials separate from this read check;
+    ** do not consult write-deny patterns here when offering this read tool.
     *******************************************************************************/
    private boolean historyAllowed()
    {

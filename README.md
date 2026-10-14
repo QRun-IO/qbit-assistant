@@ -660,10 +660,19 @@ channel-denied, including their effective permission rules. A host that intends
 to expose record history can opt in during instance configuration:
 
 ```java
-ClientChannelsMetaData.ofOrWithNew(qInstance)
-   .getDeniedPatterns().get("assistant").remove("audit*");
+new AssistantQBitConfig()
+   .withRecordHistory(true);
 ```
 
-This removes only the default audit pattern; other channel denials and the
-signed-in user's audit permissions still apply. Keep explicit denials for audit
-surfaces the host does not intend to expose. The default remains unchanged.
+This is an owner decision and a hard wall: record history defaults to disabled;
+**kof22 does not opt in**. On QQQ RC.6, the opt-in removes exactly `audit*`
+from the assistant's denied patterns (the former manual configuration step).
+RC.6 does not add a separate channel write denial for audits. On later RCs that
+include QRun-IO/qqq#1193, it calls `withAssistantAuditReads()`, which allows audit
+reads but denies audit writes. The user's own audit permissions still apply.
+Other patterns, including `worm_audit_*`, `assistant_*`, and security surfaces,
+remain untouched, as do explicit object and permission-rule denials.
+
+History visibility uses core's `isDenied` read/all-operation check. RC.6 has no
+operation argument; the later write-only deny patterns must remain separate
+from that check so they do not hide the read tool.

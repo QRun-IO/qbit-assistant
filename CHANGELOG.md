@@ -2,6 +2,8 @@
 
 ## Unreleased - X1/Y1
 
+- Add default-off `withRecordHistory(true)` host opt-in: remove only `audit*` on RC.6, or invoke core #1193 audit-read/write-deny support when available. Preserve user permissions and all other channel denials; kof22 does not opt in.
+
 - Register explicit assistant-channel denials on every assistant table, process,
   report and widget, preserving core security patterns; fail runtime startup
   when an assistant object is exposed.

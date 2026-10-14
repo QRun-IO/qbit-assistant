@@ -42,6 +42,7 @@ import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducerMultiOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.ClientChannelsMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitMetaDataProducer;
@@ -203,8 +204,37 @@ public class AssistantQBitProducer implements QBitMetaDataProducer<AssistantQBit
       qInstance.addApp(app);
 
       AssistantChannelWall.register(qInstance);
+      if(Boolean.TRUE.equals(qBitConfig.getRecordHistory()))
+      {
+         enableRecordHistory(ClientChannelsMetaData.ofOrWithNew(qInstance));
+      }
       postProduceActions(new MetaDataProducerMultiOutput(), qInstance);
       return (new MetaDataProducerMultiOutput());
+   }
+
+
+
+   /*******************************************************************************
+    ** STAND-IN(core=QRun-IO/qqq#1193, removeBy=RC.8): call withAssistantAuditReads() directly once the qbit builds on a QQQ RC that has it
+    *******************************************************************************/
+   private void enableRecordHistory(ClientChannelsMetaData channels)
+   {
+      try
+      {
+         channels.getClass().getMethod("withAssistantAuditReads").invoke(channels);
+      }
+      catch(NoSuchMethodException e)
+      {
+         List<String> denied = channels.getDeniedPatterns().get("assistant");
+         if(denied != null)
+         {
+            denied.removeIf("audit*"::equals);
+         }
+      }
+      catch(ReflectiveOperationException e)
+      {
+         throw (new IllegalStateException("Could not enable assistant audit reads.", e));
+      }
    }
 
 
