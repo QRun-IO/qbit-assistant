@@ -59,6 +59,8 @@ All configuration remains assistant.admin-only, with AI exposure NONE.
 
 ## P-d: data-driven budgets
 
+Requires QQQ 4.1.0-RC.5 for the core Alerts API and alert type metadata.
+
 Create `assistant_budget`, `assistant_budget_override`, `assistant_budget_event`
 and `assistant_budget_usage`
 using the P-d DDL in [schema-postgres.sql](docs/schema-postgres.sql) before deploying.

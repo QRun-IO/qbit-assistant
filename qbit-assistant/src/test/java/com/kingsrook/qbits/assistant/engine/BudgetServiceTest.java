@@ -35,6 +35,13 @@ import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
 import com.kingsrook.qbits.assistant.provider.ModelUsage;
 import com.kingsrook.qbits.assistant.testing.AssistantTestFixture;
 import com.kingsrook.qbits.assistant.testing.BaseAssistantTest;
+import com.kingsrook.qqq.backend.core.alerts.AlertSignal;
+import com.kingsrook.qqq.backend.core.alerts.AlertSeverity;
+import com.kingsrook.qqq.backend.core.alerts.AlertsInstanceMetaData;
+import com.kingsrook.qqq.backend.core.alerts.LoggingAlertSink;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReferenceWithProperties;
+import com.kingsrook.qqq.backend.core.model.metadata.code.InitializableViaCodeReference;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
@@ -172,12 +179,45 @@ class BudgetServiceTest extends BaseAssistantTest
 
 
    /*******************************************************************************
-    ** Fixed-clock evaluator and alert seam.
+    ** Fixed-clock evaluator with the production core sink configuration.
     *******************************************************************************/
-   private BudgetService service(List<String> alerts)
+   private BudgetService service(List<AlertSignal> alerts)
    {
-      return (new BudgetService(store(), config.getRuntime().getProviderService(), Clock.fixed(NOW, ZoneOffset.UTC),
-         (type, key, severity, title, summary) -> alerts.add(type + ":" + severity)));
+      AlertsInstanceMetaData.ofOrWithNew(qInstance).withSink(new QCodeReferenceWithProperties(TestAlertSink.class, Map.of("signals", (ArrayList<AlertSignal>) alerts)));
+      return (new BudgetService(store(), config.getRuntime().getProviderService(), Clock.fixed(NOW, ZoneOffset.UTC)));
+   }
+
+
+
+   /*******************************************************************************
+    ** Core loads a separate sink per instance; captured signals stay test-local.
+    *******************************************************************************/
+   public static class TestAlertSink extends LoggingAlertSink implements InitializableViaCodeReference
+   {
+      private List<AlertSignal> signals;
+
+
+
+      /*******************************************************************************
+       ** Receive this test's capture list from the configured code reference.
+       *******************************************************************************/
+      @Override
+      @SuppressWarnings("unchecked")
+      public void initialize(QCodeReference codeReference)
+      {
+         signals = (List<AlertSignal>) ((QCodeReferenceWithProperties) codeReference).getProperties().get("signals");
+      }
+
+
+
+      /*******************************************************************************
+       ** Capture the signal delivered through core.
+       *******************************************************************************/
+      @Override
+      public void raise(AlertSignal signal)
+      {
+         signals.add(signal);
+      }
    }
 
 
@@ -188,15 +228,22 @@ class BudgetServiceTest extends BaseAssistantTest
    @Test
    void warningBoundaryAndDedup() throws Exception
    {
-      budget();
+      AssistantBudget budget = budget();
       usage(790_000, NOW);
-      List<String> alerts = new ArrayList<>();
+      List<AlertSignal> alerts = new ArrayList<>();
       BudgetService service = service(alerts);
       assertThat(service.evaluate(USER, null, false, false).notices()).isEmpty();
       usage(10_000, NOW);
       assertThat(service.evaluate(USER, null, false, false).notices()).singleElement().asString().contains("80%", "Per user daily");
       assertThat(service.evaluate(USER, null, false, false).notices()).isEmpty();
-      assertThat(alerts).containsExactly("assistant.budget.warning:WARNING");
+      assertThat(alerts).singleElement().satisfies(signal ->
+      {
+         assertThat(signal.getAlertTypeName()).isEqualTo("assistant.budget.warning");
+         assertThat(signal.getDedupKey()).isEqualTo(budget.getId() + ":USER:" + USER + ":2026-10-13T00:00:00Z");
+         assertThat(signal.getSeverity()).isEqualTo(AlertSeverity.WARNING);
+         assertThat(signal.getTitle()).isEqualTo("Assistant budget Per user daily");
+         assertThat(signal.getSummary()).contains("80%", "Per user daily");
+      });
       assertThat(store().query(AssistantBudgetEvent.TABLE_NAME, new QQueryFilter(), AssistantBudgetEvent.class)).singleElement()
          .extracting(AssistantBudgetEvent::getState).isEqualTo("WARNED");
    }
@@ -215,10 +262,14 @@ class BudgetServiceTest extends BaseAssistantTest
       AssistantModel cheap = store().insert(new AssistantModel().withProviderId(local.getId()).withModelId("cheap").withEnabled(true).withInputUsdPerMTok(BigDecimal.ONE));
       store().insert(new AssistantModel().withProviderId(cloud.getId()).withModelId("main").withEnabled(true).withInputUsdPerMTok(BigDecimal.ZERO));
       usage(1_000_000, NOW);
-      BudgetService service = service(new ArrayList<>());
+      List<AlertSignal> alerts = new ArrayList<>();
+      BudgetService service = service(alerts);
       ProviderService.Active active = config.getRuntime().getProviderService().resolve("main");
       assertThat(service.evaluate(USER, active, false, false).active().providerId()).isEqualTo(local.getId());
       assertThat(service.evaluate(USER, active, true, false).stopped()).isTrue();
+      assertThat(alerts).extracting(AlertSignal::getAlertTypeName).containsExactly("assistant.budget.downgraded", "assistant.budget.stopped");
+      assertThat(alerts).extracting(AlertSignal::getSeverity).containsExactly(AlertSeverity.WARNING, AlertSeverity.ERROR);
+      assertThat(alerts).extracting(AlertSignal::getDedupKey).containsOnly(budget.getId() + ":USER:" + USER + ":2026-10-13T00:00:00Z");
       store().updateFields(AssistantBudget.TABLE_NAME, new QRecord().withValue("id", budget.getId()).withValue("downgradeModelId", cheap.getId()));
       assertThat(service.evaluate(USER, active, false, false).active().model()).isEqualTo("cheap");
    }

@@ -24,6 +24,7 @@ import com.kingsrook.qbits.assistant.model.AssistantBudgetUsage;
 import com.kingsrook.qbits.assistant.model.AssistantModel;
 import com.kingsrook.qbits.assistant.model.AssistantUsage;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
+import com.kingsrook.qqq.backend.core.alerts.AlertSeverity;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
@@ -48,21 +49,6 @@ public class BudgetService
    private final AssistantStore store;
    private final ProviderService providers;
    private final Clock clock;
-   private final AlertRaiser alerts;
-
-
-
-   /*******************************************************************************
-    ** Injectable alert seam; production uses the optional Alerts producer SPI.
-    *******************************************************************************/
-   @FunctionalInterface
-   public interface AlertRaiser
-   {
-      /*******************************************************************************
-       ** Attempt to raise one deduplicated transition.
-       *******************************************************************************/
-      void raise(String type, String key, String severity, String title, String summary);
-   }
 
 
 
@@ -105,20 +91,9 @@ public class BudgetService
     *******************************************************************************/
    public BudgetService(AssistantStore store, ProviderService providers, Clock clock)
    {
-      this(store, providers, clock, BudgetAlerts::raise);
-   }
-
-
-
-   /*******************************************************************************
-    ** Constructor with an alert seam for tests.
-    *******************************************************************************/
-   public BudgetService(AssistantStore store, ProviderService providers, Clock clock, AlertRaiser alerts)
-   {
       this.store = store;
       this.providers = providers;
       this.clock = clock;
-      this.alerts = alerts;
    }
 
 
@@ -318,6 +293,10 @@ public class BudgetService
 
    /*******************************************************************************
     ** The persisted unique key is also the warning/alert deduplication record.
+    ** Resolution on period rollover or override recovery needs an active-alert
+    ** lifecycle: these immutable events cannot re-raise a resolved state within
+    ** the same period, and user-specific overrides must not resolve shared alerts.
+    ** Track active keys and recurrence before calling QAlerts.resolve here.
     *******************************************************************************/
    private boolean transition(Snapshot snapshot, String state, String userId, String message) throws QException
    {
@@ -333,8 +312,8 @@ public class BudgetService
          case "DOWNGRADED" -> "downgraded";
          default -> "stopped";
       };
-      alerts.raise(type, snapshot.budget().getId() + ":" + snapshot.scopeKey() + ":" + snapshot.periodStart(),
-         "STOPPED".equals(state) ? "ERROR" : "WARNING", "Assistant budget " + snapshot.budget().getName(), message);
+      BudgetAlerts.raise(type, snapshot.budget().getId() + ":" + snapshot.scopeKey() + ":" + snapshot.periodStart(),
+         "STOPPED".equals(state) ? AlertSeverity.ERROR : AlertSeverity.WARNING, "Assistant budget " + snapshot.budget().getName(), message);
       return (true);
    }
 

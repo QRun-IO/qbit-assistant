@@ -26,6 +26,9 @@ import com.kingsrook.qbits.assistant.testing.AssistantTestFixture;
 import com.kingsrook.qbits.assistant.testing.BaseAssistantTest;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionCheckResult;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.alerts.AlertsInstanceMetaData;
+import com.kingsrook.qqq.backend.core.alerts.AlertSeverity;
+import com.kingsrook.qqq.backend.core.alerts.QAlertTypeMetaData;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
@@ -99,6 +102,28 @@ class AssistantQBitProducerTest extends BaseAssistantTest
       assertThat(config.getRuntime()).isNotNull();
       assertThat(AssistantRuntime.of(qInstance)).isSameAs(config.getRuntime());
       assertThat(AssistantQBitProducer.getVersion()).isNotBlank();
+   }
+
+
+
+   /*******************************************************************************
+    ** Budget types are discoverable through core with admin-only visibility.
+    *******************************************************************************/
+   @Test
+   void budgetAlertTypes()
+   {
+      var types = AlertsInstanceMetaData.of(qInstance).getAlertTypes();
+      assertThat(types).containsOnlyKeys("assistant.budget.warning", "assistant.budget.downgraded", "assistant.budget.stopped");
+      for(QAlertTypeMetaData type : types.values())
+      {
+         assertThat(type.getLabel()).isNotBlank();
+         assertThat(type.getDescription()).isNotBlank();
+         assertThat(type.getDefaultSeverity()).isEqualTo(type.getName().endsWith("stopped") ? AlertSeverity.ERROR : AlertSeverity.WARNING);
+         assertThat(type.getHowToFix()).isEqualTo("Raise the budget or grant an override in Assistant → Budgets");
+         assertThat(type.getSourceQBitName()).isEqualTo("assistant");
+         assertThat(type.getVisibilityPermission()).isEqualTo("assistant.admin");
+         assertThat(type.getSubjectTableName()).isEqualTo("assistant_budget");
+      }
    }
 
 
