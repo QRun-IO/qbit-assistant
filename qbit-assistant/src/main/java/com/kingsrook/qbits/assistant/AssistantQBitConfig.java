@@ -141,11 +141,13 @@ public class AssistantQBitConfig implements QBitConfig
    private Integer                   providerTestTimeoutSeconds = 30;
    private Integer                   homeMaxRows              = 20000;
    private String                    tablePathPrefix          = "/app";
+   private Boolean                   emailExternalApproved    = false;
 
    private transient MetaDataCustomizerInterface<QTableMetaData> tableMetaDataCustomizer;
    private transient Map<String, AssistantModelProvider>        modelProviders = new LinkedHashMap<>();
    private transient Map<String, AssistantProviderType>         providerTypes  = new LinkedHashMap<>();
    private transient Function<String, String>                   secretResolver = System::getenv;
+   private transient Function<String, String>                   emailRecipientResolver;
    private transient AssistantRuntime                           runtime;
 
 
@@ -1454,6 +1456,62 @@ public class AssistantQBitConfig implements QBitConfig
    public AssistantQBitConfig withSecretResolver(Function<String, String> secretResolver)
    {
       this.secretResolver = secretResolver;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the host's EXTERNAL approval rule allows a scheduled task's result
+    ** to leave the app by email. There is no approval rule in the qbit yet (the
+    ** scheduled runner is P-g), so this explicit flag stands in; default false.
+    *******************************************************************************/
+   public Boolean getEmailExternalApproved()
+   {
+      return (this.emailExternalApproved);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for emailExternalApproved
+    *******************************************************************************/
+   public void setEmailExternalApproved(Boolean emailExternalApproved)
+   {
+      this.emailExternalApproved = emailExternalApproved;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for emailExternalApproved
+    *******************************************************************************/
+   public AssistantQBitConfig withEmailExternalApproved(Boolean emailExternalApproved)
+   {
+      this.emailExternalApproved = emailExternalApproved;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** The hook that turns a task owner's user id into an email address; null
+    ** means the default (an owner id that already is an address).
+    *******************************************************************************/
+   @JsonIgnore
+   public Function<String, String> getEmailRecipientResolver()
+   {
+      return (emailRecipientResolver);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for emailRecipientResolver
+    *******************************************************************************/
+   public AssistantQBitConfig withEmailRecipientResolver(Function<String, String> emailRecipientResolver)
+   {
+      this.emailRecipientResolver = emailRecipientResolver;
       return (this);
    }
 

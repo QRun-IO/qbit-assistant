@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased - Email
+
+### Changed
+
+- Add optional qbit-email delivery of a scheduled task's result (`AssistantEmail.sendScheduledResult`): template `assistant_scheduled_result`, link-only secure message for results above PUBLIC, owner-recipient hook, opt-in and `emailExternalApproved` gates. The scheduled-task runner itself is still P-g.
+
 ## Unreleased - P-f
 
 - Add OpenAI-compatible embeddings (including Azure), explicit CHAT/EMBEDDING
