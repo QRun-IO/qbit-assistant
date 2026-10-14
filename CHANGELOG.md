@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased - Foreign keys
+
+- Reference DDL: add the missing foreign keys (conversation tree, usage, data audit,
+  budget accounting, profile skills) with orphan quarantine and their indexes; make
+  `assistant_model.provider_id` `ON DELETE CASCADE`. A Postgres guardrail test fails
+  any declared relation without a foreign key.
+
 ## Unreleased - Durable turns
 
 - Renew user-owned run leases with heartbeats, poll cross-replica Stop, enforce

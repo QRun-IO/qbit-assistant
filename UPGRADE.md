@@ -1,5 +1,33 @@
 # Upgrading qbit-assistant
 
+## Foreign keys (2026-10-14)
+
+Recommended: apply the "Foreign keys" block at the end of
+`docs/schema-postgres.sql` (after the index audit). It is guarded and safe to re-run.
+- Adds the missing foreign keys across the conversation tables, usage, data audit,
+  budget accounting and profile skills, with the indexes they need.
+- Detail rows of a conversation `CASCADE`; the message/turn cycle, usage and the data
+  audit use `SET NULL`, so usage keeps its cost rows when a conversation is deleted.
+- Usage, budget accounting and the data audit hold their provider (`NO ACTION`):
+  disable a provider with history instead of deleting it.
+- `assistant_model.provider_id` changes from `NO ACTION` to `CASCADE`
+  (constraint renamed `fk_assistant_model_provider`).
+- Rows that point at a missing parent are first copied to `qqq_fk_quarantine`
+  (created if absent), then nulled, or deleted for the `NOT NULL` profile-skill
+  links. Check that table after the upgrade.
+
+No code change.
+
+## Index audit (2026-10-14)
+
+Recommended, not required: apply the "Index audit" block at the end of
+`docs/schema-postgres.sql`. It adds six indexes, every one `IF NOT EXISTS`:
+- usage by turn (read on each scheduled run)
+- the three retention date filters (turn events, tool calls, inactive conversations)
+- the two `ON DELETE SET NULL` foreign keys on `assistant_scheduled_run`
+
+No code change.
+
 ## Durable turns (Unreleased)
 
 Apply the **Durable turns** block at the end of `docs/schema-postgres.sql` before
