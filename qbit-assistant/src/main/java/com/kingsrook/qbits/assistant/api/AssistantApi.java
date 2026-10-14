@@ -17,11 +17,14 @@
 package com.kingsrook.qbits.assistant.api;
 
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
@@ -51,11 +54,13 @@ import com.kingsrook.qqq.backend.core.actions.ai.AiToolOutcome;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolResult;
 import com.kingsrook.qqq.backend.core.actions.ai.output.AiRedactor;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiCredentials;
+import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
@@ -65,6 +70,8 @@ import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiCredentials;
  *******************************************************************************/
 public class AssistantApi
 {
+   private static final QLogger LOG = QLogger.getLogger(AssistantApi.class);
+
    public static final int TITLE_MAX_CHARS = 60;
 
    private final AssistantRuntime    runtime;
@@ -289,6 +296,19 @@ public class AssistantApi
    public RunningTurn startTurn(Integer conversationId, Map<String, Object> body) throws QException, AssistantApiException
    {
       requireAccess();
+      if(runtime.isShuttingDown())
+      {
+         throw (new AssistantApiException(503, "SHUTTING_DOWN", "The server is restarting. Try again in a moment."));
+      }
+      String concurrency = config.getDefaultConcurrencyMode();
+      if(body.containsKey("concurrency"))
+      {
+         if(!(body.get("concurrency") instanceof String mode) || !("supersede".equalsIgnoreCase(mode) || "concurrent".equalsIgnoreCase(mode)))
+         {
+            throw (new AssistantApiException(400, "concurrency must be supersede or concurrent."));
+         }
+         concurrency = mode.toUpperCase(Locale.ROOT);
+      }
       AssistantConversation conversation = requireConversation(conversationId);
 
       if(!(body.get("text") instanceof String text) || !StringUtils.hasContent(text))
@@ -324,23 +344,34 @@ public class AssistantApi
          throw (new AssistantApiException(429, "BUDGET", budget.message()));
       }
 
-      long running = 0;
-      for(AssistantTurn other : store.listRunningTurns(userId))
-      {
-         if(isRunning(reapIfOrphaned(other)))
-         {
-            running++;
-         }
-      }
-      if(running >= config.getMaxConcurrentTurnsPerUser())
-      {
-         throw (new AssistantApiException(429, "RATE_LIMIT", "You already have an assistant answer in progress. Wait for it to finish or stop it."));
-      }
-
       String limited = runtime.getRateLimiter().tryAcquire(userId, config.getMaxTurnsPerUserPerMinute(), config.getMaxConcurrentTurnsPerUser());
       if(limited != null)
       {
          throw (new AssistantApiException(429, "RATE_LIMIT", limited));
+      }
+
+      List<AssistantTurn> remaining = new ArrayList<>();
+      for(AssistantTurn other : store.listRunningTurns(userId))
+      {
+         other = reapIfOrphaned(other);
+         if(!isRunning(other) || "SUPERSEDED".equals(other.getCancelReason()))
+         {
+            continue;
+         }
+         if("SUPERSEDE".equals(concurrency) && conversationId.equals(other.getConversationId()))
+         {
+            requestStop(other, "SUPERSEDED");
+         }
+         else
+         {
+            remaining.add(other);
+         }
+      }
+      remaining.sort(Comparator.comparing(AssistantTurn::getStartedAt, Comparator.nullsFirst(Comparator.naturalOrder()))
+         .thenComparing(AssistantTurn::getId));
+      while(remaining.size() >= config.getMaxConcurrentTurnsPerUser())
+      {
+         requestStop(remaining.removeFirst(), "SUPERSEDED");
       }
 
       try
@@ -361,13 +392,18 @@ public class AssistantApi
             .withSeq(seq)
             .withPartsJson(new MessageParts().addText(text).toJson()));
 
+         Instant startedAt = runtime.getClock().instant();
          AssistantTurn turn = store.insert(new AssistantTurn()
             .withConversationId(conversationId)
             .withUserId(userId)
             .withUserMessageId(userMessage.getId())
             .withStatus("RUNNING")
             .withModel(active.model())
-            .withStartedAt(runtime.getClock().instant())
+            .withStartedAt(startedAt)
+            .withHeartbeatAt(startedAt)
+            .withLeaseOwner(runtime.getInstanceId())
+            .withPhase("starting")
+            .withConcurrencyMode(concurrency)
             .withToolCallCount(0)
             .withModelCallCount(0));
 
@@ -385,10 +421,37 @@ public class AssistantApi
          store.updateFields(AssistantTurn.TABLE_NAME, new QRecord().withValue("id", turn.getId()).withValue("assistantMessageId", assistantMessage.getId()));
          turn.setAssistantMessageId(assistantMessage.getId());
 
-         RunningTurn runningTurn = runtime.register(new RunningTurn(turn.getId(), userId));
+         RunningTurn runningTurn = new RunningTurn(turn.getId(), userId);
          TurnEngine  engine      = new TurnEngine(runtime, session, userId, conversation, userMessage, assistantMessage, turn, text, pageContext, policy, runningTurn,
             budget.softExceeded() ? budget.message() : null).withCredentials(credentials);
-         runtime.getExecutor().submit(engine);
+         try
+         {
+            if(config.getRunTracker() != null)
+            {
+               ///////////////////////////////////////////////////////////////////
+               // never the conversation title: it is derived from the prompt  //
+               ///////////////////////////////////////////////////////////////////
+               runningTurn.setTrackingId(config.getRunTracker().start(userId, turn.getId(), conversationId, "Assistant answer"));
+               config.getRunTracker().onCancel(runningTurn.getTrackingId(), () -> runningTurn.cancel("USER"));
+            }
+         }
+         catch(Exception e)
+         {
+            LOG.warn("Assistant run tracker start failed", logPair("turnId", turn.getId()));
+         }
+         runtime.register(runningTurn);
+         if(!runningTurn.isFinalized())
+         {
+            try
+            {
+               runtime.getExecutor().submit(engine);
+            }
+            catch(RuntimeException e)
+            {
+               runningTurn.forceFinalize("SHUTDOWN");
+               throw (e);
+            }
+         }
          return (runningTurn);
       }
       catch(QException | RuntimeException e)
@@ -443,22 +506,94 @@ public class AssistantApi
    {
       requireAccess();
       AssistantTurn turn = requireTurn(turnId);
-      if(runtime.getRunningTurn(turnId) == null)
+      if(isRunning(turn))
+      {
+         turn = requestStop(turn, "USER");
+      }
+      return (Map.of("status", turn.getStatus()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Durable Stop, shared by the API and superseding another question.
+    *******************************************************************************/
+   private AssistantTurn requestStop(AssistantTurn turn, String reason) throws QException
+   {
+      synchronized(store)
+      {
+         turn = store.getTurn(userId, turn.getId());
+         if(!isRunning(turn))
+         {
+            return (turn);
+         }
+         RunningTurn live = runtime.getRunningTurn(turn.getId());
+         if(live == null && orphaned(turn))
+         {
+            return (reap(turn, reason));
+         }
+         Instant now = runtime.getClock().instant();
+         if(!store.updateRunningTurn(userId, new QRecord().withValue("id", turn.getId())
+            .withValue("status", "CANCELLING").withValue("cancelReason", reason).withValue("cancelRequestedAt", now)))
+         {
+            return (store.getTurn(userId, turn.getId()));
+         }
+         turn.setStatus("CANCELLING");
+         turn.setCancelReason(reason);
+         turn.setCancelRequestedAt(now);
+         if(live != null)
+         {
+            try
+            {
+               live.cancel(reason);
+            }
+            catch(Exception e)
+            {
+               LOG.warn("Assistant stream cancellation failed; watchdog will finalize");
+            }
+         }
+         return (turn);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** GET /turns/active: the caller's runs, newest first, after orphan recovery.
+    *******************************************************************************/
+   public Map<String, Object> activeTurns() throws QException, AssistantApiException
+   {
+      requireAccess();
+      List<AssistantTurn> turns = new ArrayList<>();
+      for(AssistantTurn turn : store.listRunningTurns(userId))
       {
          turn = reapIfOrphaned(turn);
+         if(isRunning(turn))
+         {
+            turns.add(turn);
+         }
       }
-      if(!isRunning(turn))
+      turns.sort(Comparator.comparing(AssistantTurn::getStartedAt, Comparator.nullsFirst(Comparator.naturalOrder()))
+         .thenComparing(AssistantTurn::getId).reversed());
+      List<Map<String, Object>> rows = new ArrayList<>();
+      for(AssistantTurn turn : turns)
       {
-         throw (new AssistantApiException(409, "This answer has already finished."));
+         RunningTurn live = runtime.getRunningTurn(turn.getId());
+         Map<String, Object> row = new LinkedHashMap<>();
+         row.put("turnId", turn.getId());
+         row.put("conversationId", turn.getConversationId());
+         row.put("assistantMessageId", turn.getAssistantMessageId());
+         row.put("userMessageId", turn.getUserMessageId());
+         row.put("status", turn.getStatus());
+         row.put("phase", live == null ? turn.getPhase() : live.getPhase());
+         row.put("startedAt", turn.getStartedAt() == null ? null : turn.getStartedAt().toString());
+         row.put("heartbeatAt", turn.getHeartbeatAt() == null ? null : turn.getHeartbeatAt().toString());
+         row.put("elapsedMs", turn.getStartedAt() == null ? 0 : Math.max(0, Duration.between(turn.getStartedAt(), runtime.getClock().instant()).toMillis()));
+         row.put("live", live != null);
+         row.put("concurrencyMode", turn.getConcurrencyMode());
+         rows.add(row);
       }
-
-      store.updateFields(AssistantTurn.TABLE_NAME, new QRecord().withValue("id", turnId).withValue("status", "CANCELLING"));
-      RunningTurn live = runtime.getRunningTurn(turnId);
-      if(live != null && userId.equals(live.getUserId()))
-      {
-         live.cancel("USER");
-      }
-      return (Map.of("status", "CANCELLING"));
+      return (Map.of("turns", rows));
    }
 
 
@@ -474,60 +609,104 @@ public class AssistantApi
 
 
    /*******************************************************************************
-    ** A turn whose replica died: it still says RUNNING / CANCELLING, no turn
-    ** of this runtime owns it, and it started longer ago than maxTurnSeconds
-    ** + 60 s (a live engine always ends itself by then). On first sight it is
-    ** finished as ERROR: the assistant message gets status ERROR and a
-    ** notice, and synthetic error (INTERNAL) + message.end events are
-    ** persisted, so replays end. Returns the (possibly updated) turn.
+    ** A remote run loses its lease, exceeds the absolute deadline, or has a
+    ** cancellation request that its owner did not acknowledge in time.
+    *******************************************************************************/
+   private boolean orphaned(AssistantTurn turn)
+   {
+      Instant now = runtime.getClock().instant();
+      Instant heartbeat = turn.getHeartbeatAt() == null ? turn.getStartedAt() : turn.getHeartbeatAt();
+      return ((heartbeat != null && heartbeat.isBefore(now.minusSeconds(config.getTurnLeaseSeconds())))
+         || (turn.getStartedAt() != null && turn.getStartedAt().isBefore(now.minusSeconds(maxStreamSeconds())))
+         || ("CANCELLING".equals(turn.getStatus()) && turn.getCancelRequestedAt() != null
+         && turn.getCancelRequestedAt().isBefore(now.minusSeconds(config.getTurnLeaseSeconds()))));
+   }
+
+
+
+   /*******************************************************************************
+    ** Recover an abandoned run and leave a terminal replay for refreshes.
     *******************************************************************************/
    AssistantTurn reapIfOrphaned(AssistantTurn turn) throws QException
    {
-      if(!isRunning(turn) || runtime.getRunningTurn(turn.getId()) != null || turn.getStartedAt() == null)
+      synchronized(store)
       {
-         return (turn);
-      }
-      Instant stale = runtime.getClock().instant().minusSeconds(config.getMaxTurnSeconds() + 60L);
-      if(!turn.getStartedAt().isBefore(stale))
-      {
-         return (turn);
-      }
-
-      String text = "This answer was interrupted (the server restarted). Ask again.";
-      if(turn.getAssistantMessageId() != null)
-      {
-         AssistantMessage message = store.getMessage(userId, turn.getAssistantMessageId());
-         if(message != null)
+         if(!isRunning(turn) || runtime.getRunningTurn(turn.getId()) != null || !orphaned(turn))
          {
-            store.updateFields(AssistantMessage.TABLE_NAME, new QRecord()
-               .withValue("id", message.getId())
-               .withValue("status", "ERROR")
-               .withValue("partsJson", MessageParts.fromJson(message.getPartsJson()).addNotice("error", text).toJson()));
+            return (turn);
+         }
+         String reason = "CANCELLING".equals(turn.getStatus()) && turn.getCancelRequestedAt() != null
+            && turn.getCancelRequestedAt().isBefore(runtime.getClock().instant().minusSeconds(config.getTurnLeaseSeconds()))
+            ? (turn.getCancelReason() == null ? "USER" : turn.getCancelReason()) : null;
+         return (reap(turn, reason));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Re-read before recovery; never overwrite an already terminal row or
+    ** append another terminal event. Each persistence step is independent.
+    *******************************************************************************/
+   private AssistantTurn reap(AssistantTurn turn, String cancelReason) throws QException
+   {
+      AssistantTurn current = store.getTurn(userId, turn.getId());
+      if(!isRunning(current))
+      {
+         return (current);
+      }
+      if(!orphaned(current))
+      {
+         return (cancelReason == null ? current : requestStop(current, cancelReason));
+      }
+      String status = cancelReason == null ? "ERROR" : "CANCELLED";
+      String text = cancelReason == null ? "This answer was interrupted (the server restarted). Ask again."
+         : ("SUPERSEDED".equals(cancelReason) ? TurnEngine.SUPERSEDED_TEXT : "Stopped by you.");
+      if(current.getAssistantMessageId() != null)
+      {
+         try
+         {
+            AssistantMessage message = store.getMessage(userId, current.getAssistantMessageId());
+            if(message != null)
+            {
+               store.updateFields(AssistantMessage.TABLE_NAME, new QRecord().withValue("id", message.getId()).withValue("status", status)
+                  .withValue("partsJson", MessageParts.fromJson(message.getPartsJson()).addNotice(cancelReason == null ? "error" : "info", text).toJson()));
+            }
+         }
+         catch(Exception e)
+         {
+            LOG.warn("Could not persist recovered assistant message");
          }
       }
-
-      int seq = store.lastEventSeq(userId, turn.getId());
-      store.insertEvent(turn.getId(), userId, seq + 1, TurnEvent.ERROR, new TurnEvent(seq + 1, TurnEvent.ERROR, Map.of("code", "INTERNAL", "message", text)).toJson());
-      Map<String, Object> end = new java.util.LinkedHashMap<>();
-      if(turn.getAssistantMessageId() != null)
+      try
       {
-         end.put("messageId", turn.getAssistantMessageId());
+         int seq = store.lastEventSeq(userId, current.getId());
+         List<AssistantTurnEvent> last = store.listEvents(userId, current.getId(), Math.max(0, seq - 1), 1);
+         if(last.isEmpty() || !TurnEvent.MESSAGE_END.equals(last.getFirst().getEventType()))
+         {
+            if(cancelReason == null)
+            {
+               seq++;
+               store.insertEvent(current.getId(), userId, seq, TurnEvent.ERROR,
+                  new TurnEvent(seq, TurnEvent.ERROR, Map.of("code", "INTERNAL", "message", text)).toJson());
+            }
+            seq++;
+            Map<String, Object> end = new LinkedHashMap<>();
+            end.put("messageId", current.getAssistantMessageId());
+            end.put("status", status);
+            end.put("stopReason", cancelReason == null ? "interrupted" : "cancelled");
+            store.insertEvent(current.getId(), userId, seq, TurnEvent.MESSAGE_END, new TurnEvent(seq, TurnEvent.MESSAGE_END, end).toJson());
+         }
       }
-      end.put("status", "ERROR");
-      end.put("stopReason", "interrupted");
-      store.insertEvent(turn.getId(), userId, seq + 2, TurnEvent.MESSAGE_END, new TurnEvent(seq + 2, TurnEvent.MESSAGE_END, end).toJson());
-
+      catch(Exception e)
+      {
+         LOG.warn("Could not persist recovered assistant events");
+      }
       Instant now = runtime.getClock().instant();
-      store.updateFields(AssistantTurn.TABLE_NAME, new QRecord()
-         .withValue("id", turn.getId())
-         .withValue("status", "ERROR")
-         .withValue("errorCode", "INTERNAL")
-         .withValue("stopReason", "interrupted")
-         .withValue("endedAt", now));
-      turn.setStatus("ERROR");
-      turn.setErrorCode("INTERNAL");
-      turn.setEndedAt(now);
-      return (turn);
+      store.updateRunningTurn(userId, new QRecord().withValue("id", current.getId()).withValue("status", status)
+         .withValue("errorCode", cancelReason == null ? "INTERNAL" : null).withValue("cancelReason", cancelReason)
+         .withValue("stopReason", cancelReason == null ? "interrupted" : "cancelled").withValue("phase", "done").withValue("endedAt", now));
+      return (store.getTurn(userId, current.getId()));
    }
 
 
@@ -782,6 +961,16 @@ public class AssistantApi
    public int maxTurnSeconds()
    {
       return (config.getMaxTurnSeconds());
+   }
+
+
+
+   /*******************************************************************************
+    ** Hard upper bound for remote stream polling and stale-run recovery.
+    *******************************************************************************/
+   public long maxStreamSeconds()
+   {
+      return (config.getMaxTurnSeconds() + (long) config.getTurnForceFinalizeGraceSeconds() + config.getTurnLeaseSeconds());
    }
 
 

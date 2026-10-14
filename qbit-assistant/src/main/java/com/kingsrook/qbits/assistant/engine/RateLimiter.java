@@ -26,15 +26,12 @@ import java.util.Map;
 
 
 /*******************************************************************************
- ** Per-user turn rate limits (spec 3.9): turns started per minute and turns
- ** running at once. In memory, per replica - with several replicas the
- ** effective limit is per replica (the concurrent limit is also checked
- ** against the turn table by the API).
+ ** Per-user starts per minute, in memory per replica. The API implements
+ ** concurrency by superseding turns, never by refusing another question.
  *******************************************************************************/
 public class RateLimiter
 {
    private final Map<String, Deque<Instant>> starts  = new HashMap<>();
-   private final Map<String, Integer>        running = new HashMap<>();
    private final Clock                       clock;
 
 
@@ -61,17 +58,12 @@ public class RateLimiter
          queue.pollFirst();
       }
 
-      if(running.getOrDefault(userId, 0) >= concurrent)
-      {
-         return ("You already have an assistant answer in progress. Wait for it to finish or stop it.");
-      }
       if(queue.size() >= perMinute)
       {
          return ("Too many assistant requests in the last minute. Try again shortly.");
       }
 
       queue.addLast(now);
-      running.merge(userId, 1, Integer::sum);
       return (null);
    }
 
@@ -82,7 +74,7 @@ public class RateLimiter
     *******************************************************************************/
    public synchronized void release(String userId)
    {
-      running.computeIfPresent(userId, (k, v) -> v <= 1 ? null : v - 1);
+      // Only starts per minute are counted; completion does not refund a start.
    }
 
 }

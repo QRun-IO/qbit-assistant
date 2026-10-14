@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased - Durable turns
+
+- Renew user-owned run leases with heartbeats, poll cross-replica Stop, enforce
+  hard deadlines, and finalize active runs during graceful shutdown. Recover
+  abandoned runs on replay, active discovery, or the next question.
+- Default to superseding a prior answer in the same conversation. Accept explicit
+  concurrent questions; the per-user cap supersedes the oldest run instead of
+  refusing another question. Per-minute limits and budgets still apply.
+- Add `GET /qqq/v1/assistant/turns/active`, `turn.phase` progress and `startedAt`
+  on `message.start`. Cancel is idempotent and returns HTTP 200.
+- Add the optional `AssistantRunTracker` Jobs tray SPI (no-op by default),
+  pending QQQ core job tracking (#1210).
+- Add the durable-turn schema upgrade; apply it before deploying this runtime.
+  A partial unique index fences duplicate terminal events from concurrent reapers.
+- UI API extension `assistant` 1.2.0 (additive): `turns/active`, the optional
+  `concurrency` on a new turn, 503 `SHUTTING_DOWN`, `turn.phase`,
+  `message.start.startedAt`, cancelReason `SUPERSEDED`. The 429 response stays
+  documented for budgets and per-minute limits; the "answer already in progress"
+  refusal is no longer returned. Cancel keeps 202 documented for older replicas.
+||||||| befb90a
+
 ## Unreleased - Starter defaults
 
 - Fix the defaults changelog: every precondition is a portable `sql-check` (the formatted-SQL `table-exists` form failed to parse); the policy, budget and prices are seeded only into empty tables and the profile only when no default exists, so an existing host never changes on deploy. The test now runs the changelog through Liquibase 4.33, including an already configured host and a missing table.

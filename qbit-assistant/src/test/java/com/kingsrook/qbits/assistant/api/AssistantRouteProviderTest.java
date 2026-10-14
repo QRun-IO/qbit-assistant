@@ -30,9 +30,13 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.kingsrook.qbits.assistant.model.AssistantPolicy;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
+import com.kingsrook.qbits.assistant.spi.ModelPart;
+import com.kingsrook.qbits.assistant.spi.ModelResponse;
 import com.kingsrook.qbits.assistant.testing.AssistantTestFixture;
 import com.kingsrook.qbits.assistant.testing.BaseAssistantTest;
 import com.kingsrook.qbits.assistant.testing.UiApiTestServer;
@@ -314,7 +318,7 @@ class AssistantRouteProviderTest extends BaseAssistantTest
       assertThat(send("POST", "/messages/" + messages.get(0).get("id") + "/feedback", EDITOR, "{\"rating\":1}").statusCode()).isEqualTo(400);
       assertThat(send("POST", "/messages/" + msgId + "/feedback", OTHER_EDITOR, "{\"rating\":-1}").statusCode()).isEqualTo(404);
 
-      assertThat(send("POST", "/turns/" + turnId + "/cancel", EDITOR, "{}").statusCode()).isEqualTo(409);
+      assertThat(send("POST", "/turns/" + turnId + "/cancel", EDITOR, "{}").statusCode()).isEqualTo(200);
    }
 
 
@@ -351,15 +355,10 @@ class AssistantRouteProviderTest extends BaseAssistantTest
       }
       assertThat(turnId).isNotNull();
 
-      ///////////////////////////////////////////////////////////////
-      // a second turn while one runs: refused (concurrency = 1)  //
-      ///////////////////////////////////////////////////////////////
-      assertThat(send("POST", "/conversations/" + id + "/turns", EDITOR, "{\"text\":\"again\"}").statusCode()).isEqualTo(429);
-
       Thread.sleep(500);
       assertThat(send("POST", "/turns/" + turnId + "/cancel", OTHER_EDITOR, "{}").statusCode()).isEqualTo(404);
       HttpResponse<String> cancel = send("POST", "/turns/" + turnId + "/cancel", EDITOR, "{}");
-      assertThat(cancel.statusCode()).isEqualTo(202);
+      assertThat(cancel.statusCode()).isEqualTo(200);
       assertThat(json(cancel)).containsEntry("status", "CANCELLING");
 
       List<Frame> frames = frames(future.get().body());
@@ -367,6 +366,96 @@ class AssistantRouteProviderTest extends BaseAssistantTest
       Frame end = frames.get(frames.size() - 1);
       assertThat(end.event()).isEqualTo("message.end");
       assertThat(end.data()).containsEntry("status", "CANCELLED");
+   }
+
+
+
+   /*******************************************************************************
+    ** A disconnected POST keeps running; active discovery and replay can attach
+    ** again while the answer is blocked, then receive the terminal frame.
+    *******************************************************************************/
+   @Test
+   @SuppressWarnings("unchecked")
+   void testDisconnectRefreshAndReattach() throws Exception
+   {
+      CountDownLatch entered = new CountDownLatch(1);
+      CountDownLatch release = new CountDownLatch(1);
+      provider.thenToolUses("I am checking the count before answering. ", List.<Object[]>of(new Object[] { "count_records", Map.of("table", "blog_post") }))
+         .thenRespond(request ->
+         {
+            entered.countDown();
+            try
+            {
+               if(!release.await(5, TimeUnit.SECONDS))
+               {
+                  throw (new IllegalStateException("test did not release provider"));
+               }
+            }
+            catch(InterruptedException e)
+            {
+               Thread.currentThread().interrupt();
+            }
+            return (new ModelResponse().withParts(List.of(ModelPart.text("Finished after reconnect."))).withStopReason(ModelResponse.STOP_END_TURN));
+         });
+      Integer conversation = (Integer) json(send("POST", "/conversations", EDITOR, "{}")).get("id");
+      HttpRequest request = HttpRequest.newBuilder(URI.create(base + "/conversations/" + conversation + "/turns"))
+         .header("Cookie", "sessionId=" + EDITOR).header("Content-Type", "application/json")
+         .POST(HttpRequest.BodyPublishers.ofString("{\"text\":\"count posts\"}")).build();
+      int lastSeq = 0;
+      try
+      {
+         HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+         assertThat(response.statusCode()).isEqualTo(200);
+         try(BufferedReader reader = new BufferedReader(new InputStreamReader(response.body(), StandardCharsets.UTF_8)))
+         {
+            String event = null;
+            String line;
+            while((line = reader.readLine()) != null)
+            {
+               if(line.startsWith("id: "))
+               {
+                  lastSeq = Integer.parseInt(line.substring(4));
+               }
+               if(line.startsWith("event: "))
+               {
+                  event = line.substring(7);
+               }
+               if(line.isEmpty() && "text.delta".equals(event))
+               {
+                  break;
+               }
+            }
+         }
+         assertThat(lastSeq).isPositive();
+         assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+         HttpResponse<String> activeResponse = send("GET", "/turns/active", EDITOR, null);
+         assertThat(activeResponse.statusCode()).isEqualTo(200);
+         List<Map<String, Object>> active = (List<Map<String, Object>>) json(activeResponse).get("turns");
+         assertThat(active).hasSize(1);
+         Map<String, Object> turn = active.getFirst();
+         assertThat(turn).containsEntry("live", true).containsEntry("phase", "thinking").containsEntry("conversationId", conversation)
+            .containsKeys("startedAt", "heartbeatAt", "elapsedMs", "concurrencyMode");
+         assertThat(json(send("GET", "/turns/active", OTHER_EDITOR, null)).get("turns")).isEqualTo(List.of());
+         assertThat(send("GET", "/turns/active", NO_ACCESS, null).statusCode()).isEqualTo(403);
+         HttpRequest attach = HttpRequest.newBuilder(URI.create(base + "/turns/" + turn.get("turnId") + "/events?after=0"))
+            .header("Cookie", "sessionId=" + EDITOR).GET().build();
+         HttpResponse<InputStream> attached = client.send(attach, HttpResponse.BodyHandlers.ofInputStream());
+         release.countDown();
+         List<Frame> followed = frames(attached.body());
+         assertThat(followed.getFirst().event()).isEqualTo("message.start");
+         assertThat(followed.getFirst().data()).containsKey("startedAt");
+         assertThat(followed.getLast().event()).isEqualTo("message.end");
+         assertThat(followed.getLast().data()).containsEntry("status", "COMPLETE");
+         HttpRequest replay = HttpRequest.newBuilder(URI.create(base + "/turns/" + turn.get("turnId") + "/events?after=" + lastSeq))
+            .header("Cookie", "sessionId=" + EDITOR).GET().build();
+         List<Frame> rest = frames(client.send(replay, HttpResponse.BodyHandlers.ofInputStream()).body());
+         assertThat(Integer.parseInt(rest.getFirst().id())).isEqualTo(lastSeq + 1);
+         assertThat(rest.getLast().event()).isEqualTo("message.end");
+      }
+      finally
+      {
+         release.countDown();
+      }
    }
 
 

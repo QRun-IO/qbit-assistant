@@ -1,5 +1,46 @@
 # Upgrading qbit-assistant
 
+## Durable turns (Unreleased)
+
+Apply the **Durable turns** block at the end of `docs/schema-postgres.sql` before
+starting the new runtime. It adds nullable `heartbeat_at`, `lease_owner`,
+`cancel_requested_at`, `phase`, `concurrency_mode` and the `(user_id, status)`
+index. A partial unique index on terminal events also prevents two replicas from
+inserting separate `message.end` frames for the same turn. Check for historical
+duplicate terminal frames before applying it (resolve any duplicates through your
+normal migration process). Fresh installs run the full schema, including ALTERs.
+Existing rows with no heartbeat use `started_at` for lease expiry. During the
+first upgrade from a runtime without heartbeats, drain old replicas' turns first:
+a new replica cannot distinguish an old live turn from a dead owner after 45 s.
+
+Defaults: heartbeat 5 s, lease 45 s, hard duration 300 s, force-finalization grace
+20 s, shutdown grace 8 s. Configure these through the corresponding
+`AssistantQBitConfig` withers. Heartbeat must be shorter than the lease. The JVM
+shutdown hook is enabled by default; tests disable `registerShutdownHook` and
+managed hosts may call `runtime.shutdown(Duration)` themselves. Give the process
+termination budget enough time for the configured shutdown grace and persistence.
+
+`POST /conversations/{id}/turns` accepts `concurrency: "supersede" | "concurrent"`
+(case-insensitive). Default `SUPERSEDE` stops prior runs in that conversation;
+`CONCURRENT` permits them. The default per-user cap is now 3; reaching it stops
+the oldest run instead of returning the old in-progress 429. Per-minute and
+budget 429 responses still apply. Superseded turns record `cancelReason=SUPERSEDED`.
+
+Cancel now returns HTTP **200**, including for terminal turns, with the current
+`status`. The OpenAPI fragment retains the old 202 response for mixed-version
+rollouts. Active runs are discoverable through `GET /qqq/v1/assistant/turns/active`;
+reattach through the existing events route. Consumers should recognize
+`turn.phase` and `message.start.startedAt`. Starts during shutdown return
+503 `SHUTTING_DOWN`; clients may retry against a ready replica.
+
+Hosts may wire `AssistantRunTracker` for Jobs tray publication, progress, Stop,
+and terminal notification. It is a no-op by default and all callbacks are
+isolated from turn execution. Tracking ids are local to the owning runtime;
+reaping an already dead owner does not invent another tracking job. Hosts should
+associate their durable tracking row with the supplied turn id. The SPI is a
+stand-in for QQQ #1210.
+||||||| befb90a
+
 ## Starter defaults, setup card and table help
 
 The jar now ships `db/liquibase/qbit-assistant/assistant-defaults.changelog.sql`.
