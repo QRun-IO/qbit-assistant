@@ -45,6 +45,7 @@ import com.kingsrook.qbits.assistant.model.AssistantToolCall;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
 import com.kingsrook.qbits.assistant.model.AssistantTurnEvent;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
+import com.kingsrook.qbits.assistant.persistence.TranscriptRedactor;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
 import com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadTools;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolOutcome;
@@ -343,11 +344,13 @@ public class AssistantApi
          throw (new AssistantApiException(429, "RATE_LIMIT", limited));
       }
 
+      TranscriptRedactor transcript = new TranscriptRedactor(runtime.getQInstance(), config.getClassificationSource());
+      transcript.attach();
       try
       {
          if(!StringUtils.hasContent(conversation.getTitle()))
          {
-            String title = deriveTitle(text);
+            String title = text;
             store.updateFields(AssistantConversation.TABLE_NAME, new QRecord().withValue("id", conversationId).withValue("title", title));
             conversation.setTitle(title);
          }
@@ -387,14 +390,19 @@ public class AssistantApi
 
          RunningTurn runningTurn = runtime.register(new RunningTurn(turn.getId(), userId));
          TurnEngine  engine      = new TurnEngine(runtime, session, userId, conversation, userMessage, assistantMessage, turn, text, pageContext, policy, runningTurn,
-            budget.softExceeded() ? budget.message() : null).withCredentials(credentials);
+            budget.softExceeded() ? budget.message() : null).withCredentials(credentials).withTranscript(transcript);
          runtime.getExecutor().submit(engine);
          return (runningTurn);
       }
       catch(QException | RuntimeException e)
       {
+         transcript.close();
          runtime.getRateLimiter().release(userId);
          throw (e);
+      }
+      finally
+      {
+         TranscriptRedactor.detach();
       }
    }
 
@@ -589,6 +597,12 @@ public class AssistantApi
       if(!AssistantPendingAction.STATUS_PENDING.equals(action.getStatus()))
       {
          throw (new AssistantApiException(409, "This action is already " + action.getStatus().toLowerCase() + "."));
+      }
+
+      AssistantTurn proposingTurn = store.getTurn(userId, action.getTurnId());
+      if(proposingTurn != null && isRunning(proposingTurn))
+      {
+         throw (new AssistantApiException(409, "Wait for the assistant to finish before confirming this action."));
       }
 
       ///////////////////////////////////////////////////////////////////////

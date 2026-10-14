@@ -17,6 +17,7 @@
 package com.kingsrook.qbits.assistant.engine;
 
 
+import com.kingsrook.qbits.assistant.persistence.TranscriptRedactor;
 import com.kingsrook.qbits.assistant.model.AssistantUsage;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
 import com.kingsrook.qbits.assistant.provider.ModelProviderException;
@@ -144,6 +145,10 @@ public final class UsageRecorder
     *******************************************************************************/
    private static String truncate(String value, int max)
    {
+      if(value != null && value.length() > max && TranscriptRedactor.current() != null)
+      {
+         TranscriptRedactor.current().truncated(value, value.substring(0, max));
+      }
       return (value == null || value.length() <= max ? value : value.substring(0, max));
    }
 

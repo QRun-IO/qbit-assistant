@@ -630,3 +630,32 @@ The shared golden task asks "How many images do I have by type?": five UI count
 calls establish 81 JPEG, 20 PNG and zero other configured types, then a presentation
 with two rows, 80.2%/19.8% shares, two pie points and working MIME filter links.
 The same task is included in the opt-in `live` Anthropic eval suite.
+
+
+## Transcript redaction (secured data §15)
+
+`TranscriptRedactor` collects classified values from tools using `ClassificationSource`,
+including core table/field metadata. Stored record fields use
+`ClassifiedValueTokens.forRecordField`; criteria/proposals without a record use
+`forContext`. Core selects `shred:v1`, `hmac:v1`, or `changed:v1`. Knowledge snippets
+retain their source field's token. Matching is case-sensitive and includes canonical,
+displayed, escaped, encoded and explicitly truncated variants.
+
+`AssistantStore` stages content in turn memory and writes placeholders until
+finalization, protecting backend writes and their audits. It redacts before truncation
+and encryption. This covers messages, tool/bulk logs, replay events, pending payloads
+and audit reasons; scheduled summaries derive from redacted messages. Model requests
+and live SSE remain unchanged under PHI routing. Persisted text deltas are joined
+before redaction, with the text in the first delta and remaining deltas empty;
+sequence numbers remain stable.
+
+Crashes or unfinished tools at timeout leave placeholders. Proposals remain
+non-executable (`PREPARING`) until finalization; redacted proposals are rejected and
+must be completed in the application. A core `LogRedactorInterface` hook covers all
+threads until the turn and its tool workers finish, then releases the raw values.
+
+History stays redacted; later turns re-read records. Existing transcripts are not
+migrated, and arbitrary text is not inferred to be classified without a matching
+observed value or classified criterion/field. Canary tests scan every assistant table,
+core audits and captured logs, while proving eligible models receive original values.
+Requires QQQ 4.1.0-RC.7 (`qqq#1182`); keep the PR draft until publication.

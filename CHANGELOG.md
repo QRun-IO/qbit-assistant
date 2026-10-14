@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased - Transcript redaction
+
+- Tokenize classified PII/PHI in stored messages, tool inputs/results, replay events, pending actions and derived summaries using QQQ secured-data tokens. Preserve eligible model requests and live SSE.
+- Stage content until turn completion, redact split deltas and classify criteria even when no records match; protect assistant logs with a scoped core redactor.
+- Reject proposals whose parameters were redacted; prevent confirmation before turn completion.
+- Read core table-level classification metadata and add secured-data canary tests for storage, audits, logs and in-memory model access.
+- Require QQQ 4.1.0-RC.7 (qqq#1182); retain the default audit-history opt-in and avoid duplicated routing headers against current core. Keep the PR draft until RC.7 is published.
+
 ## Unreleased - X1/Y1
 
 - Add default-off `withRecordHistory(true)` host opt-in: remove only `audit*` on RC.6, or invoke core #1193 audit-read/write-deny support when available. Preserve user permissions and all other channel denials; kof22 does not opt in.

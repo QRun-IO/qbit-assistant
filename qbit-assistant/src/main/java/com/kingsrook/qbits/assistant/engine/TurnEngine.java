@@ -44,6 +44,7 @@ import com.kingsrook.qbits.assistant.model.AssistantScheduledTask;
 import com.kingsrook.qbits.assistant.model.AssistantToolCall;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
+import com.kingsrook.qbits.assistant.persistence.TranscriptRedactor;
 import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
 import com.kingsrook.qbits.assistant.provider.CacheHint;
 import com.kingsrook.qbits.assistant.provider.ModelCapabilities;
@@ -101,10 +102,7 @@ public class TurnEngine implements Runnable
 {
    private static final QLogger LOG = QLogger.getLogger(TurnEngine.class);
 
-   private static final int MAX_INPUT_JSON_CHARS  = 4000;
-
    private static final AiRedactor INPUT_REDACTOR = new AiRedactor(List.of());
-   private static final int MAX_RESULT_JSON_CHARS = 64_000;
    private static final int TEXT_FLUSH_CHARS      = 48;
    private static final long TEXT_FLUSH_MILLIS    = 120;
 
@@ -150,6 +148,7 @@ public class TurnEngine implements Runnable
 
    private volatile boolean finished = false;
    private UiApiCredentials credentials;
+   private TranscriptRedactor transcript;
 
 
 
@@ -192,6 +191,17 @@ public class TurnEngine implements Runnable
 
 
    /*******************************************************************************
+    ** Continue the API's provisional transcript scope on the engine thread.
+    *******************************************************************************/
+   public TurnEngine withTranscript(TranscriptRedactor transcript)
+   {
+      this.transcript = transcript;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
     ** Run the turn to completion. Never throws.
     *******************************************************************************/
    @Override
@@ -208,6 +218,11 @@ public class TurnEngine implements Runnable
       try
       {
          QContext.init(runtime.getQInstance(), session);
+         if(transcript == null)
+         {
+            transcript = new TranscriptRedactor(runtime.getQInstance(), config.getClassificationSource());
+         }
+         transcript.attach();
          scheduledTask = runtime.getScheduledTurn().task(conversation.getId());
          if(conversation.getScheduledTaskId() != null && scheduledTask == null)
          {
@@ -420,8 +435,18 @@ public class TurnEngine implements Runnable
       finally
       {
          finished = true;
-         finish(status, stopReason, errorCode, errorText);
-         QContext.clear();
+         try
+         {
+            finish(status, stopReason, errorCode, errorText);
+         }
+         finally
+         {
+            if(transcript != null)
+            {
+               transcript.close();
+            }
+            QContext.clear();
+         }
       }
    }
 
@@ -700,6 +725,7 @@ public class TurnEngine implements Runnable
       for(int i = 0; i < toolUses.size(); i++)
       {
          ModelPart use = toolUses.get(i);
+         transcript.input(use.getInput());
          if(i >= allowed)
          {
             limitReached = true;
@@ -719,8 +745,14 @@ public class TurnEngine implements Runnable
          AiToolCall   call  = new AiToolCall().withId(use.getToolUseId()).withName(use.getToolName()).withInput(use.getInput());
          futures.add(runtime.getExecutor().submit(() ->
          {
+            if(!transcript.retainWorker())
+            {
+               return;
+            }
+            transcript.attach();
             try
             {
+               QContext.init(runtime.getQInstance(), session);
                permits.acquire();
                try
                {
@@ -781,6 +813,12 @@ public class TurnEngine implements Runnable
                LOG.warn("Tool kernel threw", hipaaSafe(e), logPair("tool", call.getName()));
                results[index] = new AiToolResult().withToolCallId(call.getId()).withToolName(call.getName()).withOutcome(AiToolOutcome.ERROR)
                   .withSummary("Failed").withModelContent("The tool failed unexpectedly.");
+            }
+            finally
+            {
+               transcript.releaseWorker();
+               TranscriptRedactor.detach();
+               QContext.clear();
             }
          }));
       }
@@ -879,6 +917,7 @@ public class TurnEngine implements Runnable
 
       try
       {
+         String inputJson = redactInput(PresentResultsTool.NAME.equals(use.getToolName()) ? (presentation ? result.getRender() : Map.of()) : use.getInput());
          store.insert(new AssistantToolCall()
             .withTurnId(turn.getId())
             .withConversationId(conversation.getId())
@@ -886,7 +925,7 @@ public class TurnEngine implements Runnable
             .withToolCallId(use.getToolUseId())
             .withToolName(use.getToolName())
             .withClientChannel(scheduledTask == null ? "assistant/" + turn.getId() : "assistant/scheduled/" + scheduledTask.getId())
-            .withInputJson(truncate(redactInput(PresentResultsTool.NAME.equals(use.getToolName()) ? (presentation ? result.getRender() : Map.of()) : use.getInput()), MAX_INPUT_JSON_CHARS))
+            .withInputJson(BulkLoadTools.NAMES.contains(use.getToolName()) ? BulkLoadTools.forLog(inputJson) : inputJson)
             .withOutcome(outcome)
             .withPermissionCheck(result.getPermissionCheck())
             .withTableName(result.getTableName())
@@ -895,7 +934,7 @@ public class TurnEngine implements Runnable
             .withRowCount(result.getRowCount())
             .withDurationMs(result.getDurationMs())
             .withResultSummary(summary)
-            .withResultJson(truncate(BulkLoadTools.NAMES.contains(use.getToolName()) ? BulkLoadTools.forLog(result.getModelContent()) : result.getModelContent(), MAX_RESULT_JSON_CHARS))
+            .withResultJson(BulkLoadTools.NAMES.contains(use.getToolName()) ? BulkLoadTools.forLog(result.getModelContent()) : result.getModelContent())
             .withRedactionsJson(result.getRedactions() == null || result.getRedactions().isEmpty() ? null : JsonUtils.toJson(result.getRedactions()))
             .withUiApiOperation(extras == null ? ("search_knowledge".equals(use.getToolName()) ? "GET /table/{tableName}/{primaryKey}" : null) : extras.getOperation())
             .withHttpStatus(extras == null ? null : extras.getHttpStatus())
@@ -1053,6 +1092,7 @@ public class TurnEngine implements Runnable
          }
          emit(TurnEvent.MESSAGE_END, end);
          persistPendingEvents();
+         transcript.flush(store);
 
          try
          {
@@ -1181,16 +1221,42 @@ public class TurnEngine implements Runnable
     *******************************************************************************/
    private void persistPendingEvents()
    {
+      if(!finished)
+      {
+         return;
+      }
+      List<TurnEvent> events = new ArrayList<>();
       TurnEvent event;
       while((event = toPersist.poll()) != null)
       {
+         events.add(event);
+      }
+      StringBuilder text = new StringBuilder();
+      for(TurnEvent queued : events)
+      {
+         if(TurnEvent.TEXT_DELTA.equals(queued.getType()))
+         {
+            text.append(queued.getData().get("text"));
+         }
+      }
+      Boolean firstText = true;
+      for(TurnEvent queued : events)
+      {
          try
          {
-            store.insertEvent(turn.getId(), userId, event.getSeq(), event.getType(), event.toJson());
+            String json = queued.toJson();
+            if(TurnEvent.TEXT_DELTA.equals(queued.getType()))
+            {
+               Map<String, Object> data = new LinkedHashMap<>(queued.getData());
+               data.put("text", firstText ? text.toString() : "");
+               firstText = false;
+               json = JsonUtils.toJson(data);
+            }
+            store.insertEvent(turn.getId(), userId, queued.getSeq(), queued.getType(), json);
          }
          catch(QException e)
          {
-            LOG.warn("Could not persist assistant turn event", hipaaSafe(e), logPair("turnId", turn.getId()), logPair("seq", event.getSeq()));
+            LOG.warn("Could not persist assistant turn event", hipaaSafe(e), logPair("turnId", turn.getId()), logPair("seq", queued.getSeq()));
          }
       }
    }

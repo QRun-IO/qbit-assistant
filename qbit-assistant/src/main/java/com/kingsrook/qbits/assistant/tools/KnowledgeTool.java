@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
+import com.kingsrook.qbits.assistant.persistence.TranscriptRedactor;
 import com.kingsrook.qbits.assistant.engine.PolicyService;
 import com.kingsrook.qbits.assistant.engine.TurnEngine;
 import com.kingsrook.qbits.assistant.model.AssistantRagSource;
@@ -213,6 +214,11 @@ public class KnowledgeTool
             title = title.substring(0, Math.min(300, title.length()));
             String snippet = chunks.get(hit.chunkIndex());
             snippet = snippet.substring(0, Math.min(1500, snippet.length()));
+            if(TranscriptRedactor.current() != null)
+            {
+               TranscriptRedactor.current().variant(hit.table(), hit.field(), hit.pk(), snippet);
+               TranscriptRedactor.current().variant(hit.table(), source.getTitleFieldName(), hit.pk(), title);
+            }
             records.add(Map.of("table", hit.table(), "recordId", hit.pk(), "title", title, "snippet", snippet, "score", hit.score(), "href", href));
             result.getRecordRefs().add(new AiRecordRef().withTableName(hit.table()).withId(hit.pk()).withLabel(title).withHref(href));
             result.getRedactions().addAll(read.getResult().getRedactions());

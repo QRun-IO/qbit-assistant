@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import com.kingsrook.qbits.assistant.persistence.TranscriptRedactor;
 import com.kingsrook.qbits.assistant.access.DataAccessMode;
 import com.kingsrook.qbits.assistant.access.DataAccessService;
 import com.kingsrook.qbits.assistant.engine.PolicyService;
@@ -1445,7 +1446,12 @@ public class UiApiToolbox
          {
             text = AiValueMasker.mask(text, field.getType());
          }
-         rs.put(name, sanitize(text, context, redactions));
+         String visible = sanitize(text, context, redactions);
+         if(TranscriptRedactor.current() != null)
+         {
+            TranscriptRedactor.current().observe(table.getName(), name, (Serializable) raw.get(table.getPrimaryKeyField()), entry.getValue(), visible);
+         }
+         rs.put(name, visible);
       }
       return (rs);
    }
@@ -1534,6 +1540,10 @@ public class UiApiToolbox
          return ("");
       }
       String line = text.replaceAll("\\s+", " ").strip();
+      if(line.length() > 300 && TranscriptRedactor.current() != null)
+      {
+         TranscriptRedactor.current().truncated(line, line.substring(0, 299));
+      }
       return (line.length() <= 300 ? line : line.substring(0, 299) + "…");
    }
 

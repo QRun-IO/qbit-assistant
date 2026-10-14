@@ -161,7 +161,13 @@ public class AssistantStore
       {
          projectBudgetUsage(record);
       }
-      return ((T) QRecordEntity.fromQRecord(entity.getClass(), cryptRecord(entity.tableName(), record, false)));
+      rememberTranscript(entity.tableName(), entity.toQRecord(), record.getValue("id"));
+      QRecord returned = cryptRecord(entity.tableName(), record, false);
+      if(TranscriptRedactor.current() != null)
+      {
+         TranscriptRedactor.current().restore(returned, entity.toQRecord());
+      }
+      return ((T) QRecordEntity.fromQRecord(entity.getClass(), returned));
    }
 
 
@@ -172,6 +178,7 @@ public class AssistantStore
    public void update(QRecordEntity entity) throws QException
    {
       requireOwnTable(entity.tableName());
+      rememberTranscript(entity.tableName(), entity.toQRecord(), entity.toQRecord().getValue("id"));
       UpdateOutput output = new UpdateAction().execute(new UpdateInput(entity.tableName()).withRecord(cryptRecord(entity.tableName(), entity.toQRecord(), true)));
       QRecord      record = output.getRecords().get(0);
       if(CollectionUtils.nullSafeHasContents(record.getErrors()))
@@ -188,6 +195,7 @@ public class AssistantStore
    public void updateFields(String tableName, QRecord record) throws QException
    {
       requireOwnTable(tableName);
+      rememberTranscript(tableName, record, record.getValue("id"));
       UpdateOutput output = new UpdateAction().execute(new UpdateInput(tableName).withRecord(cryptRecord(tableName, record, true)));
       QRecord      result = output.getRecords().get(0);
       if(CollectionUtils.nullSafeHasContents(result.getErrors()))
@@ -832,6 +840,10 @@ public class AssistantStore
       }
       QRecord copy = new QRecord();
       copy.setValues(new LinkedHashMap<>(record.getValues()));
+      if(encrypt && TranscriptRedactor.current() != null)
+      {
+         copy = TranscriptRedactor.current().prepare(copy);
+      }
       for(String field : ENCRYPTED_FIELDS.getOrDefault(tableName, List.of()))
       {
          if(copy.getValue(field) instanceof String text)
@@ -840,6 +852,19 @@ public class AssistantStore
          }
       }
       return (copy);
+   }
+
+
+
+   /*******************************************************************************
+    ** Stage transcript payloads until all classified values of the turn are known.
+    *******************************************************************************/
+   private void rememberTranscript(String table, QRecord record, Serializable id)
+   {
+      if(TranscriptRedactor.current() != null)
+      {
+         TranscriptRedactor.current().saved(table, record, id);
+      }
    }
 
 

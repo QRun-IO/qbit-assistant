@@ -133,7 +133,7 @@ class PhiRoutingTest extends BaseAssistantTest
       assertThat(outcome.toolCalls()).singleElement().satisfies(call ->
       {
          assertThat(call.getOutcome()).isEqualTo("OK");
-         assertThat(call.getResultJson()).contains("PHI_DIAGNOSIS_SENTINEL");
+         assertThat(call.getResultJson()).doesNotContain("PHI_DIAGNOSIS_SENTINEL").contains("changed:v1");
       });
       assertThat(provider.getRequests()).hasSize(1);
       assertThat(audits()).singleElement().satisfies(row ->

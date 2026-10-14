@@ -23,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import com.kingsrook.qbits.assistant.persistence.TranscriptRedactor;
 import com.kingsrook.qbits.assistant.access.DataAccessService;
 import com.kingsrook.qbits.assistant.engine.PolicyService;
 import com.kingsrook.qbits.assistant.provider.ModelToolDefinition;
@@ -822,6 +823,10 @@ public class BulkLoadTools
       if(text == null)
       {
          return ("");
+      }
+      if(text.length() > 300 && TranscriptRedactor.current() != null)
+      {
+         TranscriptRedactor.current().truncated(text, text.substring(0, 297));
       }
       return (text.length() > 300 ? text.substring(0, 297) + "..." : text);
    }

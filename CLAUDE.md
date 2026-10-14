@@ -52,6 +52,8 @@ Always use the wrapper: Maven 3.10 cannot read the parent POM. The committed def
 
 ## Invariants (do not break)
 
+- **Transcript redaction:** stored transcripts never contain raw PII/PHI values; tokens via `ClassifiedValueTokens`. Redact storage copies before truncation/encryption; eligible model inputs and live SSE remain unchanged.
+
 - **Sessions:**
   - Scheduled runs log in as the designated user through `POST /qqq/v1/manageSession`; resolve only its returned UUID, verify the user id, and never construct or elevate a session. The QQQ-supplied scheduler context touches only assistant bookkeeping.
   - Never use `QSystemUserSession` or construct a `QSession` in main code (ArchUnit).

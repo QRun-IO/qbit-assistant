@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
@@ -56,7 +57,9 @@ import com.kingsrook.qbits.assistant.testing.BaseAssistantTest;
 import com.kingsrook.qbits.assistant.testing.UiApiTestServer;
 import com.kingsrook.qbits.assistant.uiapi.UiApiCall;
 import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
+import com.kingsrook.qqq.backend.core.actions.ai.AiFieldMetaData;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
+import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
@@ -64,12 +67,14 @@ import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutp
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.MockAuthenticationModule;
+import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -209,6 +214,35 @@ class ScheduledTasksTest extends BaseAssistantTest
       assertThat(runtime.getStore().scheduledTask(task.getId()).getNextRunAt()).isEqualTo(Instant.parse("2026-03-08T13:00:00Z"));
       assertThat(QContext.getQSession().getUser().getIdReference()).isEqualTo(AssistantTestFixture.ADMIN);
       assertThat(notifications).isEmpty();
+   }
+
+
+
+   /*******************************************************************************
+    ** Scheduled summaries are derived from the redacted stored message, not live SSE.
+    *******************************************************************************/
+   @Test
+   void scheduledSummaryCanary() throws Exception
+   {
+      String marker = "CANARY-PII-" + UUID.randomUUID();
+      qInstance.getTable("page").getField("title").withSupplementalMetaData(new AiFieldMetaData().withClassification(DataClassification.PII));
+      new UpdateAction().execute(new UpdateInput("page").withRecord(new QRecord().withValue("id", 1).withValue("title", marker)));
+      provider.thenToolUse("get_record", Map.of("table", "page", "id", "1")).thenText(marker);
+      AssistantScheduledRun run = scheduledRunner().run(task(), false);
+      assertThat(run.getStatus()).as(run.getError()).isEqualTo("OK");
+      assertThat(run.getSummary()).isEqualTo("changed:v1");
+      assertThat(JsonUtils.toJson(provider.getRequests().getLast())).contains(marker);
+      for(String table : qInstance.getTables().keySet())
+      {
+         if(table.startsWith("assistant_") || table.toLowerCase().startsWith("audit"))
+         {
+            String rows = JsonUtils.toJson(new QueryAction().execute(new QueryInput(table)).getRecords());
+            for(int i = 0; i <= marker.length() - 5; i++)
+            {
+               assertThat(rows).doesNotContain(marker.substring(i, i + 5));
+            }
+         }
+      }
    }
 
 
