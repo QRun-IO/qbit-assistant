@@ -43,6 +43,8 @@ import com.kingsrook.qbits.assistant.model.AssistantProfile;
 import com.kingsrook.qbits.assistant.model.AssistantProfileSkill;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
 import com.kingsrook.qbits.assistant.model.AssistantRagSource;
+import com.kingsrook.qbits.assistant.model.AssistantScheduledRun;
+import com.kingsrook.qbits.assistant.model.AssistantScheduledTask;
 import com.kingsrook.qbits.assistant.model.AssistantSkill;
 import com.kingsrook.qbits.assistant.model.AssistantToolCall;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
@@ -52,9 +54,9 @@ import com.kingsrook.qbits.assistant.model.AssistantUsageDaily;
 import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.ChildRecordListRenderer;
 import com.kingsrook.qqq.backend.core.instances.QInstanceEnricher;
-import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReferenceWithProperties;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.AdornmentType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.DisplayFormat;
@@ -132,6 +134,8 @@ public final class AssistantRecordScreens
       }
 
       return (List.of(
+         QPossibleValueSource.newForTable(AssistantScheduledTask.TABLE_NAME),
+         enumSource("assistant_scheduled_output", List.of(new QPossibleValue<>("RECORD", "Record"), new QPossibleValue<>("NOTIFICATION", "Notification"), new QPossibleValue<>("BOTH", "Both"))),
          QPossibleValueSource.newForTable(AssistantBudget.TABLE_NAME),
          QPossibleValueSource.newForTable(AssistantModel.TABLE_NAME).withName("assistant_registry_model"),
          QPossibleValueSource.newForTable(AssistantModel.TABLE_NAME).withName("assistant_budget_model"),
@@ -173,6 +177,32 @@ public final class AssistantRecordScreens
    {
       switch(table.getName())
       {
+         case AssistantScheduledTask.TABLE_NAME ->
+         {
+            link(table, "profileId", AssistantProfile.TABLE_NAME, "Profile");
+            pvs(table, "outputMode", "assistant_scheduled_output", "Output mode");
+            help(table, "credentialEnvName", "Name of an allowed environment variable holding this user's access token. Never enter the token here.");
+            help(table, "cronExpression", "Quartz cron expression, including seconds; for example 0 0 8 * * ? for 08:00 daily.");
+            help(table, "timezone", "IANA time zone, for example America/Chicago. Defaults to UTC; daylight saving time follows this zone.");
+            help(table, "writeModeRequested", "Requires administrator approval of this exact prompt and identity. Each proposed write still requires the user's confirmation.");
+            help(table, "maxCostUsdPerRun", "Optional USD STOP cap. Checked before each model or embedding call; a completed call may cross the cap.");
+            sections(table,
+               section("task", "Task", "schedule", Tier.T1, "id", "name", "enabled", "prompt", "profileId"),
+               section("identity", "Run as", "person", Tier.T2, "runAsUserId", "credentialEnvName", "credentialStatus"),
+               section("schedule", "Schedule and output", "event", Tier.T2, "cronExpression", "timezone", "nextRunAt", "outputMode", "maxCostUsdPerRun"),
+               section("approval", "Write approval", "verified_user", Tier.T2, "writeModeRequested", "writeModeApprovedBy", "writeModeApprovedAt", "writeModeApprovalHash"),
+               section("lastRun", "Last run", "history", Tier.T2, "lastRunAt", "lastRunStatus", "lastRunError"));
+         }
+         case AssistantScheduledRun.TABLE_NAME ->
+         {
+            link(table, "taskId", AssistantScheduledTask.TABLE_NAME, "Task");
+            link(table, "conversationId", AssistantConversation.TABLE_NAME, "Conversation");
+            link(table, "turnId", AssistantTurn.TABLE_NAME, "Turn");
+            help(table, "costMicros", MICROS_HELP);
+            sections(table,
+               section("run", "Run", "history", Tier.T1, "id", "taskId", "userId", "status", "scheduledFor", "startedAt", "endedAt"),
+               section("result", "Result", "chat", Tier.T2, "conversationId", "turnId", "summary", "costMicros", "error"));
+         }
          case AssistantBudget.TABLE_NAME -> budget(table);
          case AssistantBudgetOverride.TABLE_NAME, AssistantBudgetEvent.TABLE_NAME ->
          {
@@ -213,6 +243,11 @@ public final class AssistantRecordScreens
     *******************************************************************************/
    public static void addConversationChildLists(QInstance qInstance)
    {
+      QTableMetaData scheduledTask = qInstance.getTable(AssistantScheduledTask.TABLE_NAME);
+      if(scheduledTask != null)
+      {
+         childList(qInstance, scheduledTask, AssistantScheduledRun.TABLE_NAME, "Runs", "history", List.of("startedAt", "status", "conversationId", "costMicros", "summary"), "taskId", "scheduled");
+      }
       QTableMetaData conversation = qInstance.getTable(AssistantConversation.TABLE_NAME);
       if(conversation == null)
       {

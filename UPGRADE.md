@@ -1,5 +1,55 @@
 # Upgrading qbit-assistant
 
+## Provider API extraction (#30)
+
+Hosts that depend on `qbit-assistant` keep working: it now brings in
+`qbit-assistant-provider-api` transitively. Package names are unchanged, including
+`com.kingsrook.qbits.assistant.engine.ModelPricing`. No schema migration is needed.
+
+External providers and applications using only provider/pricing types should
+replace their `qbit-assistant` dependency with
+`com.kingsrook.qbits:qbit-assistant-provider-api` at the same version. This removes
+the assistant runtime and QQQ from that dependency path; only Jackson annotations
+are required by the API. Anthropic, OpenAI, Bedrock and Vertex adapters use this
+split; pgvector retains `qbit-assistant` for its runtime RAG interfaces.
+
+Recompile custom provider types that override `validate(AssistantProvider)` and
+change the signature to `validate(ProviderSettings)`. The settings carry the
+configured kind, URL, API version, region, project, CA bundle name, timeouts and
+`apiKeyEnvName`; the key and bearer-token supplier are not resolved for validation.
+Providers using the default validator need no source change. Keep the runtime and
+provider artifacts on the same version; old validator overrides must be rebuilt.
+## P-g: scheduled tasks
+
+Apply the **P-g** DDL in [docs/schema-postgres.sql](docs/schema-postgres.sql)
+before deploying. The unique `(task_id, scheduled_for)` constraint is required
+for multi-replica safety; retain run rows as schedule-slot claim history.
+Existing conversations default to channel `panel`. Tasks start disabled.
+
+Set `withScheduledTasksSchedulerName(...)` to an existing QQQ scheduler and
+configure `withUiApiBaseUrl(...)` with this replica's own listener URL. The runner
+polls every 60 seconds. QQQ must supply a scheduler session able to manage the
+assistant tables; this QBit never creates that session. The configured backend
+must enforce unique keys atomically (Postgres does).
+
+Allow only designated credential references with
+`withAllowedScheduledCredentialEnvNames(Set.of("ASSISTANT_SCHEDULED_TOKEN"))`.
+Provide that variable through the host's secret manager. It must hold a token
+accepted by the host's `manageSession` authentication provider for `runAsUserId`.
+The runner fails closed on missing/disallowed credentials or an identity mismatch.
+See [scheduled-task setup](README.md#scheduled-tasks) for kof22 provisioning.
+
+QQQ RC.5 has no conditional UpdateInput. The runner uses a database-unique
+schedule-slot insertion as its optimistic claim, then advances `nextRunAt`
+before starting work. Crashes can skip a slot; they never retry it. No ArchUnit
+exception or fabricated session is introduced. Core client-channel enforcement
+arrives with the client-channel RC; the header and tool audit are already sent.
+
+Notifications use the optional Alerts QBit notification SPI with a single-user
+audience. Without it, delivery logs run id/status only. All output modes retain
+the owner-locked audit row and conversation. HIPAA run summaries never copy the
+answer; they contain only `see conversation`.
+
 ## P-f: knowledge retrieval
 
 Apply the **P-f** assistant-table DDL in

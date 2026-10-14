@@ -24,7 +24,6 @@ package com.kingsrook.qbits.assistant.email;
 import java.io.Serializable;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import com.kingsrook.qbits.assistant.classification.DataClassification;
 import com.kingsrook.qbits.email.EmailRuntime;
 import com.kingsrook.qbits.email.outbox.EmailCategory;
 import com.kingsrook.qbits.email.outbox.EmailRequest;
@@ -32,6 +31,7 @@ import com.kingsrook.qbits.email.outbox.EmailSendResult;
 import com.kingsrook.qbits.email.outbox.EmailService;
 import com.kingsrook.qbits.email.template.EmailTemplateDefinition;
 import com.kingsrook.qbits.email.template.EmailTemplates;
+import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 

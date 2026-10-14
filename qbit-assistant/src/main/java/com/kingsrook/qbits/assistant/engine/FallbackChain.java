@@ -27,7 +27,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
-import com.kingsrook.qbits.assistant.classification.DataClassification;
 import com.kingsrook.qbits.assistant.model.AssistantModel;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
@@ -36,6 +35,7 @@ import com.kingsrook.qbits.assistant.provider.ModelMessage;
 import com.kingsrook.qbits.assistant.provider.ModelProviderException;
 import com.kingsrook.qbits.assistant.provider.ModelRequest;
 import com.kingsrook.qbits.assistant.provider.ModelResponse;
+import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 
 

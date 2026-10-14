@@ -17,6 +17,7 @@
 package com.kingsrook.qbits.assistant;
 
 
+import javax.net.ssl.SSLContext;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,11 +29,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Pattern;
-import javax.net.ssl.SSLContext;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.kingsrook.qbits.assistant.classification.ClassificationSource;
 import com.kingsrook.qbits.assistant.classification.ConfiguredClassificationSource;
-import com.kingsrook.qbits.assistant.classification.DataClassification;
 import com.kingsrook.qbits.assistant.engine.ModelPricing;
 import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
 import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
@@ -40,6 +39,7 @@ import com.kingsrook.qbits.assistant.provider.TrustedCaBundle;
 import com.kingsrook.qbits.assistant.rag.VectorStore;
 import com.kingsrook.qbits.assistant.uiapi.UiApiGateway;
 import com.kingsrook.qqq.backend.core.actions.ai.AiExposure;
+import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.producers.MetaDataCustomizerInterface;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitConfig;
@@ -110,6 +110,9 @@ public class AssistantQBitConfig implements QBitConfig
    private Integer               policyCacheSeconds         = 30;
    private String                ownerSecurityKeyType       = DEFAULT_OWNER_KEY_TYPE;
    private String                shortcut                   = DEFAULT_SHORTCUT;
+   private Set<String> allowedScheduledCredentialEnvNames = new LinkedHashSet<>();
+   private String scheduledTasksSchedulerName;
+
    private String                retentionSchedulerName;
    private Boolean               registerRoutes             = true;
    private Map<String, ModelPricing> pricing                = ModelPricing.defaults();
@@ -133,6 +136,7 @@ public class AssistantQBitConfig implements QBitConfig
    //////////////////////////////////////////////////////////////////////////
    private String                    uiApiBaseUrl;
    private UiApiGateway              uiApiGateway;
+   private com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadRunner bulkLoadRunner;
    private Integer                   pendingActionTtlSeconds  = 900;
    private List<String>              customRedactionPatterns  = new ArrayList<>();
    private Integer                   killSwitchPollMillis     = 2000;
@@ -215,6 +219,13 @@ public class AssistantQBitConfig implements QBitConfig
       requirePositive(errors, "killSwitchPollMillis", killSwitchPollMillis);
       requirePositive(errors, "providerTestTimeoutSeconds", providerTestTimeoutSeconds);
       requirePositive(errors, "homeMaxRows", homeMaxRows);
+      for(String name : allowedScheduledCredentialEnvNames == null ? Set.<String>of() : allowedScheduledCredentialEnvNames)
+      {
+         if(name == null || !ENV_NAME.matcher(name).matches())
+         {
+            errors.add("allowedScheduledCredentialEnvNames contains an invalid environment variable name.");
+         }
+      }
       for(String name : allowedApiKeyEnvNames == null ? Set.<String>of() : allowedApiKeyEnvNames)
       {
          if(name == null || !ENV_NAME.matcher(name).matches())
@@ -1205,6 +1216,38 @@ public class AssistantQBitConfig implements QBitConfig
 
 
    /*******************************************************************************
+    ** Getter for bulkLoadRunner (null: the durable jobs launch,
+    ** JobsLaunchBulkLoadRunner) - how bulk_load_run starts a load.
+    *******************************************************************************/
+   public com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadRunner getBulkLoadRunner()
+   {
+      return (this.bulkLoadRunner);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for bulkLoadRunner
+    *******************************************************************************/
+   public void setBulkLoadRunner(com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadRunner bulkLoadRunner)
+   {
+      this.bulkLoadRunner = bulkLoadRunner;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for bulkLoadRunner
+    *******************************************************************************/
+   public AssistantQBitConfig withBulkLoadRunner(com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadRunner bulkLoadRunner)
+   {
+      this.bulkLoadRunner = bulkLoadRunner;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
     ** Getter for uiApiGateway (null: the loopback stand-in)
     *******************************************************************************/
    public UiApiGateway getUiApiGateway()
@@ -1878,6 +1921,68 @@ public class AssistantQBitConfig implements QBitConfig
    public AssistantQBitConfig withVectorStore(VectorStore vectorStore)
    {
       this.vectorStore = vectorStore;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for allowedScheduledCredentialEnvNames
+    *******************************************************************************/
+   public Set<String> getAllowedScheduledCredentialEnvNames()
+   {
+      return (allowedScheduledCredentialEnvNames);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for allowedScheduledCredentialEnvNames
+    *******************************************************************************/
+   public void setAllowedScheduledCredentialEnvNames(Set<String> allowedScheduledCredentialEnvNames)
+   {
+      this.allowedScheduledCredentialEnvNames = allowedScheduledCredentialEnvNames;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for allowedScheduledCredentialEnvNames
+    *******************************************************************************/
+   public AssistantQBitConfig withAllowedScheduledCredentialEnvNames(Set<String> allowedScheduledCredentialEnvNames)
+   {
+      this.allowedScheduledCredentialEnvNames = allowedScheduledCredentialEnvNames;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for scheduledTasksSchedulerName
+    *******************************************************************************/
+   public String getScheduledTasksSchedulerName()
+   {
+      return (scheduledTasksSchedulerName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for scheduledTasksSchedulerName
+    *******************************************************************************/
+   public void setScheduledTasksSchedulerName(String scheduledTasksSchedulerName)
+   {
+      this.scheduledTasksSchedulerName = scheduledTasksSchedulerName;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for scheduledTasksSchedulerName
+    *******************************************************************************/
+   public AssistantQBitConfig withScheduledTasksSchedulerName(String scheduledTasksSchedulerName)
+   {
+      this.scheduledTasksSchedulerName = scheduledTasksSchedulerName;
       return (this);
    }
 }

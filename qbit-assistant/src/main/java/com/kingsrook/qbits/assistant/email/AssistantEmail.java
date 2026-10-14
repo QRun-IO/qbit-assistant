@@ -31,8 +31,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
  ** is present. This class names no qbit-email type, so it loads without the
  ** jar; the adapter (AssistantEmailSender) is only loaded after the guard passes.
  **
- ** The scheduled-task runner (P-g) is not built yet. It calls
- ** sendScheduledResult after a run, and the gates below apply to every call:
+ ** Hosts can call sendScheduledResult after a run; the scheduled-task runner
+ ** does not yet wire email delivery. The gates below apply to every call:
  ** the task opted in, the host approved EXTERNAL delivery
  ** (AssistantQBitConfig.getEmailExternalApproved, until the approval rule
  ** exists), and there is a recipient address.

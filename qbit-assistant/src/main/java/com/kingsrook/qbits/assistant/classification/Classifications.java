@@ -1,15 +1,11 @@
 /*
- * QQQ - Low-code Application Framework for Engineers.
- * Copyright (C) 2026.  Kingsrook, LLC
- * 651 N Broad St Ste 205 # 6917 | Middletown DE 19709 | United States
- * contact@kingsrook.com
- * https://github.com/Kingsrook/
+ * Copyright 2026 Kingsrook, LLC
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     https://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,24 +17,31 @@
 package com.kingsrook.qbits.assistant.classification;
 
 
-
+import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 
 
 /*******************************************************************************
- ** Stand-in for core DataClassification (QRun-IO/qqq#1142); replace when the qbit builds on an RC that has it.
+ ** The assistant's conventions over core's {@link DataClassification}: an
+ ** absent classification is PUBLIC, and a stored level this version does not
+ ** know is treated as PHI (fail conservative).
  *******************************************************************************/
-public enum DataClassification
+public final class Classifications
 {
-   PUBLIC, CONFIDENTIAL, PII, PHI;
+   /*******************************************************************************
+    ** Utility class.
+    *******************************************************************************/
+   private Classifications()
+   {
+   }
 
 
 
    /*******************************************************************************
-    ** Whether this classification is at least the supplied level; null means PUBLIC.
+    ** The level, or PUBLIC when absent.
     *******************************************************************************/
-   public boolean isAtLeast(DataClassification other)
+   public static DataClassification orPublic(DataClassification classification)
    {
-      return (ordinal() >= (other == null ? PUBLIC : other).ordinal());
+      return (classification == null ? DataClassification.PUBLIC : classification);
    }
 
 
@@ -48,9 +51,7 @@ public enum DataClassification
     *******************************************************************************/
    public static DataClassification max(DataClassification left, DataClassification right)
    {
-      DataClassification a = left == null ? PUBLIC : left;
-      DataClassification b = right == null ? PUBLIC : right;
-      return (a.isAtLeast(b) ? a : b);
+      return (DataClassification.max(orPublic(left), orPublic(right)));
    }
 
 
@@ -62,15 +63,15 @@ public enum DataClassification
    {
       if(value == null)
       {
-         return (PUBLIC);
+         return (DataClassification.PUBLIC);
       }
       try
       {
-         return (valueOf(value));
+         return (DataClassification.valueOf(value));
       }
       catch(IllegalArgumentException e)
       {
-         return (PHI);
+         return (DataClassification.PHI);
       }
    }
 }

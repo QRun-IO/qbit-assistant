@@ -17,8 +17,20 @@
 package com.kingsrook.qbits.assistant.persistence;
 
 
+import java.io.Serializable;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
+import com.kingsrook.qbits.assistant.classification.Classifications;
+import com.kingsrook.qbits.assistant.engine.TurnClassification;
 import com.kingsrook.qbits.assistant.model.AssistantBudget;
 import com.kingsrook.qbits.assistant.model.AssistantBudgetEvent;
 import com.kingsrook.qbits.assistant.model.AssistantBudgetOverride;
@@ -32,18 +44,22 @@ import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
 import com.kingsrook.qbits.assistant.model.AssistantPendingAction;
 import com.kingsrook.qbits.assistant.model.AssistantPolicy;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
+import com.kingsrook.qbits.assistant.model.AssistantScheduledRun;
+import com.kingsrook.qbits.assistant.model.AssistantScheduledTask;
 import com.kingsrook.qbits.assistant.model.AssistantToolCall;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
 import com.kingsrook.qbits.assistant.model.AssistantTurnEvent;
 import com.kingsrook.qbits.assistant.model.AssistantUsage;
 import com.kingsrook.qbits.assistant.model.AssistantUsageDaily;
 import com.kingsrook.qbits.assistant.provider.ModelUsage;
+import com.kingsrook.qbits.assistant.scheduled.ScheduledTasks;
 import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.actions.tables.ActionFlag;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
@@ -56,15 +72,6 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.data.QRecordEntity;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
-import java.io.Serializable;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 
 /*******************************************************************************
@@ -773,7 +780,7 @@ public class AssistantStore
    /*******************************************************************************
     ** Save the turn level and never lower persisted conversation history.
     *******************************************************************************/
-   public synchronized void saveClassification(String userId, Integer conversationId, Integer turnId, com.kingsrook.qbits.assistant.engine.TurnClassification classification) throws QException
+   public synchronized void saveClassification(String userId, Integer conversationId, Integer turnId, TurnClassification classification) throws QException
    {
       AssistantConversation current = getConversation(userId, conversationId);
       classification.inherit(current);
@@ -781,8 +788,8 @@ public class AssistantStore
          .withValue("classification", classification.getClassification().name()).withValue("classificationTables", classification.getTables()));
       if(current != null)
       {
-         var maximum = com.kingsrook.qbits.assistant.classification.DataClassification.max(
-            com.kingsrook.qbits.assistant.classification.DataClassification.stored(current.getMaxClassification()), classification.getClassification());
+         var maximum = Classifications.max(
+            Classifications.stored(current.getMaxClassification()), classification.getClassification());
          if(!maximum.name().equals(current.getMaxClassification()))
          {
             updateFields(AssistantConversation.TABLE_NAME, new QRecord().withValue("id", conversationId).withValue("maxClassification", maximum.name()));
@@ -934,4 +941,98 @@ public class AssistantStore
          updateFields(AssistantBudgetUsage.TABLE_NAME, projection.withValue("id", existing.get(0).getId()));
       }
    }
+
+
+
+   /*******************************************************************************
+    ** Internal bookkeeping flag; never accepted from a UI request body.
+    *******************************************************************************/
+   public enum ScheduledWrite implements ActionFlag
+   {
+      INTERNAL
+   }
+
+
+
+   /*******************************************************************************
+    ** Update computed task fields through QQQ under the caller's session.
+    *******************************************************************************/
+   public void scheduledUpdate(QRecord record) throws QException
+   {
+      UpdateOutput output = new UpdateAction().execute(new UpdateInput(AssistantScheduledTask.TABLE_NAME)
+         .withRecord(record).withFlag(ScheduledWrite.INTERNAL));
+      if(CollectionUtils.nullSafeHasContents(output.getRecords().get(0).getErrors()))
+      {
+         throw (new QException("Could not update scheduled task bookkeeping."));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Read a task definition, never application data.
+    *******************************************************************************/
+   public AssistantScheduledTask scheduledTask(Integer id) throws QException
+   {
+      return (first(query(AssistantScheduledTask.TABLE_NAME,
+         new QQueryFilter().withCriteria("id", QCriteriaOperator.EQUALS, id), AssistantScheduledTask.class)));
+   }
+
+
+
+   /*******************************************************************************
+    ** Optimistic slot claim. The database unique(taskId, scheduledFor) is the
+    ** cross-replica arbiter; the monitor also covers the fixture memory backend.
+    ** Advance before dispatch. A crash can skip a slot, never run it twice.
+    *******************************************************************************/
+   public ScheduledClaim claimScheduled(
+      AssistantScheduledTask candidate, Instant now, Boolean manual) throws QException
+   {
+      synchronized(QContext.getQInstance())
+      {
+         var task = scheduledTask(candidate.getId());
+         if(task == null || (!manual && (!Boolean.TRUE.equals(task.getEnabled()) || task.getNextRunAt() == null
+            || task.getNextRunAt().isAfter(now) || !Objects.equals(task.getNextRunAt(), candidate.getNextRunAt()))))
+         {
+            return (null);
+         }
+         Instant slot = manual ? now : task.getNextRunAt();
+         Instant next = Boolean.TRUE.equals(task.getEnabled()) ? ScheduledTasks.next(task, now) : null;
+         var filter = new QQueryFilter().withCriteria("taskId", QCriteriaOperator.EQUALS, task.getId()).withCriteria("scheduledFor", QCriteriaOperator.EQUALS, slot);
+         if(!query(AssistantScheduledRun.TABLE_NAME, filter, AssistantScheduledRun.class).isEmpty())
+         {
+            if(!manual)
+            {
+               scheduledUpdate(new QRecord().withValue("id", task.getId()).withValue("nextRunAt", next));
+            }
+            return (null);
+         }
+         AssistantScheduledRun run;
+         try
+         {
+            run = insert(new AssistantScheduledRun().withTaskId(task.getId()).withUserId(task.getRunAsUserId())
+               .withScheduledFor(slot).withStartedAt(now).withStatus("RUNNING").withCostMicros(0L));
+         }
+         catch(QException e)
+         {
+            if(!query(AssistantScheduledRun.TABLE_NAME, filter, AssistantScheduledRun.class).isEmpty())
+            {
+               return (null);
+            }
+            throw (e);
+         }
+         scheduledUpdate(new QRecord().withValue("id", task.getId()).withValue("nextRunAt", next));
+         return (new ScheduledClaim(task, run));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** The claimed task snapshot and its run owner must remain consistent.
+    *******************************************************************************/
+   public record ScheduledClaim(AssistantScheduledTask task, AssistantScheduledRun run)
+   {
+   }
+
 }

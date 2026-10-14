@@ -143,7 +143,7 @@ Owner: *"the agent should have to go through the same API that the UIUX does. th
 - A request to the server's own port runs the identical pipeline by construction. It costs one local hop, which is milliseconds next to a model call.
 
 This matches core's design (`docs/UI-API-EXTENSIONS.md` §5, `UiApiInvoker`, QRun-IO/qqq#1128).
-- `LoopbackUiApiGateway` is the stand-in until a QQQ release has the invoker. Then an adapter over `UiApiInvoker.forServer(server)` replaces it (or a host injects one with `withUiApiGateway`), and nothing else changes.
+- `CoreUiApiGateway` adapts core's `UiApiInvoker` (the loopback stand-in is deleted). It labels calls with the client channel `assistant`, plus the turn id as detail (`assistant/<turnId>`). Form params go to the invoker's `withFormParam`; extra headers (the bulk-load tools' `X-QQQ-AI-Route`) go through `HeaderedUiApiInvoker`, a small subclass in core's package because core's request has no `withHeader` yet. A host can still inject its own gateway with `withUiApiGateway`.
 - The base URL is `uiApiBaseUrl` if configured. Otherwise it is `127.0.0.1` plus the local port the first assistant request arrived on, so in a multi-replica deployment the call stays on the replica that holds the session's process state.
 
 ### The tools
@@ -227,6 +227,18 @@ The golden and red-team evals now run through the UI API too.
   - The `assistantAccess` widget on the Assistant home renders the same thing for the viewing admin.
   - Choosing *another* user would need that user's permissions without their session. QQQ core has no API to evaluate another user's permissions, and the assistant never builds or borrows a session. That part waits for a core API, so the report is always computed with the requester's own session.
 - **Recent denials:** the home's "Recent denials" card lists the newest tool calls the UI API, data access or the policy refused, with who, the table, the operation and the HTTP status, or the assistant setting that refused it.
+
+## Spec'd assistant endpoints and the core invoker (phase d, QQQ 4.1.0-RC.6)
+
+- **The endpoints are spec'd `/qqq/v1` operations.** `api/specs/AssistantSpecs` registers the UI API extension `assistant` (semver 1.0.0, established prefix `/assistant`) through `MiddlewareSpecExtensionsMetaData`.
+  - The URLs, bodies and statuses stay the same (201 create, 202 cancel, 204 delete and feedback, and the assistant's `{"error","code"}` errors), so Next needs no change.
+  - They appear in the served `/qqq/v1/openapi.yaml`. The turn and events streams are declared as `text/event-stream`, with `AssistantTurnEventV1` describing the events.
+  - The fragment is committed as `qbit-assistant/src/main/resources/openapi/qqq-v1/assistant.yaml`. `AssistantSpecsContractTest` checks it against the code, and the release baseline in test resources, with core's `UiApiContract`.
+- **No raw routes.** `AssistantRouteProvider` keeps only a before-handler that learns the server's local port from the first `/qqq/v1` request.
+- **Tools call core's `UiApiInvoker`** (`CoreUiApiGateway`), and the loopback stand-in is removed.
+  - The request's credentials (`UiApiCredentials.fromContext`: session cookies, Authorization, API key, exactly as they came in) are captured by the spec that starts the turn, confirms an action or explains access. They are passed to the tools, so OAuth2, table auth and API-key sessions all work. They are never logged.
+  - The gateway also refuses the assistant's own operations, so a turn can never start a turn.
+- QQQ 4.1.0-RC.6 (the default `qqq.snapshot.version`) contains #1128, so no local build is needed.
 
 ## Owner decisions (2026-10-13), continued: write mode, the hard wall, audit attribution, providers
 
@@ -354,10 +366,8 @@ AI exposure NONE is not enough, because the assistant acts as the user and an ad
 
 ### P-c as built
 
-- The qbit classification enum is a stand-in for core #1142 until a released RC
-  includes it. Configured table/field overrides are the default; hosts can supply
-  a `ClassificationSource` over core metadata, mapping enum names, then replace
-  the stand-in when the minimum QQQ version advances.
+- The qbit classification stand-in is gone: the levels are core's `actions.ai.DataClassification` (QQQ 4.1.0-RC.6, core #1142).
+  The default `ClassificationSource` reads core metadata (`AiDataClassifications`, `AiTableMetaData`, `AiFieldMetaData`) merged with the configured table/field map; configuration wins when both are set. Hosts can still supply their own source with `withClassificationSource`.
 - Turn/page/tool classification is monotonic, persisted on the turn and retained
   on the conversation. Field subsets use overrides; unknown cross-table results
   conservatively use the highest configured level. Metadata tools stay PUBLIC.
@@ -468,6 +478,92 @@ AI exposure NONE is not enough, because the assistant acts as the user and an ad
   replicas should serialize manual re-indexing of a source at the host level;
   per-record pgvector replacement is transactional, while scan reconciliation is
   not a snapshot of concurrently changing application data.
+
+### P-g as built
+
+- `assistant_scheduled_task` is admin-only, AI exposure NONE, and appears as
+  Scheduled tasks. The owner-locked, read-only `assistant_scheduled_run` child
+  list retains run status, accounting and a bounded summary. Conversations gain
+  read-only `scheduledTaskId` and `channel` (`panel` or `assistant/scheduled`).
+  Task and run timestamps use the runtime clock; cron uses Quartz and a validated
+  ZoneId, including DST. Enablement and schedule edits recompute `nextRunAt`.
+- Credentials are references, never stored tokens. `credentialEnvName` must
+  match `[A-Z_][A-Z0-9_]*` and the dedicated
+  `allowedScheduledCredentialEnvNames` allowlist. The existing secret resolver
+  supplies its value. Read-only `credentialStatus` reports presence without
+  exposing token characters and is stripped on every save.
+- A run sends JSON `{accessToken: ...}` to the same loopback base URL's
+  `POST /qqq/v1/manageSession`. RC.5 with HTTP-only cookies returns the UUID in
+  `Set-Cookie: sessionUUID`; legacy JSON `uuid` is also accepted. Only then does
+  the runner resolve that UUID through the host authentication module, exactly
+  the UUID lookup used by the UI request pipeline. No direct token authentication,
+  automated-user session or constructed QSession exists in assistant code.
+  The resolved user id must equal `runAsUserId` before any model call. MOCK in
+  the integration fixture maps test tokens to the existing user-prefix sessions;
+  that token adapter is test code only.
+- kof22 provisions an Authentik designated account with normal QQQ permissions
+  and injects an accepted long-lived token through its secret manager and
+  ExternalSecret into an allow-listed environment variable. The task holds the
+  variable name and QQQ user id. Host authentication must accept that token type
+  as `accessToken`; an Authentik management API token is not automatically an
+  application access token. Neither account nor credential is provisioned here.
+- `assistantScheduledTasksRunner` registers a 60-second QScheduleMetaData when
+  `scheduledTasksSchedulerName` names a host scheduler. QQQ supplies its normal
+  scheduler context for assistant-table bookkeeping; no ArchUnit exception is
+  necessary. Configure `uiApiBaseUrl` at startup. No browser visit is required.
+- **Claim compatibility:** RC.5 UpdateInput cannot express a conditional
+  `WHERE next_run_at = expected`. AssistantStore therefore claims the expected
+  schedule slot using the database-enforced unique `(taskId, scheduledFor)` run
+  key and advances `nextRunAt` before login/dispatch. This is a unique-insert
+  optimistic claim rather than a conditional update. The memory fixture also
+  serializes claim operations on its instance. The database constraint, not
+  that monitor, prevents cross-replica duplicate execution. Do not remove claim
+  history or deploy to a backend without atomic unique keys. A crash can lose a
+  run; it never retries a claimed slot. A later tick advances an already-claimed
+  slot left behind by a crash between claim and schedule update.
+- The unchanged AssistantApi starts a new normal turn under the logged-in
+  designated user, preserving start gates, rate limiting, P-c classification,
+  P-d budgets and P-e routing/fallback. An internal context supplies the task's
+  selected profile and additional cost cap. Cost includes chat, classifier,
+  failed calls and knowledge-query embeddings. STOP is checked at dispatch
+  boundaries; an in-flight call can exceed the cap, and no next call is sent.
+- Every scheduled UI API request, including metadata and knowledge retrieval,
+  carries `X-QQQ-Client: assistant/scheduled/<taskId>`. The only uiapi change is
+  additive `LoopbackUiApiGateway.invokeWithClient`; custom gateways currently
+  fail closed for scheduled requests because their channel contract is unknown.
+  Tool-call rows also record `clientChannel`. Core channel deny enforcement
+  remains pending the client-channel RC; existing AI exposure/data-access
+  restrictions continue to apply on RC.5.
+- Approve write mode, Revoke write mode and Run now are admin record actions
+  using standard streamed ETL Review/Result. Review shows the exact prompt's
+  SHA-256 and run-as user. Result rereads and compares the complete reviewed
+  definition before recording the actual administrator's user id and time.
+  A persisted approval hash additionally binds prompt, run-as user, credential
+  reference, profile and requested mode. Editing any of these clears approval;
+  ordinary saves cannot set approval or computed bookkeeping fields.
+- This base has create/update/delete tools, but no W1 conversation mode/policy
+  switch. Scheduled runs explicitly narrow the existing tool policy: write tools
+  require both request and matching approval, a READ_WRITE table and the policy's
+  allowed-tools list. All scheduled writes require panel confirmation, including
+  when normal policy allows immediate writes. A pending proposal adds a waiting
+  notice to the run summary; the scheduler never confirms it.
+- RECORD keeps the run and conversation; NOTIFICATION and BOTH also submit an
+  Alerts notification with `NotificationAudience.user(runAsUserId)` and an
+  `/app/...` conversation link. Reflection targets the installed Alerts QBit's
+  RC.5 notification SPI/sink, following WebhooksAlerts' optional-dependency
+  pattern. Without it, a log contains run id and status only. Notification text
+  contains no answer data. In HIPAA mode run summaries contain exactly
+  `see conversation`; conversation payloads retain the existing encryption.
+    The existing record URL is an admin-screen link. Non-admin owners can read
+    their scheduled conversations in the panel's conversation list; opening a
+    particular existing conversation from a notification still needs a frontend
+    deep-link contract (the current panel only supports open/new-prompt links).
+    This phase does not broaden existing conversation record-screen permissions.
+- Failures close the run as FAILED or BLOCKED with sanitized errors and wait
+  until the next schedule. All output modes retain their audit record. Tests
+  exercise real manageSession and UI API requests with a fixed clock, designated
+  permissions and owner locks, headers, competing runners, approval invalidation,
+  notification modes, PHI refusal, encrypted HIPAA storage and cost STOP.
 
 ### Phases (each a green PR)
 | | Scope | Depends on |

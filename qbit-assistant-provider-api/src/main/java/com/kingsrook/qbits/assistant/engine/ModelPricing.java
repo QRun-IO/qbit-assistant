@@ -20,7 +20,6 @@ package com.kingsrook.qbits.assistant.engine;
 import java.io.Serializable;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import com.kingsrook.qbits.assistant.AssistantModelRouting;
 import com.kingsrook.qbits.assistant.provider.ModelUsage;
 
 
@@ -63,9 +62,9 @@ public class ModelPricing implements Serializable
    public static Map<String, ModelPricing> defaults()
    {
       Map<String, ModelPricing> map = new LinkedHashMap<>();
-      map.put(AssistantModelRouting.SONNET_5_5, of(2.0, 10.0, 0.1));
-      map.put(AssistantModelRouting.OPUS_5_5, of(4.0, 20.0, 0.05));
-      map.put(AssistantModelRouting.HAIKU_5_5, of(0.10, 0.50, 0.1));
+      map.put("claude-sonnet-5-5", of(2.0, 10.0, 0.1));
+      map.put("claude-opus-5-5", of(4.0, 20.0, 0.05));
+      map.put("claude-haiku-5-5", of(0.10, 0.50, 0.1));
       map.put("claude-fable-5-1", of(10.0, 50.0, 0.025));
       map.put("claude-fable-5", of(10.0, 50.0, 0.1));
       map.put("claude-opus-5", of(5.0, 25.0, 0.1));

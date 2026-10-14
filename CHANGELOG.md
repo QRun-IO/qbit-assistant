@@ -4,7 +4,26 @@
 
 ### Changed
 
-- Add optional qbit-email delivery of a scheduled task's result (`AssistantEmail.sendScheduledResult`): template `assistant_scheduled_result`, link-only secure message for results above PUBLIC, owner-recipient hook, opt-in and `emailExternalApproved` gates. The scheduled-task runner itself is still P-g.
+- Add optional qbit-email 0.1.0-RC.1 delivery of a scheduled task's result (`AssistantEmail.sendScheduledResult`): template `assistant_scheduled_result`, link-only secure message for results above PUBLIC using core's `DataClassification`, owner-recipient hook, opt-in and `emailExternalApproved` gates. Scheduled-task wiring remains a separate integration step.
+
+## Unreleased - Provider API extraction (#30)
+
+- Extract provider SPI/value types and `engine.ModelPricing` into `qbit-assistant-provider-api`, preserving package names. Its only production dependency is Jackson annotations.
+- Move Anthropic, OpenAI, Bedrock and Vertex main dependencies to the API; retain runtime fixtures in test scope. Pgvector still needs runtime RAG interfaces.
+- Provider-specific validation now takes unresolved `ProviderSettings` instead of `AssistantProvider`; add an ArchUnit boundary and standalone coverage gates.
+## Unreleased - P-g
+
+- Add admin Scheduled tasks, owner-locked run history, Quartz cron/timezones,
+  and a 60-second QQQ scheduled process using the host's scheduler context.
+- Log in through the loopback UI API with a separately allow-listed credential
+  environment reference; verify the designated user before starting a normal turn.
+- Add Review/Result Approve write mode, Revoke write mode and Run now actions.
+  Approval binds the task definition; scheduled writes always await confirmation.
+- Attribute scheduled UI API requests and tool logs, apply per-run STOP caps,
+  and send optional Alerts notifications to the designated user. HIPAA summaries
+  contain only `see conversation`.
+- Add unique schedule-slot claims, fixed-clock fixture integration tests and
+  additive Postgres DDL. No API routes or provider modules change.
 
 ## Unreleased - P-f
 
@@ -53,7 +72,7 @@
 - Add HIPAA mode, eligible-provider enforcement, AES-256-GCM conversation storage,
   provider diagnostic redaction, and independent PHI conversation retention.
 - Add owner-locked, admin read-only data routing audits and HIPAA status on the home.
-- Keep QQQ RC.4 compatibility with a classification stand-in and core #1142 adapter seam.
+- Classification levels are core's `DataClassification` (the qbit stand-in is removed); the default source reads core AI metadata merged with configuration.
 
 All notable changes to this project are documented here. The format follows Keep a Changelog, and versions follow semantic versioning.
 
@@ -70,6 +89,11 @@ All notable changes to this project are documented here. The format follows Keep
 Phase 0/1 of the QQQ Assistant: read-only Q&A and navigation. Requires QQQ 4.1 with:
 - the AI tool kernel (`qqq-backend-core` `actions.ai`, QRun-IO/qqq#1078)
 - the developer-panel contract (QRun-IO/qqq#1076).
+
+### Changed (0.1.0-RC.7, needs QQQ with QRun-IO/qqq#1128)
+- The assistant's endpoints are spec'd `/qqq/v1` operations (UI API extension `assistant` 1.0.0, prefix `/assistant`): same URLs, bodies and statuses, now in the served OpenAPI; turns and events are `text/event-stream`. The raw routes are gone.
+- Tools call core's `UiApiInvoker` with the caller's own request credentials (`UiApiCredentials`); the loopback stand-in is removed. The assistant's own operations are never invocable by its tools.
+- The OpenAPI fragment is committed (`openapi/qqq-v1/assistant.yaml`) and contract-tested.
 
 ### Changed (0.1.0-RC.6): tools go through the UI API (owner decision 2026-10-13)
 - **Every data tool runs a spec'd `/qqq/v1` operation with the user's own session** (`UiApiGateway`, loopback HTTP with the `sessionUUID` cookie): the same authentication, permissions, record locks, validation, audit and errors as the UI. A user without a permission gets the identical denial through the assistant. `navigate` and `search_help` (no records) stay on the core kernel. `LoopbackUiApiGateway` is a stand-in for core's `UiApiInvoker` (QRun-IO/qqq#1128).

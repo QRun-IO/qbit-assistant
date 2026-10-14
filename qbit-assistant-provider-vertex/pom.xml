@@ -47,7 +47,12 @@
 
       <dependency>
          <groupId>com.kingsrook.qbits</groupId>
+         <artifactId>qbit-assistant-provider-api</artifactId>
+      </dependency>
+      <dependency>
+         <groupId>com.kingsrook.qbits</groupId>
          <artifactId>qbit-assistant</artifactId>
+         <scope>test</scope>
       </dependency>
       <dependency>
          <groupId>com.kingsrook.qqq</groupId>

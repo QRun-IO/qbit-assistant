@@ -29,6 +29,8 @@ Always use the wrapper: Maven 3.10 cannot read the parent POM. The committed def
 
 ## Modules
 
+- `qbit-assistant-provider-api`: standalone provider SPI/value types and `engine.ModelPricing` (original package names); only Jackson annotations in production. Provider validation takes unresolved `ProviderSettings`, not an entity.
+
 - `qbit-assistant` (`com.kingsrook.qbits.assistant`):
   - `AssistantQBitProducer`, `AssistantQBitConfig` (with `AssistantModelRouting` and `AssistantBudgets`), `AssistantRuntime`, `AssistantSecurity`.
   - `metadata/`: tables, owner key type, the Assistant app (home + main tables in the nav), the retention process, the settings customizer (key-reference checks, masked key status), and the `assistant.admin` custom permission checker.
@@ -37,7 +39,7 @@ Always use the wrapper: Maven 3.10 cannot read the parent POM. The committed def
   - `persistence/AssistantStore`: the **only** code that calls QQQ data actions, and only on the QBit's own tables, under the user's session.
   - `engine/`: `TurnEngine` (the loop), `ContextBuilder` (cache-prefix order), `SystemPrompt`, `PolicyService` (policy row, budgets), `RateLimiter`, the `TurnEvent` / `TurnEventLog` stream, and `MessageParts`.
   - `api/`: `AssistantApi` (transport-free) and `AssistantRouteProvider` (Javalin, SSE).
-  - `provider/`: the provider-neutral SPI, plus `fake/ScriptedModelProvider` for tests, evals and demos.
+  - `provider/`: runtime-backed `RegistryModelProvider`, plus `fake/ScriptedModelProvider` for tests, evals and demos. The SPI lives in `qbit-assistant-provider-api`.
   - `developer/`: the record Developer-screen panel, on the core developer-panel contract.
   - `processes/`: `AssistantRetentionStep` and `TestConnectionProcess` (record action on `assistant_provider`).
   - `engine/ProviderService` (active provider from `assistant_provider` rows, key references, prices), `UsageRecorder` (one `assistant_usage` row per model call), `ConnectionTest`.
@@ -46,11 +48,12 @@ Always use the wrapper: Maven 3.10 cannot read the parent POM. The committed def
 - `qbit-assistant-provider-bedrock`: Claude through the Anthropic Bedrock backend, AWS default credentials and SigV4; IRSA/web-identity hosts supply STS.
 - `qbit-assistant-provider-vertex`: Claude through the Anthropic Vertex backend and Gemini through OpenAI-compatible Chat Completions, with refreshed Google ADC tokens.
 
-- `qbit-assistant-rag-pgvector`: optional host-supplied JDBC vector store, isolated by instance schema; no QQQ RDBMS internals.
+- `qbit-assistant-rag-pgvector`: optional host-supplied JDBC vector store, isolated by instance schema; depends on runtime RAG interfaces (`VectorStore`, `ChunkVector`), with no QQQ RDBMS internals.
 
 ## Invariants (do not break)
 
 - **Sessions:**
+  - Scheduled runs log in as the designated user through `POST /qqq/v1/manageSession`; resolve only its returned UUID, verify the user id, and never construct or elevate a session. The QQQ-supplied scheduler context touches only assistant bookkeeping.
   - Never use `QSystemUserSession` or construct a `QSession` in main code (ArchUnit).
   - Every route uses `ExecutorSessionUtils.setupSession` (the user's own session).
   - `AssistantSecurity` only ever adds the user's OWN id key, or the all-access key for `assistant.admin` holders.
@@ -67,6 +70,8 @@ Always use the wrapper: Maven 3.10 cannot read the parent POM. The committed def
   - Errors (DENIED, NOT_FOUND, INVALID_INPUT, ERROR) are `is_error` results.
   - Unknown tools and over-limit calls also get error results.
 - **Keys:** never stored in a table. `assistant_provider.apiKeyEnvName` holds only an allowed environment variable NAME; `apiKeyStatus` is computed on read (last 4 at most) and stripped on save.
+  - Scheduled task `credentialEnvName` is a separately allow-listed environment variable NAME. Tokens never enter rows, model context or logs. `credentialStatus` is computed and stripped on save.
+  - Scheduled write approval is invalidated by changes to prompt, run-as user, credential reference, profile or write request. Scheduled writes always require the designated user's panel confirmation.
 - **Logging:** never log message content, prompts, tool results or keys. Structured end-of-turn log only.
 - **Thinking:** thinking is never streamed or stored. The Anthropic adapter keeps the raw assistant message (with signatures) only in memory, as `providerState`, for the tool loop.
 - **Links:** only `/app` or `/app/...` hrefs are emitted (`TurnEngine.isAppHref`).
@@ -102,4 +107,4 @@ QQQ style:
 - `develop` publishes SNAPSHOTs.
 - `release/*` publishes RCs; the orb bumps `<revision>` in the root POM.
 - `v*` tags publish releases.
-- All six modules and the parent POM publish. The flatten plugin resolves `${revision}`.
+- All seven modules and the parent POM publish. The flatten plugin resolves `${revision}`.

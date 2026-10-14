@@ -187,7 +187,7 @@ public class PresentResultsTool
       {
          try
          {
-            metadata = context.gateway().invoke(new UiApiCall("GET", "/metaData").withSessionUUID(context.sessionUUID()).withUserTimezone(context.userTimezone()));
+            metadata = context.gateway().invoke(context.prepare(new UiApiCall("GET", "/metaData")));
          }
          catch(QException e)
          {

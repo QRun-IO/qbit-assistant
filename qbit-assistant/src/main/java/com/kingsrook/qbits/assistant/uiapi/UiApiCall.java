@@ -20,6 +20,7 @@ package com.kingsrook.qbits.assistant.uiapi;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiCredentials;
 
 
 /*******************************************************************************
@@ -33,9 +34,13 @@ public class UiApiCall
    private final String              pathTemplate;
    private final Map<String, String> pathParams  = new LinkedHashMap<>();
    private final Map<String, String> queryParams = new LinkedHashMap<>();
+   private final Map<String, String> formParams  = new LinkedHashMap<>();
+   private final Map<String, String> headers     = new LinkedHashMap<>();
    private Object                    jsonBody;
    private String                    sessionUUID;
+   private UiApiCredentials          credentials;
    private String                    userTimezone;
+   private String                    clientDetail;
    private String                    invokedBy   = "assistant";
    private Duration                  timeout     = Duration.ofSeconds(60);
 
@@ -129,6 +134,58 @@ public class UiApiCall
 
 
    /*******************************************************************************
+    ** Add a multipart form field (ignored when null). A call with form fields
+    ** is sent as multipart/form-data (the /processes endpoints), mirroring
+    ** core's UiApiRequest.withFormParam.
+    *******************************************************************************/
+   public UiApiCall withFormParam(String name, Object value)
+   {
+      if(value != null)
+      {
+         formParams.put(name, String.valueOf(value));
+      }
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for formParams
+    *******************************************************************************/
+   public Map<String, String> getFormParams()
+   {
+      return (formParams);
+   }
+
+
+
+   /*******************************************************************************
+    ** Add a request header the invoker sets (e.g. X-QQQ-AI-Route); ignored
+    ** when null. The session cookie and the invoked-by marker cannot be
+    ** overridden this way.
+    *******************************************************************************/
+   public UiApiCall withHeader(String name, Object value)
+   {
+      if(name != null && value != null)
+      {
+         headers.put(name, String.valueOf(value));
+      }
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for headers
+    *******************************************************************************/
+   public Map<String, String> getHeaders()
+   {
+      return (headers);
+   }
+
+
+
+   /*******************************************************************************
     ** Fluent setter for jsonBody
     *******************************************************************************/
    public UiApiCall withJsonBody(Object jsonBody)
@@ -162,6 +219,29 @@ public class UiApiCall
 
 
    /*******************************************************************************
+    ** The caller's credentials exactly as their request carried them (session
+    ** cookies, Authorization, API key); preferred over the session UUID alone.
+    ** Never logged (their toString is redacted).
+    *******************************************************************************/
+   public UiApiCall withCredentials(UiApiCredentials credentials)
+   {
+      this.credentials = credentials;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for credentials
+    *******************************************************************************/
+   public UiApiCredentials getCredentials()
+   {
+      return (credentials);
+   }
+
+
+
+   /*******************************************************************************
     ** Getter for sessionUUID
     *******************************************************************************/
    public String getSessionUUID()
@@ -188,6 +268,29 @@ public class UiApiCall
    public String getUserTimezone()
    {
       return (userTimezone);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for clientDetail: the detail after the slash of the client
+    ** channel the invoker labels the call with (assistant/turnId; a scheduled
+    ** run uses scheduled/taskId). Ignored when blank.
+    *******************************************************************************/
+   public UiApiCall withClientDetail(String clientDetail)
+   {
+      this.clientDetail = clientDetail;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for clientDetail
+    *******************************************************************************/
+   public String getClientDetail()
+   {
+      return (clientDetail);
    }
 
 

@@ -52,6 +52,7 @@
    <modelVersion>4.0.0</modelVersion>
 
    <modules>
+      <module>qbit-assistant-provider-api</module>
       <module>qbit-assistant</module>
       <module>qbit-assistant-provider-anthropic</module>
       <module>qbit-assistant-provider-openai</module>
@@ -87,6 +88,11 @@
 
    <dependencyManagement>
       <dependencies>
+         <dependency>
+            <groupId>com.kingsrook.qbits</groupId>
+            <artifactId>qbit-assistant-provider-api</artifactId>
+            <version>${revision}</version>
+         </dependency>
          <dependency>
             <groupId>com.kingsrook.qbits</groupId>
             <artifactId>qbit-assistant-provider-anthropic</artifactId>
@@ -196,8 +202,9 @@
    </build>
 
    <profiles>
-      <!-- The assistant needs QQQ 4.1.0-RC.5: the AI tool kernel (package        -->
-      <!-- actions.ai, qqq#1078) and the developer panels (qqq#1076). Until        -->
+      <!-- The assistant needs QQQ 4.1.0-RC.6: the AI tool kernel (qqq#1078), the  -->
+      <!-- developer panels (qqq#1076) and the UI API extension point, invoker   -->
+      <!-- and credentials (qqq#1128). Until                                      -->
       <!-- qbit-build-parent imports the 4.1 BOM, this                              -->
       <!-- profile is active by default and imports qqq-bom-pom ahead of the        -->
       <!-- parent's 4.0.0 BOM, as in qbit-quick-search (ADR-0007). Override with    -->
@@ -208,7 +215,7 @@
             <activeByDefault>true</activeByDefault>
          </activation>
          <properties>
-            <qqq.snapshot.version>4.1.0-RC.5</qqq.snapshot.version>
+            <qqq.snapshot.version>4.1.0-RC.6</qqq.snapshot.version>
          </properties>
          <dependencyManagement>
             <dependencies>

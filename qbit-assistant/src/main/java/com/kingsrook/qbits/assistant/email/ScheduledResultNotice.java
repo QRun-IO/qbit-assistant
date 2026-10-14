@@ -22,7 +22,7 @@ package com.kingsrook.qbits.assistant.email;
 
 
 import java.time.Instant;
-import com.kingsrook.qbits.assistant.classification.DataClassification;
+import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 
 
 /*******************************************************************************

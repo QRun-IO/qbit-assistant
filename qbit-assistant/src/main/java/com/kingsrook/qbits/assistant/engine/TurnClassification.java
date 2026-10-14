@@ -27,11 +27,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import com.kingsrook.qbits.assistant.classification.ClassificationSource;
-import com.kingsrook.qbits.assistant.classification.DataClassification;
+import com.kingsrook.qbits.assistant.classification.Classifications;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.provider.ModelPart;
 import com.kingsrook.qqq.backend.core.actions.ai.AiRecordRef;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolResult;
+import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
@@ -55,7 +56,7 @@ public class TurnClassification
    public TurnClassification(ClassificationSource source, AssistantConversation conversation, Map<String, Object> pageContext)
    {
       this.source = source;
-      classification = DataClassification.stored(conversation.getMaxClassification());
+      classification = Classifications.stored(conversation.getMaxClassification());
       if(pageContext != null && pageContext.get("tableName") instanceof String table)
       {
          touch(table, pageContext.get("recordId") == null ? source.ofTable(table) : source.highest(table));
@@ -210,7 +211,7 @@ public class TurnClassification
     *******************************************************************************/
    private void touchUnknown()
    {
-      classification = DataClassification.max(classification, source.highestAnywhere());
+      classification = Classifications.max(classification, source.highestAnywhere());
       for(String table : QContext.getQInstance().getTables().keySet())
       {
          if(!table.startsWith("assistant_") && source.highest(table) != DataClassification.PUBLIC)
@@ -229,7 +230,7 @@ public class TurnClassification
    {
       if(table != null && !table.startsWith("assistant_"))
       {
-         classification = DataClassification.max(classification, value);
+         classification = Classifications.max(classification, value);
          if(QContext.getQInstance().getTable(table) != null)
          {
             tables.add(table);
@@ -256,7 +257,7 @@ public class TurnClassification
    {
       if(conversation != null)
       {
-         classification = DataClassification.max(classification, DataClassification.stored(conversation.getMaxClassification()));
+         classification = Classifications.max(classification, Classifications.stored(conversation.getMaxClassification()));
       }
    }
 

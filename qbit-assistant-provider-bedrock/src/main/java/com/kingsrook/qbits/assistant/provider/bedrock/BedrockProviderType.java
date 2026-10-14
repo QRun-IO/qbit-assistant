@@ -24,7 +24,6 @@ import com.anthropic.backends.Backend;
 import com.anthropic.bedrock.backends.BedrockBackend;
 import com.anthropic.client.okhttp.AnthropicOkHttpClient;
 import com.anthropic.core.Timeout;
-import com.kingsrook.qbits.assistant.model.AssistantProvider;
 import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
 import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
 import com.kingsrook.qbits.assistant.provider.DiscoveredModel;
@@ -117,14 +116,14 @@ public class BedrockProviderType implements AssistantProviderType
     ** Validate cloud settings without loading credentials.
     *******************************************************************************/
    @Override
-   public List<String> validate(AssistantProvider row)
+   public List<String> validate(ProviderSettings settings)
    {
       List<String> errors = new ArrayList<>();
-      if(row.getRegion() == null || row.getRegion().isBlank())
+      if(settings.getRegion() == null || settings.getRegion().isBlank())
       {
          errors.add("Region is required for BEDROCK.");
       }
-      if(row.getApiKeyEnvName() != null && !row.getApiKeyEnvName().isBlank())
+      if(settings.getApiKeyEnvName() != null && !settings.getApiKeyEnvName().isBlank())
       {
          errors.add("Leave API key variable empty: AWS Bedrock (Claude) uses the AWS default credential chain (environment, profile or server role).");
       }
