@@ -16,6 +16,13 @@ All of it is in standard QQQ tables with full record screens (D6), prefixed `ass
 
 `assistant_turn` keeps the per-turn totals and `assistant_usage_daily` the budget rollups, as before. `assistant_usage` adds the per-call detail the home needs: the provider, the failures and latency.
 
+## Provider SPI boundary
+
+All provider contracts and value types, including `ModelPricing`, belong exclusively
+to `com.kingsrook.qbits.assistant.spi` in `qbit-assistant-provider-api`. Consumers
+can depend on this artifact alone and allow its package in G1. Runtime provider
+registry and fake implementations remain in their existing internal packages.
+
 ## API keys
 
 Decision: **reference, not storage.** A provider row holds the NAME of an environment variable (`apiKeyEnvName`); `ProviderService` resolves it through `config.getSecretResolver()` (default `System::getenv`) when it builds a client.
@@ -59,7 +66,7 @@ The result goes on the row (`lastTest*`) and into `assistant_usage` (`TEST`), so
 
 ## Cost
 
-`cost = input × in + output × out + cacheRead × read + cacheWrite5m × w5 + cacheWrite1h × w1`, in micro-dollars, rounded up (`ModelPricing.costMicros`).
+`cost = input × in + output × out + cacheRead × read + cacheWrite5m × w5 + cacheWrite1h × w1`, in micro-dollars, rounded up (`com.kingsrook.qbits.assistant.spi.ModelPricing.costMicros`).
 
 Prices come from the `assistant_model_price` row for (type, model). Empty cache prices are 0.1x, 1.25x and 2x the input price. A model without a row uses the `pricing` config map, else costs 0. A price change affects later calls only; each usage row keeps the cost it was recorded with.
 
@@ -143,7 +150,7 @@ Owner: *"the agent should have to go through the same API that the UIUX does. th
 - A request to the server's own port runs the identical pipeline by construction. It costs one local hop, which is milliseconds next to a model call.
 
 This matches core's design (`docs/UI-API-EXTENSIONS.md` §5, `UiApiInvoker`, QRun-IO/qqq#1128).
-- `LoopbackUiApiGateway` is the stand-in until a QQQ release has the invoker. Then an adapter over `UiApiInvoker.forServer(server)` replaces it (or a host injects one with `withUiApiGateway`), and nothing else changes.
+- `CoreUiApiGateway` adapts core's `UiApiInvoker` (the loopback stand-in is deleted). It labels calls with the client channel `assistant`, plus the turn id as detail (`assistant/<turnId>`). Form params go to the invoker's `withFormParam`; extra headers (the bulk-load tools' `X-QQQ-AI-Route`) go through `HeaderedUiApiInvoker`, a small subclass in core's package because core's request has no `withHeader` yet. A host can still inject its own gateway with `withUiApiGateway`.
 - The base URL is `uiApiBaseUrl` if configured. Otherwise it is `127.0.0.1` plus the local port the first assistant request arrived on, so in a multi-replica deployment the call stays on the replica that holds the session's process state.
 
 ### The tools
@@ -228,6 +235,18 @@ The golden and red-team evals now run through the UI API too.
   - Choosing *another* user would need that user's permissions without their session. QQQ core has no API to evaluate another user's permissions, and the assistant never builds or borrows a session. That part waits for a core API, so the report is always computed with the requester's own session.
 - **Recent denials:** the home's "Recent denials" card lists the newest tool calls the UI API, data access or the policy refused, with who, the table, the operation and the HTTP status, or the assistant setting that refused it.
 
+## Spec'd assistant endpoints and the core invoker (phase d, QQQ 4.1.0-RC.6)
+
+- **The endpoints are spec'd `/qqq/v1` operations.** `api/specs/AssistantSpecs` registers the UI API extension `assistant` (semver 1.0.0, established prefix `/assistant`) through `MiddlewareSpecExtensionsMetaData`.
+  - The URLs, bodies and statuses stay the same (201 create, 202 cancel, 204 delete and feedback, and the assistant's `{"error","code"}` errors), so Next needs no change.
+  - They appear in the served `/qqq/v1/openapi.yaml`. The turn and events streams are declared as `text/event-stream`, with `AssistantTurnEventV1` describing the events.
+  - The fragment is committed as `qbit-assistant/src/main/resources/openapi/qqq-v1/assistant.yaml`. `AssistantSpecsContractTest` checks it against the code, and the release baseline in test resources, with core's `UiApiContract`.
+- **No raw routes.** `AssistantRouteProvider` keeps only a before-handler that learns the server's local port from the first `/qqq/v1` request.
+- **Tools call core's `UiApiInvoker`** (`CoreUiApiGateway`), and the loopback stand-in is removed.
+  - The request's credentials (`UiApiCredentials.fromContext`: session cookies, Authorization, API key, exactly as they came in) are captured by the spec that starts the turn, confirms an action or explains access. They are passed to the tools, so OAuth2, table auth and API-key sessions all work. They are never logged.
+  - The gateway also refuses the assistant's own operations, so a turn can never start a turn.
+- QQQ 4.1.0-RC.6 (the default `qqq.snapshot.version`) contains #1128, so no local build is needed.
+
 ## Owner decisions (2026-10-13), continued: write mode, the hard wall, audit attribution, providers
 
 These were added on the same day. All recommendations below are accepted; we adjust once they can be seen working.
@@ -274,6 +293,14 @@ AI exposure NONE is not enough, because the assistant acts as the user and an ad
 - `assistant_tool_call` keeps the turn, conversation and model, and links to the audit rows (`auditHref`), so `via=assistant/<turnId>` leads to the conversation, the turn and the model.
 - **Tests:** an assistant write produces audit rows with the human actor and `via=assistant/<turnId>`; the same write from the UI produces `via=next-ui`.
 - kof22 needs a feature-named changeset (`changesets/features/...`) for the audit column.
+
+### X1/Y1 as built
+- Record history is an explicit, default-off host opt-in (`withRecordHistory(true)`); kof22 does not opt in. RC.6 removes only `audit*`; later core #1193 support allows audit reads with a write-only denial. Other walls and user audit permissions remain intact.
+- RC.6's invoker fixes the `assistant` channel server-side and ignores spoofed client headers. Turn context survives knowledge discovery, RAG reads, confirm actions and owned-turn explain-access; scheduled calls retain `scheduled/<taskId>`.
+- The producer enumerates assistant tables, processes, reports and widgets (including source-QBit metadata), adds explicit denied-client rules without replacing user permissions, and registers `assistant_*` idempotently. Runtime construction independently validates the wall with core's `isDenied` and fails on exposed objects.
+- The fixture enables core's audit channel field. Hosts must migrate the nullable audit column before enabling it; kof22 needs its own feature changeset.
+- Successful insert/update/delete tool calls link to `/app/audit` with `recordId`, `auditTable.name` and `clientChannel` criteria, using the same encoder as `present_results`. Hosts without the channel field get no audit link. Existing audit link storage widens to TEXT for long encoded filters.
+- HTTP tests enumerate the configuration denial matrix for an admin, contrast Next UI access, reject broken startup metadata, and verify confirmed-write actor/channel plus the decoded audit filter.
 
 ### P. Providers, local models, HIPAA routing, budgets
 1. **Providers and models as data, any number, each with an enabled toggle.**
@@ -354,10 +381,8 @@ AI exposure NONE is not enough, because the assistant acts as the user and an ad
 
 ### P-c as built
 
-- The qbit classification enum is a stand-in for core #1142 until a released RC
-  includes it. Configured table/field overrides are the default; hosts can supply
-  a `ClassificationSource` over core metadata, mapping enum names, then replace
-  the stand-in when the minimum QQQ version advances.
+- The qbit classification stand-in is gone: the levels are core's `actions.ai.DataClassification` (QQQ 4.1.0-RC.6, core #1142).
+  The default `ClassificationSource` reads core metadata (`AiDataClassifications`, `AiTableMetaData`, `AiFieldMetaData`) merged with the configured table/field map; configuration wins when both are set. Hosts can still supply their own source with `withClassificationSource`.
 - Turn/page/tool classification is monotonic, persisted on the turn and retained
   on the conversation. Field subsets use overrides; unknown cross-table results
   conservatively use the highest configured level. Metadata tools stay PUBLIC.

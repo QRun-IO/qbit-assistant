@@ -19,7 +19,9 @@ package com.kingsrook.qbits.assistant.api;
 
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
+import com.kingsrook.qbits.assistant.api.specs.AssistantSpecs;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
+import com.kingsrook.qqq.middleware.javalin.specs.extensions.MiddlewareSpecExtensionsMetaData;
 import com.kingsrook.qqq.middleware.javalin.QJavalinMetaData;
 
 
@@ -42,6 +44,16 @@ public class AssistantRoutes
       if(!registered)
       {
          javalinMetaData.withAdditionalRouteProviderReference(new QCodeReference(AssistantRouteProvider.class));
+      }
+
+      ////////////////////////////////////////////////////////////////////
+      // the endpoints: the spec'd "assistant" UI API extension         //
+      ////////////////////////////////////////////////////////////////////
+      MiddlewareSpecExtensionsMetaData extensions = MiddlewareSpecExtensionsMetaData.ofOrWithNew(qInstance);
+      boolean hasExtension = extensions.getExtensions() != null && extensions.getExtensions().containsKey(AssistantSpecs.EXTENSION_NAME);
+      if(!hasExtension)
+      {
+         extensions.withExtension(AssistantSpecs.extension());
       }
    }
 

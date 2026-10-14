@@ -31,6 +31,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiCredentials;
 
 
 /*******************************************************************************
@@ -92,7 +93,27 @@ public class AccessExplainer
     *******************************************************************************/
    public List<TableAccess> explain(UiApiGateway gateway, String sessionUUID, PolicyService.ToolPolicy policy, String tableName, String prompt) throws QException
    {
-      UiApiResult response = gateway.invoke(new UiApiCall("GET", "/metaData").withSessionUUID(sessionUUID).withInvokedBy("assistant-explain"));
+      return (explain(gateway, sessionUUID, null, policy, tableName, prompt));
+   }
+
+
+
+   /*******************************************************************************
+    ** Explain, with the caller's request credentials when they are known.
+    *******************************************************************************/
+   public List<TableAccess> explain(UiApiGateway gateway, String sessionUUID, UiApiCredentials credentials, PolicyService.ToolPolicy policy, String tableName, String prompt) throws QException
+   {
+      return (explain(gateway, sessionUUID, credentials, policy, tableName, prompt, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Preserve a known turn's attribution on the metadata request.
+    *******************************************************************************/
+   public List<TableAccess> explain(UiApiGateway gateway, String sessionUUID, UiApiCredentials credentials, PolicyService.ToolPolicy policy, String tableName, String prompt, String turnId) throws QException
+   {
+      UiApiResult response = gateway.invoke(new UiApiCall("GET", "/metaData").withSessionUUID(sessionUUID).withCredentials(credentials).withInvokedBy("assistant-explain").withClientDetail(turnId));
       if(!response.isSuccess())
       {
          throw (new QException("GET /metaData answered HTTP " + response.status() + (response.errorMessage() == null ? "" : ": " + response.errorMessage())));

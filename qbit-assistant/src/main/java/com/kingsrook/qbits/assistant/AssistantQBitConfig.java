@@ -17,7 +17,6 @@
 package com.kingsrook.qbits.assistant;
 
 
-import javax.net.ssl.SSLContext;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -32,19 +31,20 @@ import java.util.regex.Pattern;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.kingsrook.qbits.assistant.classification.ClassificationSource;
 import com.kingsrook.qbits.assistant.classification.ConfiguredClassificationSource;
-import com.kingsrook.qbits.assistant.classification.DataClassification;
-import com.kingsrook.qbits.assistant.engine.ModelPricing;
-import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
-import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
-import com.kingsrook.qbits.assistant.provider.TrustedCaBundle;
 import com.kingsrook.qbits.assistant.rag.VectorStore;
+import com.kingsrook.qbits.assistant.spi.AssistantModelProvider;
+import com.kingsrook.qbits.assistant.spi.AssistantProviderType;
+import com.kingsrook.qbits.assistant.spi.ModelPricing;
+import com.kingsrook.qbits.assistant.spi.TrustedCaBundle;
 import com.kingsrook.qbits.assistant.uiapi.UiApiGateway;
 import com.kingsrook.qqq.backend.core.actions.ai.AiExposure;
+import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.producers.MetaDataCustomizerInterface;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitConfig;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import javax.net.ssl.SSLContext;
 
 
 /*******************************************************************************
@@ -90,6 +90,7 @@ public class AssistantQBitConfig implements QBitConfig
    private String conversationEncryptionKeyEnvName;
 
    private Boolean               enabled                    = true;
+   private Boolean               recordHistory              = false;
    private String                backendName;
    private String                providerName               = DEFAULT_PROVIDER_NAME;
    private AssistantModelRouting models                     = new AssistantModelRouting();
@@ -145,11 +146,13 @@ public class AssistantQBitConfig implements QBitConfig
    private Integer                   providerTestTimeoutSeconds = 30;
    private Integer                   homeMaxRows              = 20000;
    private String                    tablePathPrefix          = "/app";
+   private Boolean                   emailExternalApproved    = false;
 
    private transient MetaDataCustomizerInterface<QTableMetaData> tableMetaDataCustomizer;
    private transient Map<String, AssistantModelProvider>        modelProviders = new LinkedHashMap<>();
    private transient Map<String, AssistantProviderType>         providerTypes  = new LinkedHashMap<>();
    private transient Function<String, String>                   secretResolver = System::getenv;
+   private transient Function<String, String>                   emailRecipientResolver;
    private transient AssistantRuntime                           runtime;
 
 
@@ -1503,6 +1506,62 @@ public class AssistantQBitConfig implements QBitConfig
 
 
    /*******************************************************************************
+    ** Whether the host's EXTERNAL approval rule allows a scheduled task's result
+    ** to leave the app by email. There is no approval rule in the qbit yet (the
+    ** scheduled runner is P-g), so this explicit flag stands in; default false.
+    *******************************************************************************/
+   public Boolean getEmailExternalApproved()
+   {
+      return (this.emailExternalApproved);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for emailExternalApproved
+    *******************************************************************************/
+   public void setEmailExternalApproved(Boolean emailExternalApproved)
+   {
+      this.emailExternalApproved = emailExternalApproved;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for emailExternalApproved
+    *******************************************************************************/
+   public AssistantQBitConfig withEmailExternalApproved(Boolean emailExternalApproved)
+   {
+      this.emailExternalApproved = emailExternalApproved;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** The hook that turns a task owner's user id into an email address; null
+    ** means the default (an owner id that already is an address).
+    *******************************************************************************/
+   @JsonIgnore
+   public Function<String, String> getEmailRecipientResolver()
+   {
+      return (emailRecipientResolver);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for emailRecipientResolver
+    *******************************************************************************/
+   public AssistantQBitConfig withEmailRecipientResolver(Function<String, String> emailRecipientResolver)
+   {
+      this.emailRecipientResolver = emailRecipientResolver;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
     ** Getter for allowedApiKeyEnvNames (extra API key environment variable names a provider row may reference)
     *******************************************************************************/
    public Set<String> getAllowedApiKeyEnvNames()
@@ -1696,6 +1755,28 @@ public class AssistantQBitConfig implements QBitConfig
    public Map<String, SSLContext> getTrustedCaBundles()
    {
       return (Map.copyOf(trustedCaBundles));
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the host opts into record history; false by default.
+    *******************************************************************************/
+   public Boolean getRecordHistory()
+   {
+      return (recordHistory);
+   }
+
+
+
+   /*******************************************************************************
+    ** Owner decision — hard wall: record history requires explicit host opt-in.
+    ** kof22 does not opt in. The user's own audit permissions still apply.
+    *******************************************************************************/
+   public AssistantQBitConfig withRecordHistory(boolean recordHistory)
+   {
+      this.recordHistory = recordHistory;
+      return (this);
    }
 
 

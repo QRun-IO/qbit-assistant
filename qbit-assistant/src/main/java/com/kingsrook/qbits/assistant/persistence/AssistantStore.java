@@ -29,7 +29,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
-import com.kingsrook.qbits.assistant.classification.DataClassification;
+import com.kingsrook.qbits.assistant.classification.Classifications;
 import com.kingsrook.qbits.assistant.engine.TurnClassification;
 import com.kingsrook.qbits.assistant.model.AssistantBudget;
 import com.kingsrook.qbits.assistant.model.AssistantBudgetEvent;
@@ -51,8 +51,8 @@ import com.kingsrook.qbits.assistant.model.AssistantTurn;
 import com.kingsrook.qbits.assistant.model.AssistantTurnEvent;
 import com.kingsrook.qbits.assistant.model.AssistantUsage;
 import com.kingsrook.qbits.assistant.model.AssistantUsageDaily;
-import com.kingsrook.qbits.assistant.provider.ModelUsage;
 import com.kingsrook.qbits.assistant.scheduled.ScheduledTasks;
+import com.kingsrook.qbits.assistant.spi.ModelUsage;
 import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
@@ -788,8 +788,8 @@ public class AssistantStore
          .withValue("classification", classification.getClassification().name()).withValue("classificationTables", classification.getTables()));
       if(current != null)
       {
-         var maximum = DataClassification.max(
-            DataClassification.stored(current.getMaxClassification()), classification.getClassification());
+         var maximum = Classifications.max(
+            Classifications.stored(current.getMaxClassification()), classification.getClassification());
          if(!maximum.name().equals(current.getMaxClassification()))
          {
             updateFields(AssistantConversation.TABLE_NAME, new QRecord().withValue("id", conversationId).withValue("maxClassification", maximum.name()));

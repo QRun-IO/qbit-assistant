@@ -137,7 +137,7 @@ public class AssistantTestFixture
          .withField(new QFieldMetaData("statDate", QFieldType.DATE).withLabel("Stat Date"))
          .withField(new QFieldMetaData("pageviews", QFieldType.INTEGER).withLabel("Pageviews")));
 
-      if(config.getClassificationSource().ofTable("patient") == com.kingsrook.qbits.assistant.classification.DataClassification.PHI)
+      if(config.getClassificationSource().ofTable("patient") == com.kingsrook.qqq.backend.core.actions.ai.DataClassification.PHI)
       {
          qInstance.addTable(table("patient", "Patient", "status")
             .withField(new QFieldMetaData("email", QFieldType.STRING))
@@ -145,7 +145,7 @@ public class AssistantTestFixture
             .withField(new QFieldMetaData("diagnosis", QFieldType.STRING)));
       }
 
-      new AuditsMetaDataProvider().defineAll(qInstance, BACKEND, null);
+      new AuditsMetaDataProvider().withClientChannelField(true).defineAll(qInstance, BACKEND, null);
       for(String auditTable : List.of(AuditsMetaDataProvider.TABLE_NAME_AUDIT, AuditsMetaDataProvider.TABLE_NAME_AUDIT_DETAIL, AuditsMetaDataProvider.TABLE_NAME_AUDIT_TABLE, AuditsMetaDataProvider.TABLE_NAME_AUDIT_USER))
       {
          qInstance.getTable(auditTable).setPermissionRules(new QPermissionRules().withLevel(PermissionLevel.READ_INSERT_EDIT_DELETE_PERMISSIONS));

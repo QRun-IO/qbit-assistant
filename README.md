@@ -20,14 +20,46 @@ Design spec: `QRun-IO/qqq` `docs/specs/2026-10-11-qqq-assistant-qbit-design.md`.
 
 Depend on `com.kingsrook.qbits:qbit-assistant-provider-api` at the same version as
 QBit Assistant, and implement `AssistantModelProvider` and optionally
-`AssistantProviderType`. No assistant runtime dependency is needed. Existing
-`com.kingsrook.qbits.assistant.provider.*` imports and
-`com.kingsrook.qbits.assistant.engine.ModelPricing` stay the same.
+`AssistantProviderType`. No assistant runtime dependency is needed. All API types, including
+`ModelPricing`, live exclusively in `com.kingsrook.qbits.assistant.spi`. External
+consumers such as qbit-marketing allow that package in their G1 guardrails;
+qbit-bom will add it to the G1 defaults. See [migration imports](UPGRADE.md#provider-api-extraction-30).
 `AssistantProviderType.validate(ProviderSettings)` receives unresolved settings
 (including `apiKeyEnvName`), without a database entity or resolved credentials.
 Hosts register providers through `AssistantQBitConfig` in `qbit-assistant`.
 
 Data tools use the QQQ UI API (`/qqq/v1`) with the signed-in user's session. The UI API enforces permissions and record locks; assistant data-access policy and field exposure can only narrow access. Only record-free navigation and help use the core AI tool kernel. Every tool result reaches the model wrapped as untrusted data.
+
+## Host audit attribution (X1/Y1)
+
+Use QQQ **4.1.0-RC.6 or later**. The QBit explicitly denies every assistant
+configuration table, process, report and widget to the `assistant` channel;
+runtime initialization fails if an assistant object is exposed. The same human
+can still administer it through Next UI (`next-ui`). Core's security-surface
+deny patterns remain in place.
+
+Enable the audit client field in the host's core audit provider **after adding
+the backing column**:
+
+```java
+new AuditsMetaDataProvider().withClientChannelField(true)
+   .defineAll(qInstance, backendName, null);
+```
+
+Add nullable `audit.client_channel VARCHAR(100)` using the host's migration and
+column-naming conventions. For kof22 this requires a feature-named changeset
+under `changesets/features/`; this QBit does not migrate the host's audit table.
+The actor remains the signed-in human; `clientChannel` distinguishes
+`assistant/<turnId>`, `assistant/scheduled/<taskId>` and `next-ui`.
+
+Apply the X1/Y1 DDL in [UPGRADE.md](UPGRADE.md) to widen the existing
+`assistant_tool_call.audit_href` column to TEXT for encoded filters.
+Successful record writes store `assistant_tool_call.auditHref` as an `/app/audit`
+filter link over `recordId`, `auditTable.name` and `clientChannel`. The human
+opens this link with their UI permissions; the assistant cannot read audits by
+default. Without the audit channel field, the QBit leaves `auditHref` empty.
+Confirmed scheduled actions use their original turn id when the human approves.
+
 
 ## RAG setup
 
@@ -206,6 +238,8 @@ The nav lists the home and the main tables: **Providers**, **Conversations**, **
 | `providerTestTimeoutSeconds` | 30 | How long Test connection waits for the model. |
 | `homeMaxRows` | 20000 | Rows per table the app home reads for its period; it says when totals are partial. |
 | `tablePathPrefix` | `/app` | The front of the links the app home makes to tables and records. |
+| `emailExternalApproved` | `false` | Stands in for the EXTERNAL approval rule (not built yet): scheduled-task result email is sent only when `true`. |
+| `emailRecipientResolver` | owner id if it is an address | Hook: task owner user id to email address. |
 
 At runtime, an admin can override the kill switch, the main model and effort, and the budgets in the single **`assistant_policy`** row.
 
@@ -464,12 +498,30 @@ engine/tool golden turns. No cloud credentials or live endpoints are required.
 Apache 2.0.
 
 
+## Email through qbit-email
+
+When the optional [qbit-email](https://github.com/QRun-IO/qbit-email) is on the classpath **and** produced in the instance, a finished scheduled-task run can be emailed to its owner. Without it nothing changes: `AssistantEmail.sendScheduledResult` returns `NOT_AVAILABLE`. The dependency is `optional`; every reference to it is in `AssistantEmailSender`.
+
+This integration uses qbit-email **0.1.0-RC.2** through its published `com.kingsrook.qbits.email.api` package. Scheduled tasks (P-g) are available, but the runner does not yet wire email delivery. Hosts can call `AssistantEmail.sendScheduledResult(qInstance, config, new ScheduledResultNotice(...))` after a run, supplying its owner, classification, absolute run link and explicit opt-in as `emailResult`. Persisting a task-level email opt-in and wiring the runner remain a separate integration step.
+
+Gates, in order (each returns a status and queues nothing):
+1. the task opted in (`NOT_REQUESTED`);
+2. qbit-email is installed (`NOT_AVAILABLE`);
+3. `emailExternalApproved` is `true` (`NOT_APPROVED`). The EXTERNAL approval rule exists only in the spec, so this explicit flag gates it until the rule is built;
+4. a recipient resolves (`NO_RECIPIENT`): `emailRecipientResolver` maps the owner's user id to an address; by default an owner id that already is an address is used.
+
+What is sent, one message per recipient, idempotency key `assistant:scheduled:<run id>`, linked record the run:
+- result classified PUBLIC (or none): template `assistant_scheduled_result` (NOTIFICATION, Markdown, registered on first send and never overwritten) with the task name, run time, a summary cut to 280 characters and a link to the run. The full model output is never emailed;
+- result classified above PUBLIC (core's `DataClassification`): only the link, through qbit-email's `email_secure_message` pattern. No task name, summary or output.
+
+The outbox result maps to `QUEUED`, `DUPLICATE`, `SUPPRESSED` or `REFUSED` (for example a link that is not absolute http(s)). Addresses and bodies are never logged.
+
 ## Data classification and HIPAA mode
 
-On QQQ 4.1.0-RC.5, classify application tables/fields in the host configuration:
+Classify application tables and fields in core's AI metadata (`AiTableMetaData` / `AiFieldMetaData`, QQQ 4.1.0-RC.6), or in the host configuration (a configured value wins when both are set):
 
 ```java
-import com.kingsrook.qbits.assistant.classification.DataClassification;
+import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 
 AssistantQBitConfig config = new AssistantQBitConfig()
    .withDataClassification("patient", DataClassification.PHI)
@@ -487,8 +539,8 @@ The existing server-side `withSecretResolver` hook also resolves this reference.
 Startup validates the key. HIPAA mode defaults off; encryption can also be enabled
 with the key reference while HIPAA mode is off.
 
-The qbit `DataClassification` enum is a stand-in for core QRun-IO/qqq#1142, with
-PUBLIC < CONFIDENTIAL < PII < PHI. Unconfigured tables default to PUBLIC; a field
+The levels are core's `DataClassification` (PUBLIC < CONFIDENTIAL < PII < PHI); the
+qbit's former stand-in enum is gone. Unconfigured tables default to PUBLIC; a field
 falls back to its table unless explicitly overridden. A field subset uses its
 selected fields; unrestricted reads and record page contexts use the highest
 classification across the table and its fields. Returned columns and record-label
@@ -497,10 +549,9 @@ explicitly if the host considers it safe for that subset. Cross-table results wi
 tables use the highest classification anywhere. Metadata-only tools remain PUBLIC.
 The assistant's own tables remain denied to tools.
 
-Hosts can supply `withClassificationSource(ClassificationSource)` instead. When
-upgrading to an RC containing core #1142, implement that interface with
-`AiDataClassifications`/`AiTableMetaData`/`AiFieldMetaData` (map enum names), then
-replace the stand-in once the qbit's minimum core version includes it.
+The default `ClassificationSource` reads core's metadata (`AiDataClassifications`,
+`AiTableMetaData`, `AiFieldMetaData`) merged with the configured map; configuration
+wins when both are set. Hosts can still supply `withClassificationSource(ClassificationSource)`.
 
 PHI is sent only to a persisted provider row explicitly marked `hipaaEligible`.
 Every model dispatch rechecks eligibility, including calls after tools and strict
@@ -620,3 +671,29 @@ skills can extend the built-in presentation instructions. See the
 The image-breakdown golden task also runs in the existing opt-in live provider suite:
 `./mvnw verify -Dassistant.live=true -Dtest.excludedGroups= -Dgroups=live -Djacoco.skip=true -pl qbit-assistant-provider-anthropic -am`
 (with `ANTHROPIC_API_KEY` set). Live calls are excluded from normal verification.
+
+### Record history and the assistant channel
+
+Core's default `ClientChannelsMetaData` denies `audit*` to the `assistant`
+channel. Accordingly, `get_record_history` is offered only when all three audit
+tables it queries (`auditTable`, `audit`, and `auditDetail`) exist and are not
+channel-denied, including their effective permission rules. A host that intends
+to expose record history can opt in during instance configuration:
+
+```java
+new AssistantQBitConfig()
+   .withRecordHistory(true);
+```
+
+This is an owner decision and a hard wall: record history defaults to disabled;
+**kof22 does not opt in**. On QQQ RC.6, the opt-in removes exactly `audit*`
+from the assistant's denied patterns (the former manual configuration step).
+RC.6 does not add a separate channel write denial for audits. On later RCs that
+include QRun-IO/qqq#1193, it calls `withAssistantAuditReads()`, which allows audit
+reads but denies audit writes. The user's own audit permissions still apply.
+Other patterns, including `worm_audit_*`, `assistant_*`, and security surfaces,
+remain untouched, as do explicit object and permission-rule denials.
+
+History visibility uses core's `isDenied` read/all-operation check. RC.6 has no
+operation argument; the later write-only deny patterns must remain separate
+from that check so they do not hide the read tool.

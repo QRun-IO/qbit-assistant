@@ -20,7 +20,6 @@ package com.kingsrook.qbits.assistant.tools;
 import java.io.InputStream;
 import java.math.BigDecimal;
 import java.math.MathContext;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -29,7 +28,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.kingsrook.qbits.assistant.provider.ModelToolDefinition;
+import com.kingsrook.qbits.assistant.spi.ModelToolDefinition;
 import com.kingsrook.qbits.assistant.uiapi.UiApiCall;
 import com.kingsrook.qbits.assistant.uiapi.UiApiResult;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolOutcome;
@@ -187,7 +186,7 @@ public class PresentResultsTool
       {
          try
          {
-            metadata = context.gateway().invoke(new UiApiCall("GET", "/metaData").withSessionUUID(context.sessionUUID()).withUserTimezone(context.userTimezone()));
+            metadata = context.gateway().invoke(context.prepare(new UiApiCall("GET", "/metaData")));
          }
          catch(QException e)
          {
@@ -388,7 +387,7 @@ public class PresentResultsTool
          values.forEach(PresentResultsTool::scalar);
          output.add(map("fieldName", fieldName, "operator", operator, "values", values));
       }
-      return (safeHref(AiLinkBuilder.objectHref(tableName) + "?filter=" + URLEncoder.encode(JsonUtils.toJson(map("criteria", output, "booleanOperator", "AND")), StandardCharsets.UTF_8)));
+      return (safeHref(FilterLinkBuilder.href(tableName, output)));
    }
 
 

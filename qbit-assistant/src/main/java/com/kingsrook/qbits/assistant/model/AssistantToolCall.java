@@ -100,7 +100,7 @@ public class AssistantToolCall extends QRecordEntity
    @QField(isEditable = false)
    private Integer httpStatus;
 
-   @QField(isEditable = false, maxLength = 500)
+   @QField(isEditable = false)
    private String auditHref;
 
    @QField(isEditable = false, possibleValueSourceName = AssistantPendingAction.TABLE_NAME)

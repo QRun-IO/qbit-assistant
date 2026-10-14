@@ -29,7 +29,7 @@ Always use the wrapper: Maven 3.10 cannot read the parent POM. The committed def
 
 ## Modules
 
-- `qbit-assistant-provider-api`: standalone provider SPI/value types and `engine.ModelPricing` (original package names); only Jackson annotations in production. Provider validation takes unresolved `ProviderSettings`, not an entity.
+- `qbit-assistant-provider-api`: standalone provider SPI/value types and `ModelPricing`, all exclusively in `com.kingsrook.qbits.assistant.spi`; only Jackson annotations in production. Provider validation takes unresolved `ProviderSettings`, not an entity.
 
 - `qbit-assistant` (`com.kingsrook.qbits.assistant`):
   - `AssistantQBitProducer`, `AssistantQBitConfig` (with `AssistantModelRouting` and `AssistantBudgets`), `AssistantRuntime`, `AssistantSecurity`.
@@ -57,6 +57,7 @@ Always use the wrapper: Maven 3.10 cannot read the parent POM. The committed def
   - Never use `QSystemUserSession` or construct a `QSession` in main code (ArchUnit).
   - Every route uses `ExecutorSessionUtils.setupSession` (the user's own session).
   - `AssistantSecurity` only ever adds the user's OWN id key, or the all-access key for `assistant.admin` holders.
+- **Channel wall:** every `assistant_*` object (table, process, report and widget) is denied to the `assistant` channel; startup fails otherwise. Requests carry `assistant/<turnId>` or `assistant/scheduled/<taskId>`; administration uses `next-ui`.
 - **Data access:**
   - The vector index stores no record content: only source/table/key/field/chunk, content hash and embedding. Retrieval re-reads every hit through the UI API as the asking user, then applies the existing get_record exposure/masking path.
   - Only `persistence/` calls QueryAction, InsertAction and the other data actions (ArchUnit).

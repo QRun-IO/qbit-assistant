@@ -28,10 +28,10 @@ import com.kingsrook.qbits.assistant.engine.TurnEvent;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
 import com.kingsrook.qbits.assistant.model.AssistantPolicy;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
-import com.kingsrook.qbits.assistant.provider.ModelMessage;
-import com.kingsrook.qbits.assistant.provider.ModelPart;
-import com.kingsrook.qbits.assistant.provider.ModelRequest;
-import com.kingsrook.qbits.assistant.provider.ModelResponse;
+import com.kingsrook.qbits.assistant.spi.ModelMessage;
+import com.kingsrook.qbits.assistant.spi.ModelPart;
+import com.kingsrook.qbits.assistant.spi.ModelRequest;
+import com.kingsrook.qbits.assistant.spi.ModelResponse;
 import com.kingsrook.qbits.assistant.testing.AssistantTestFixture;
 import com.kingsrook.qbits.assistant.testing.BaseAssistantTest;
 import com.kingsrook.qbits.assistant.testing.TurnRunner;
@@ -90,7 +90,11 @@ class RedTeamTest extends BaseAssistantTest
 
       for(Map<String, Object> result : outcome.events(TurnEvent.TOOL_RESULT))
       {
-         if(!"list_tables".equals(result.get("name")) && !"search_records".equals(result.get("name")))
+         if("get_record_history".equals(result.get("name")))
+         {
+            assertThat(result.get("outcome")).as("history is not offered under the default channel wall").isEqualTo("INVALID_INPUT");
+         }
+         else if(!"list_tables".equals(result.get("name")) && !"search_records".equals(result.get("name")))
          {
             assertThat(result.get("outcome")).as(String.valueOf(result.get("name"))).isIn("DENIED", "NOT_FOUND");
          }

@@ -23,14 +23,14 @@ import com.anthropic.client.okhttp.AnthropicOkHttpClient;
 import com.anthropic.core.Timeout;
 import com.anthropic.vertex.backends.VertexBackend;
 import com.google.auth.oauth2.GoogleCredentials;
-import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
-import com.kingsrook.qbits.assistant.provider.ModelCapabilities;
-import com.kingsrook.qbits.assistant.provider.ModelEventListener;
-import com.kingsrook.qbits.assistant.provider.ModelRequest;
-import com.kingsrook.qbits.assistant.provider.ProviderSettings;
-import com.kingsrook.qbits.assistant.provider.StreamHandle;
 import com.kingsrook.qbits.assistant.provider.anthropic.AnthropicModelProvider;
 import com.kingsrook.qbits.assistant.provider.openai.OpenAiCompatibleModelProvider;
+import com.kingsrook.qbits.assistant.spi.AssistantModelProvider;
+import com.kingsrook.qbits.assistant.spi.ModelCapabilities;
+import com.kingsrook.qbits.assistant.spi.ModelEventListener;
+import com.kingsrook.qbits.assistant.spi.ModelRequest;
+import com.kingsrook.qbits.assistant.spi.ProviderSettings;
+import com.kingsrook.qbits.assistant.spi.StreamHandle;
 
 
 /*******************************************************************************

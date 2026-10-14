@@ -19,6 +19,7 @@ package com.kingsrook.qbits.assistant.tools.bulkload;
 
 import com.kingsrook.qbits.assistant.uiapi.UiApiGateway;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiCredentials;
 
 
 /*******************************************************************************
@@ -31,8 +32,15 @@ public interface BulkLoadRunner
    /*******************************************************************************
     ** A load to start: the target table, the upload, and the saved profile.
     *******************************************************************************/
-   record Request(String sessionUUID, String userTimezone, UiApiGateway gateway, String tableName, String uploadRef, Integer savedBulkLoadProfileId)
+   record Request(String sessionUUID, String userTimezone, UiApiGateway gateway, String tableName, String uploadRef, Integer savedBulkLoadProfileId, UiApiCredentials credentials, String turnId)
    {
+      /*******************************************************************************
+       ** Without request credentials or a turn.
+       *******************************************************************************/
+      public Request(String sessionUUID, String userTimezone, UiApiGateway gateway, String tableName, String uploadRef, Integer savedBulkLoadProfileId)
+      {
+         this(sessionUUID, userTimezone, gateway, tableName, uploadRef, savedBulkLoadProfileId, null, null);
+      }
    }
 
 

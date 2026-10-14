@@ -26,17 +26,17 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
-import com.kingsrook.qbits.assistant.classification.DataClassification;
 import com.kingsrook.qbits.assistant.model.AssistantDataAudit;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
 import com.kingsrook.qbits.assistant.processes.AssistantRetentionStep;
-import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
-import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
+import com.kingsrook.qbits.assistant.spi.AssistantModelProvider;
+import com.kingsrook.qbits.assistant.spi.AssistantProviderType;
 import com.kingsrook.qbits.assistant.testing.AssistantTestFixture;
 import com.kingsrook.qbits.assistant.testing.BaseAssistantTest;
 import com.kingsrook.qbits.assistant.testing.TurnRunner;
+import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
@@ -248,9 +248,9 @@ class PhiRoutingTest extends BaseAssistantTest
          {
             QContext.clear();
          }
-         return (new com.kingsrook.qbits.assistant.provider.ModelResponse().withParts(List.of(
-            com.kingsrook.qbits.assistant.provider.ModelPart.toolUse("read", "query_records", Map.of("table", "patient"))))
-            .withStopReason(com.kingsrook.qbits.assistant.provider.ModelResponse.STOP_TOOL_USE));
+         return (new com.kingsrook.qbits.assistant.spi.ModelResponse().withParts(List.of(
+            com.kingsrook.qbits.assistant.spi.ModelPart.toolUse("read", "query_records", Map.of("table", "patient"))))
+            .withStopReason(com.kingsrook.qbits.assistant.spi.ModelResponse.STOP_TOOL_USE));
       });
       assertThat(runner.run(AssistantTestFixture.EDITOR, "read patients").errorCode()).isEqualTo("PHI_BLOCKED");
       assertThat(provider.getRequests()).hasSize(1);

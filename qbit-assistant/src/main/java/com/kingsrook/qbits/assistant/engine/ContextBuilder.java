@@ -28,16 +28,16 @@ import java.util.Set;
 import java.util.TreeMap;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
-import com.kingsrook.qbits.assistant.provider.CacheHint;
-import com.kingsrook.qbits.assistant.provider.ModelMessage;
-import com.kingsrook.qbits.assistant.provider.ModelPart;
-import com.kingsrook.qbits.assistant.provider.ModelRequest;
-import com.kingsrook.qbits.assistant.provider.ModelToolDefinition;
-import com.kingsrook.qbits.assistant.provider.SystemBlock;
+import com.kingsrook.qbits.assistant.spi.CacheHint;
+import com.kingsrook.qbits.assistant.spi.ModelMessage;
+import com.kingsrook.qbits.assistant.spi.ModelPart;
+import com.kingsrook.qbits.assistant.spi.ModelRequest;
+import com.kingsrook.qbits.assistant.spi.ModelToolDefinition;
+import com.kingsrook.qbits.assistant.spi.SystemBlock;
 import com.kingsrook.qbits.assistant.tools.KnowledgeTool;
 import com.kingsrook.qbits.assistant.tools.PresentResultsTool;
-import com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadTools;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
+import com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadTools;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolDefinition;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolKernel;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -107,6 +107,16 @@ public class ContextBuilder
     *******************************************************************************/
    public List<ModelToolDefinition> tools(PolicyService.ToolPolicy policy)
    {
+      return (tools(policy, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Attribute tool-discovery requests to the turn that needs them.
+    *******************************************************************************/
+   private List<ModelToolDefinition> tools(PolicyService.ToolPolicy policy, String turnId)
+   {
       Map<String, ModelToolDefinition> byName = new TreeMap<>();
       for(ModelToolDefinition definition : toolbox.definitions(policy, toolbox.anyWritableTable()))
       {
@@ -123,7 +133,7 @@ public class ContextBuilder
                .withStrict(isStrict(definition.getName(), !Boolean.FALSE.equals(definition.getStrict()))));
          }
       }
-      if(knowledgeTool != null && knowledgeTool.offered(policy, QContext.getQSession()))
+      if(knowledgeTool != null && knowledgeTool.offered(policy, QContext.getQSession(), turnId))
       {
          byName.put(KnowledgeTool.NAME, knowledgeTool.definition());
       }
@@ -217,11 +227,22 @@ public class ContextBuilder
    public ModelRequest build(QSession session, String model, String effort, List<AssistantMessage> history, String userText, Map<String, Object> pageContext, PolicyService.ToolPolicy toolPolicy,
       String profileInstructions)
    {
+      return (build(session, model, effort, history, userText, pageContext, toolPolicy, profileInstructions, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Include the turn in any UI API calls needed to discover available tools.
+    *******************************************************************************/
+   public ModelRequest build(QSession session, String model, String effort, List<AssistantMessage> history, String userText, Map<String, Object> pageContext, PolicyService.ToolPolicy toolPolicy,
+      String profileInstructions, String turnId)
+   {
       ModelRequest request = new ModelRequest()
          .withModel(model)
          .withEffort(effort)
          .withMaxTokens(config.getModels().getMainMaxOutputTokens())
-         .withTools(tools(toolPolicy));
+         .withTools(tools(toolPolicy, turnId));
 
       request.getSystem().add(new SystemBlock(SystemPrompt.staticBlock(appDigest()), CacheHint.LONG));
       request.getSystem().add(new SystemBlock(userBlock(session) + (StringUtils.hasContent(profileInstructions) ? "\n" + profileInstructions : ""), CacheHint.SHORT));

@@ -17,18 +17,6 @@
 package com.kingsrook.qbits.assistant.engine;
 
 
-import com.kingsrook.qbits.assistant.AssistantQBitConfig;
-import com.kingsrook.qbits.assistant.model.AssistantModel;
-import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
-import com.kingsrook.qbits.assistant.model.AssistantProvider;
-import com.kingsrook.qbits.assistant.persistence.AssistantStore;
-import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
-import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
-import com.kingsrook.qbits.assistant.provider.ProviderSettings;
-import com.kingsrook.qbits.assistant.provider.RegistryModelProvider;
-import com.kingsrook.qqq.backend.core.exceptions.QException;
-import com.kingsrook.qqq.backend.core.logging.QLogger;
-import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
@@ -43,6 +31,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
+import com.kingsrook.qbits.assistant.AssistantQBitConfig;
+import com.kingsrook.qbits.assistant.model.AssistantModel;
+import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
+import com.kingsrook.qbits.assistant.model.AssistantProvider;
+import com.kingsrook.qbits.assistant.persistence.AssistantStore;
+import com.kingsrook.qbits.assistant.provider.RegistryModelProvider;
+import com.kingsrook.qbits.assistant.spi.AssistantModelProvider;
+import com.kingsrook.qbits.assistant.spi.AssistantProviderType;
+import com.kingsrook.qbits.assistant.spi.ModelPricing;
+import com.kingsrook.qbits.assistant.spi.ProviderSettings;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
@@ -742,7 +743,7 @@ public class ProviderService
    /*******************************************************************************
     ** P-e seam: no automatic alternative is selected in P-c. Never downgrade PHI eligibility.
     *******************************************************************************/
-   public java.util.Optional<Active> eligibleAlternative(com.kingsrook.qbits.assistant.classification.DataClassification classification, AssistantProvider blockedProvider)
+   public java.util.Optional<Active> eligibleAlternative(com.kingsrook.qqq.backend.core.actions.ai.DataClassification classification, AssistantProvider blockedProvider)
    {
       return (java.util.Optional.empty());
    }

@@ -145,7 +145,7 @@ public class RagService
    {
       PolicyService.ToolPolicy policy = context.policy();
       UiApiToolbox.Context internal = new UiApiToolbox.Context(context.sessionUUID(), context.userTimezone(), context.gateway(),
-         new PolicyService.ToolPolicy(true, Set.of(), policy == null ? 50 : policy.maxRowsPerCall(), policy == null || policy.redactPii()), null);
+         new PolicyService.ToolPolicy(true, Set.of(), policy == null ? 50 : policy.maxRowsPerCall(), policy == null || policy.redactPii()), null, context.credentials(), context.turnId());
       return (reader.execute(internal, "knowledge-read", UiApiToolbox.GET_RECORD, Map.of("table", table, "id", pk)));
    }
 
@@ -223,7 +223,7 @@ public class RagService
             checkKillSwitch();
             filter.setSkip(skip);
             UiApiResult page = runtime.getUiApiGateway().invoke(new UiApiCall("POST", "/table/{tableName}/query").withPathParam("tableName", source.getTableName())
-               .withSessionUUID(context.sessionUUID()).withUserTimezone(context.userTimezone()).withJsonBody("{\"filter\":" + JsonUtils.toJson(filter) + "}"));
+               .withSessionUUID(context.sessionUUID()).withCredentials(context.credentials()).withUserTimezone(context.userTimezone()).withJsonBody("{\"filter\":" + JsonUtils.toJson(filter) + "}"));
             if(!page.isSuccess())
             {
                throw (new QException("Index query answered HTTP " + page.status() + "; existing chunks were preserved."));

@@ -1,10 +1,42 @@
 # Upgrading qbit-assistant
 
+## X1/Y1: channel wall and audit attribution
+
+Requires QQQ 4.1.0-RC.6. Every assistant table, process, report and widget is
+explicitly denied to channel `assistant`; startup rejects an exposed object.
+Host customizations must preserve these denials. Administration uses `next-ui`.
+
+Before enabling `AuditsMetaDataProvider.withClientChannelField(true)`, add the
+nullable `audit.client_channel VARCHAR(100)` column using the host migration
+conventions. kof22 needs a feature changeset under `changesets/features/` (for
+example `2026-10-14-audit-client-channel.sql`); no host migration is applied here.
+Existing audit rows remain null. The test fixture enables the field.
+
+The existing `assistant_tool_call.auditHref` column now points to audit rows
+filtered by record, table and client channel, including for deletes. It is empty
+when the host has not enabled the audit channel field. Apply the X1/Y1 DDL in
+`docs/schema-postgres.sql` to widen the existing `assistant_tool_call.audit_href`
+column to TEXT: encoded filters with long table names or string record ids can
+exceed the old 500-character limit. No new QBit column is required. `GET /assistant/access` accepts an optional owned `turnId` for attribution.
+
 ## Provider API extraction (#30)
 
-Hosts that depend on `qbit-assistant` keep working: it now brings in
-`qbit-assistant-provider-api` transitively. Package names are unchanged, including
-`com.kingsrook.qbits.assistant.engine.ModelPricing`. No schema migration is needed.
+**BREAKING:** every provider API type now lives in the exclusive package
+`com.kingsrook.qbits.assistant.spi`. Update imports and recompile consumers.
+Hosts still receive `qbit-assistant-provider-api` transitively from `qbit-assistant`.
+No schema migration is needed.
+
+| Old import | New import |
+|---|---|
+| `com.kingsrook.qbits.assistant.provider.X` (API types) | `com.kingsrook.qbits.assistant.spi.X` |
+| `com.kingsrook.qbits.assistant.engine.ModelPricing` | `com.kingsrook.qbits.assistant.spi.ModelPricing` |
+
+Internal classes such as `provider.RegistryModelProvider` and
+`provider.fake.ScriptedModelProvider` stay in the runtime and are not API types.
+External consumers such as qbit-marketing depend only on
+`com.kingsrook.qbits:qbit-assistant-provider-api` for these contracts and allow
+package `com.kingsrook.qbits.assistant.spi` in their guardrails. qbit-bom will add
+this package to the G1 defaults.
 
 External providers and applications using only provider/pricing types should
 replace their `qbit-assistant` dependency with
@@ -17,7 +49,7 @@ Recompile custom provider types that override `validate(AssistantProvider)` and
 change the signature to `validate(ProviderSettings)`. The settings carry the
 configured kind, URL, API version, region, project, CA bundle name, timeouts and
 `apiKeyEnvName`; the key and bearer-token supplier are not resolved for validation.
-Providers using the default validator need no source change. Keep the runtime and
+Providers using the default validator need only the import migration. Keep the runtime and
 provider artifacts on the same version; old validator overrides must be rebuilt.
 ## P-g: scheduled tasks
 
@@ -42,8 +74,8 @@ See [scheduled-task setup](README.md#scheduled-tasks) for kof22 provisioning.
 QQQ RC.5 has no conditional UpdateInput. The runner uses a database-unique
 schedule-slot insertion as its optimistic claim, then advances `nextRunAt`
 before starting work. Crashes can skip a slot; they never retry it. No ArchUnit
-exception or fabricated session is introduced. Core client-channel enforcement
-arrives with the client-channel RC; the header and tool audit are already sent.
+exception or fabricated session is introduced. Core RC.6 enforces client-channel denials; scheduled requests carry
+`assistant/scheduled/<taskId>`.
 
 Notifications use the optional Alerts QBit notification SPI with a single-user
 audience. Without it, delivery logs run id/status only. All output modes retain

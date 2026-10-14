@@ -103,7 +103,7 @@ CREATE TABLE assistant_tool_call
    redactions_json TEXT,
    ui_api_operation VARCHAR(255),
    http_status INTEGER,
-   audit_href VARCHAR(500),
+   audit_href TEXT,
    pending_action_id INTEGER,
    create_date TIMESTAMP WITH TIME ZONE
 );
@@ -574,3 +574,6 @@ CREATE TABLE assistant_scheduled_run (
    UNIQUE (task_id, scheduled_for)
 );
 CREATE INDEX assistant_scheduled_run_owner ON assistant_scheduled_run(user_id, started_at);
+
+-- X1/Y1: encoded audit filters can exceed the old 500-character record links.
+ALTER TABLE assistant_tool_call ALTER COLUMN audit_href TYPE TEXT;

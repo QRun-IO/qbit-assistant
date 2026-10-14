@@ -28,6 +28,8 @@
       <anthropic.version>2.71.0</anthropic.version>
       <archunit.version>1.5.1</archunit.version>
       <jackson.version>2.21.7</jackson.version>
+      <!-- optional email delivery; qbit-email from Maven Central -->
+      <qbit-email.version>0.1.0-RC.2</qbit-email.version>
       <!-- live evals call the real API; run them with -Dtest.excludedGroups= -Dgroups=live -->
       <test.excludedGroups>live</test.excludedGroups>
    </properties>
@@ -35,7 +37,7 @@
    <parent>
       <groupId>com.kingsrook</groupId>
       <artifactId>qbit-build-parent</artifactId>
-      <version>2.0.0</version>
+      <version>2.1.1</version>
    </parent>
 
    <groupId>com.kingsrook.qbits</groupId>
@@ -200,8 +202,9 @@
    </build>
 
    <profiles>
-      <!-- The assistant needs QQQ 4.1.0-RC.5: the AI tool kernel (package        -->
-      <!-- actions.ai, qqq#1078) and the developer panels (qqq#1076). Until        -->
+      <!-- The assistant needs QQQ 4.1.0-RC.6: the AI tool kernel (qqq#1078), the  -->
+      <!-- developer panels (qqq#1076) and the UI API extension point, invoker   -->
+      <!-- and credentials (qqq#1128). Until                                      -->
       <!-- qbit-build-parent imports the 4.1 BOM, this                              -->
       <!-- profile is active by default and imports qqq-bom-pom ahead of the        -->
       <!-- parent's 4.0.0 BOM, as in qbit-quick-search (ADR-0007). Override with    -->
@@ -212,7 +215,7 @@
             <activeByDefault>true</activeByDefault>
          </activation>
          <properties>
-            <qqq.snapshot.version>4.1.0-RC.5</qqq.snapshot.version>
+            <qqq.snapshot.version>4.1.0-RC.6</qqq.snapshot.version>
          </properties>
          <dependencyManagement>
             <dependencies>

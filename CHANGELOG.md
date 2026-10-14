@@ -1,8 +1,33 @@
 # Changelog
 
+## Unreleased - X1/Y1
+
+- Add default-off `withRecordHistory(true)` host opt-in: remove only `audit*` on RC.6, or invoke core #1193 audit-read/write-deny support when available. Preserve user permissions and all other channel denials; kof22 does not opt in.
+
+- Register explicit assistant-channel denials on every assistant table, process,
+  report and widget, preserving core security patterns; fail runtime startup
+  when an assistant object is exposed.
+- Bump the assistant UI API extension to 1.1.0 for optional owned-turn attribution
+  on explain-access, and regenerate its OpenAPI contract.
+- Preserve turn attribution in knowledge discovery, RAG reads and explain-access
+  calls; confirm actions retain the original turn and scheduled runs retain the task.
+- Build audit links with the presentation filter-link builder, filtering by
+  record, table and channel, including deletes; widen audit link storage to TEXT.
+  Document the host audit migration and the QBit column widening.
+- Verify the admin denial matrix through the real invoker and Next UI, startup
+  failures, and confirmed-write human/channel attribution with decoded audit links.
+## Unreleased - Email
+
+### Changed
+
+- Switch scheduled-result email delivery to qbit-email 0.1.0-RC.2's published `com.kingsrook.qbits.email.api` package, preserving templates, categories, idempotency keys, linked records and status mapping.
+- Add optional qbit-email 0.1.0-RC.1 delivery of a scheduled task's result (`AssistantEmail.sendScheduledResult`): template `assistant_scheduled_result`, link-only secure message for results above PUBLIC using core's `DataClassification`, owner-recipient hook, opt-in and `emailExternalApproved` gates. Scheduled-task wiring remains a separate integration step.
+
 ## Unreleased - Provider API extraction (#30)
 
-- Extract provider SPI/value types and `engine.ModelPricing` into `qbit-assistant-provider-api`, preserving package names. Its only production dependency is Jackson annotations.
+- **BREAKING:** move all 23 provider API types, including `ModelPricing`, to `com.kingsrook.qbits.assistant.spi`. Recompile consumers with the new imports; see UPGRADE.md. Enforce exclusive package ownership and API dependency boundaries with ArchUnit.
+
+- Extract provider SPI/value types and `ModelPricing` into `qbit-assistant-provider-api`, now exclusively in `com.kingsrook.qbits.assistant.spi`. Its only production dependency is Jackson annotations.
 - Move Anthropic, OpenAI, Bedrock and Vertex main dependencies to the API; retain runtime fixtures in test scope. Pgvector still needs runtime RAG interfaces.
 - Provider-specific validation now takes unresolved `ProviderSettings` instead of `AssistantProvider`; add an ArchUnit boundary and standalone coverage gates.
 ## Unreleased - P-g
@@ -66,7 +91,7 @@
 - Add HIPAA mode, eligible-provider enforcement, AES-256-GCM conversation storage,
   provider diagnostic redaction, and independent PHI conversation retention.
 - Add owner-locked, admin read-only data routing audits and HIPAA status on the home.
-- Keep QQQ RC.4 compatibility with a classification stand-in and core #1142 adapter seam.
+- Classification levels are core's `DataClassification` (the qbit stand-in is removed); the default source reads core AI metadata merged with configuration.
 
 All notable changes to this project are documented here. The format follows Keep a Changelog, and versions follow semantic versioning.
 
@@ -83,6 +108,11 @@ All notable changes to this project are documented here. The format follows Keep
 Phase 0/1 of the QQQ Assistant: read-only Q&A and navigation. Requires QQQ 4.1 with:
 - the AI tool kernel (`qqq-backend-core` `actions.ai`, QRun-IO/qqq#1078)
 - the developer-panel contract (QRun-IO/qqq#1076).
+
+### Changed (0.1.0-RC.7, needs QQQ with QRun-IO/qqq#1128)
+- The assistant's endpoints are spec'd `/qqq/v1` operations (UI API extension `assistant` 1.0.0, prefix `/assistant`): same URLs, bodies and statuses, now in the served OpenAPI; turns and events are `text/event-stream`. The raw routes are gone.
+- Tools call core's `UiApiInvoker` with the caller's own request credentials (`UiApiCredentials`); the loopback stand-in is removed. The assistant's own operations are never invocable by its tools.
+- The OpenAPI fragment is committed (`openapi/qqq-v1/assistant.yaml`) and contract-tested.
 
 ### Changed (0.1.0-RC.6): tools go through the UI API (owner decision 2026-10-13)
 - **Every data tool runs a spec'd `/qqq/v1` operation with the user's own session** (`UiApiGateway`, loopback HTTP with the `sessionUUID` cookie): the same authentication, permissions, record locks, validation, audit and errors as the UI. A user without a permission gets the identical denial through the assistant. `navigate` and `search_help` (no records) stay on the core kernel. `LoopbackUiApiGateway` is a stand-in for core's `UiApiInvoker` (QRun-IO/qqq#1128).

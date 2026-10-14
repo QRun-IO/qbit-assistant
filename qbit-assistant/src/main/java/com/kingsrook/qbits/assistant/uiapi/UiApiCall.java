@@ -20,6 +20,7 @@ package com.kingsrook.qbits.assistant.uiapi;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiCredentials;
 
 
 /*******************************************************************************
@@ -37,7 +38,9 @@ public class UiApiCall
    private final Map<String, String> headers     = new LinkedHashMap<>();
    private Object                    jsonBody;
    private String                    sessionUUID;
+   private UiApiCredentials          credentials;
    private String                    userTimezone;
+   private String                    clientDetail;
    private String                    invokedBy   = "assistant";
    private Duration                  timeout     = Duration.ofSeconds(60);
 
@@ -216,6 +219,29 @@ public class UiApiCall
 
 
    /*******************************************************************************
+    ** The caller's credentials exactly as their request carried them (session
+    ** cookies, Authorization, API key); preferred over the session UUID alone.
+    ** Never logged (their toString is redacted).
+    *******************************************************************************/
+   public UiApiCall withCredentials(UiApiCredentials credentials)
+   {
+      this.credentials = credentials;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for credentials
+    *******************************************************************************/
+   public UiApiCredentials getCredentials()
+   {
+      return (credentials);
+   }
+
+
+
+   /*******************************************************************************
     ** Getter for sessionUUID
     *******************************************************************************/
    public String getSessionUUID()
@@ -242,6 +268,29 @@ public class UiApiCall
    public String getUserTimezone()
    {
       return (userTimezone);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for clientDetail: the detail after the slash of the client
+    ** channel the invoker labels the call with (assistant/turnId; a scheduled
+    ** run uses scheduled/taskId). Ignored when blank.
+    *******************************************************************************/
+   public UiApiCall withClientDetail(String clientDetail)
+   {
+      this.clientDetail = clientDetail;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for clientDetail
+    *******************************************************************************/
+   public String getClientDetail()
+   {
+      return (clientDetail);
    }
 
 

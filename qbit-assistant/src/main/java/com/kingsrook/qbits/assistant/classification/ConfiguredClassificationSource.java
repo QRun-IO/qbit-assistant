@@ -23,12 +23,21 @@ package com.kingsrook.qbits.assistant.classification;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import com.kingsrook.qqq.backend.core.actions.ai.AiDataClassifications;
+import com.kingsrook.qqq.backend.core.actions.ai.AiFieldMetaData;
+import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 
 
 /*******************************************************************************
- ** Default classification source for RCs without core classification metadata.
+ ** The default classification source: core's AI classification metadata
+ ** (AiTableMetaData / AiFieldMetaData, via AiDataClassifications) merged with
+ ** the classifications configured on the qbit. A configured value wins when
+ ** both are set; a field falls back to its own core classification, then to
+ ** its table's; anything unclassified (and the assistant's own tables) is
+ ** PUBLIC.
  *******************************************************************************/
 public class ConfiguredClassificationSource implements ClassificationSource
 {
@@ -71,7 +80,7 @@ public class ConfiguredClassificationSource implements ClassificationSource
    @Override
    public DataClassification ofTable(String table)
    {
-      return (table == null || table.startsWith("assistant_") ? DataClassification.PUBLIC : DataClassification.max(null, tables.get(table)));
+      return (table == null || table.startsWith("assistant_") ? DataClassification.PUBLIC : Classifications.max(null, tables.get(table)));
    }
 
 
@@ -87,7 +96,24 @@ public class ConfiguredClassificationSource implements ClassificationSource
          return (DataClassification.PUBLIC);
       }
       DataClassification value = field == null ? null : fields.getOrDefault(table, Map.of()).get(field);
+      if(value == null)
+      {
+         QTableMetaData metadata = coreTable(table);
+         AiFieldMetaData coreField = metadata == null || metadata.getFields() == null || field == null ? null : AiFieldMetaData.of(metadata.getFields().get(field));
+         value = coreField == null ? null : coreField.getClassification();
+      }
       return (value == null ? ofTable(table) : value);
+   }
+
+
+
+   /*******************************************************************************
+    ** The table's core metadata, or null (no instance in context, or unknown).
+    *******************************************************************************/
+   private static QTableMetaData coreTable(String table)
+   {
+      QInstance qInstance = QContext.getQInstance();
+      return (qInstance == null ? null : qInstance.getTable(table));
    }
 
 
@@ -108,12 +134,12 @@ public class ConfiguredClassificationSource implements ClassificationSource
       {
          for(String field : metadata.getFields().keySet())
          {
-            result = DataClassification.max(result, ofField(table, field));
+            result = Classifications.max(result, ofField(table, field));
          }
       }
       for(DataClassification value : fields.getOrDefault(table, Map.of()).values())
       {
-         result = DataClassification.max(result, value);
+         result = Classifications.max(result, value);
       }
       return (result);
    }
@@ -129,11 +155,11 @@ public class ConfiguredClassificationSource implements ClassificationSource
       DataClassification result = ClassificationSource.super.highestAnywhere();
       for(String table : tables.keySet())
       {
-         result = DataClassification.max(result, highest(table));
+         result = Classifications.max(result, highest(table));
       }
       for(String table : fields.keySet())
       {
-         result = DataClassification.max(result, highest(table));
+         result = Classifications.max(result, highest(table));
       }
       return (result);
    }

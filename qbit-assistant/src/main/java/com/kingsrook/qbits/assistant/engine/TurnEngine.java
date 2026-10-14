@@ -44,22 +44,23 @@ import com.kingsrook.qbits.assistant.model.AssistantScheduledTask;
 import com.kingsrook.qbits.assistant.model.AssistantToolCall;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
-import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
-import com.kingsrook.qbits.assistant.provider.CacheHint;
-import com.kingsrook.qbits.assistant.provider.ModelCapabilities;
-import com.kingsrook.qbits.assistant.provider.ModelEventListener;
-import com.kingsrook.qbits.assistant.provider.ModelMessage;
-import com.kingsrook.qbits.assistant.provider.ModelPart;
-import com.kingsrook.qbits.assistant.provider.ModelProviderException;
-import com.kingsrook.qbits.assistant.provider.ModelRequest;
-import com.kingsrook.qbits.assistant.provider.ModelResponse;
-import com.kingsrook.qbits.assistant.provider.ModelUsage;
-import com.kingsrook.qbits.assistant.provider.StreamHandle;
 import com.kingsrook.qbits.assistant.scheduled.ScheduledTurn;
+import com.kingsrook.qbits.assistant.spi.AssistantModelProvider;
+import com.kingsrook.qbits.assistant.spi.CacheHint;
+import com.kingsrook.qbits.assistant.spi.ModelCapabilities;
+import com.kingsrook.qbits.assistant.spi.ModelEventListener;
+import com.kingsrook.qbits.assistant.spi.ModelMessage;
+import com.kingsrook.qbits.assistant.spi.ModelPart;
+import com.kingsrook.qbits.assistant.spi.ModelPricing;
+import com.kingsrook.qbits.assistant.spi.ModelProviderException;
+import com.kingsrook.qbits.assistant.spi.ModelRequest;
+import com.kingsrook.qbits.assistant.spi.ModelResponse;
+import com.kingsrook.qbits.assistant.spi.ModelUsage;
+import com.kingsrook.qbits.assistant.spi.StreamHandle;
 import com.kingsrook.qbits.assistant.tools.KnowledgeTool;
 import com.kingsrook.qbits.assistant.tools.PresentResultsTool;
-import com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadTools;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
+import com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadTools;
 import com.kingsrook.qqq.backend.core.actions.ai.AiRecordRef;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolCall;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolOutcome;
@@ -72,6 +73,7 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiCredentials;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
@@ -148,6 +150,7 @@ public class TurnEngine implements Runnable
    private ProviderService.Active budgetOrigin;
 
    private volatile boolean finished = false;
+   private UiApiCredentials credentials;
 
 
 
@@ -172,6 +175,19 @@ public class TurnEngine implements Runnable
       this.policy = policy;
       this.running = running;
       this.softBudgetNotice = softBudgetNotice;
+   }
+
+
+
+   /*******************************************************************************
+    ** The credentials of the request that started the turn, forwarded to the
+    ** UI API by the tools (session cookies, Authorization, API key as they came
+    ** in). Without them the session UUID is used. Never logged.
+    *******************************************************************************/
+   public TurnEngine withCredentials(UiApiCredentials credentials)
+   {
+      this.credentials = credentials;
+      return (this);
    }
 
 
@@ -247,7 +263,7 @@ public class TurnEngine implements Runnable
          String                  appName = runtime.appNameFor(pageContext);
          ProfileService.Persona  persona = runtime.getProfileService().persona(session, appName, scheduledTask == null ? null : scheduledTask.getProfileId());
          String                  profileText = ProfileService.instructions(persona, runtime.getProfileService().relevantSkills(persona.profileId(), userText, appName));
-         ModelRequest request = runtime.getContextBuilder().build(session, model, route.effort(), history, userText, pageContext, toolPolicy, profileText);
+         ModelRequest request = runtime.getContextBuilder().build(session, model, route.effort(), history, userText, pageContext, toolPolicy, profileText, turn.getId() == null ? null : String.valueOf(turn.getId()));
          Integer maxPerRequest = active.row() == null ? null : active.row().getMaxOutputTokensPerRequest();
          if(maxPerRequest != null && (request.getMaxTokens() == null || request.getMaxTokens() > maxPerRequest))
          {
@@ -870,7 +886,7 @@ public class TurnEngine implements Runnable
             .withUserId(userId)
             .withToolCallId(use.getToolUseId())
             .withToolName(use.getToolName())
-            .withClientChannel(scheduledTask == null ? null : "assistant/scheduled/" + scheduledTask.getId())
+            .withClientChannel(scheduledTask == null ? "assistant/" + turn.getId() : "assistant/scheduled/" + scheduledTask.getId())
             .withInputJson(truncate(redactInput(PresentResultsTool.NAME.equals(use.getToolName()) ? (presentation ? result.getRender() : Map.of()) : use.getInput()), MAX_INPUT_JSON_CHARS))
             .withOutcome(outcome)
             .withPermissionCheck(result.getPermissionCheck())
@@ -917,7 +933,7 @@ public class TurnEngine implements Runnable
     *******************************************************************************/
    private UiApiToolbox.Context toolContext()
    {
-      return (new UiApiToolbox.Context(session.getUuid(), userTimezone(), runtime.getUiApiGateway(), toolPolicy, this::proposeWrite));
+      return (new UiApiToolbox.Context(session.getUuid(), userTimezone(), runtime.getUiApiGateway(), toolPolicy, this::proposeWrite, credentials, turn.getId() == null ? null : String.valueOf(turn.getId())));
    }
 
 

@@ -25,18 +25,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
-import com.kingsrook.qbits.assistant.classification.DataClassification;
 import com.kingsrook.qbits.assistant.engine.PolicyService;
 import com.kingsrook.qbits.assistant.engine.TurnEngine;
 import com.kingsrook.qbits.assistant.model.AssistantRagSource;
-import com.kingsrook.qbits.assistant.provider.ModelToolDefinition;
 import com.kingsrook.qbits.assistant.rag.EmbeddingService;
 import com.kingsrook.qbits.assistant.rag.RagService;
 import com.kingsrook.qbits.assistant.rag.TextChunks;
 import com.kingsrook.qbits.assistant.rag.VectorStore;
+import com.kingsrook.qbits.assistant.spi.ModelToolDefinition;
 import com.kingsrook.qqq.backend.core.actions.ai.AiRecordRef;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolOutcome;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolResult;
+import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qqq.backend.core.actions.ai.output.AiDataEnvelope;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
@@ -72,6 +72,16 @@ public class KnowledgeTool
     *******************************************************************************/
    public Boolean offered(PolicyService.ToolPolicy policy, QSession session)
    {
+      return (offered(policy, session, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Tool discovery is a UI API call too: retain the turn when known.
+    *******************************************************************************/
+   public Boolean offered(PolicyService.ToolPolicy policy, QSession session, String turnId)
+   {
       if(session == null || (policy != null && !policy.allows(NAME)))
       {
          return (false);
@@ -90,7 +100,7 @@ public class KnowledgeTool
          {
             return (false);
          }
-         return (runtime.getAccessExplainer().explain(runtime.getUiApiGateway(), session.getUuid(), policy, null, null).stream()
+         return (runtime.getAccessExplainer().explain(runtime.getUiApiGateway(), session.getUuid(), null, policy, null, null, turnId).stream()
             .anyMatch(t -> tables.contains(t.table()) && t.uiRead() && t.mode().allowsRead()));
       }
       catch(QException e)
