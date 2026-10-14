@@ -27,16 +27,20 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
 import com.kingsrook.qbits.assistant.model.AssistantPendingAction;
+import com.kingsrook.qbits.assistant.model.AssistantScheduledTask;
 import com.kingsrook.qbits.assistant.model.AssistantToolCall;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
@@ -51,6 +55,7 @@ import com.kingsrook.qbits.assistant.provider.ModelRequest;
 import com.kingsrook.qbits.assistant.provider.ModelResponse;
 import com.kingsrook.qbits.assistant.provider.ModelUsage;
 import com.kingsrook.qbits.assistant.provider.StreamHandle;
+import com.kingsrook.qbits.assistant.scheduled.ScheduledTurn;
 import com.kingsrook.qbits.assistant.tools.KnowledgeTool;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
 import com.kingsrook.qqq.backend.core.actions.ai.AiRecordRef;
@@ -124,6 +129,9 @@ public class TurnEngine implements Runnable
    private final StringBuilder              textBuffer    = new StringBuilder();
    private long                             lastTextFlush = System.currentTimeMillis();
 
+   private AssistantScheduledTask scheduledTask;
+   private PolicyService.ToolPolicy toolPolicy;
+
    private Instant startedAt;
    private Instant deadline;
    private int     toolCallCount  = 0;
@@ -181,6 +189,13 @@ public class TurnEngine implements Runnable
       try
       {
          QContext.init(runtime.getQInstance(), session);
+         scheduledTask = runtime.getScheduledTurn().task(conversation.getId());
+         if(conversation.getScheduledTaskId() != null && scheduledTask == null)
+         {
+            throw (new QException("Scheduled execution context is no longer available; start a new conversation."));
+         }
+         toolPolicy = scheduledTask == null ? policy.tools() : ScheduledTurn.tools(runtime, scheduledTask, policy.tools());
+         ScheduledTurn.checkCost(runtime, conversation.getId(), turn.getId());
          classification = new TurnClassification(config.getClassificationSource(), conversation, pageContext);
          store.saveClassification(userId, conversation.getId(), turn.getId(), classification);
          startKillSwitchWatcher();
@@ -226,9 +241,9 @@ public class TurnEngine implements Runnable
          }
 
          String                  appName = runtime.appNameFor(pageContext);
-         ProfileService.Persona  persona = runtime.getProfileService().persona(session, appName);
+         ProfileService.Persona  persona = runtime.getProfileService().persona(session, appName, scheduledTask == null ? null : scheduledTask.getProfileId());
          String                  profileText = ProfileService.instructions(persona, runtime.getProfileService().relevantSkills(persona.profileId(), userText, appName));
-         ModelRequest request = runtime.getContextBuilder().build(session, model, route.effort(), history, userText, pageContext, policy.tools(), profileText);
+         ModelRequest request = runtime.getContextBuilder().build(session, model, route.effort(), history, userText, pageContext, toolPolicy, profileText);
          Integer maxPerRequest = active.row() == null ? null : active.row().getMaxOutputTokensPerRequest();
          if(maxPerRequest != null && (request.getMaxTokens() == null || request.getMaxTokens() > maxPerRequest))
          {
@@ -238,7 +253,7 @@ public class TurnEngine implements Runnable
          {
             request.setParallelToolCalls(false);
          }
-         Set<String> allowedTools = runtime.getContextBuilder().toolNames(policy.tools());
+         Set<String> allowedTools = runtime.getContextBuilder().toolNames(toolPolicy);
 
          boolean toolLimitReached = false;
          while(true)
@@ -255,6 +270,7 @@ public class TurnEngine implements Runnable
 
             ModelResponse response = fallback.call(request, () -> active, selected -> callModelWithStrictFallback(selected, request));
             stopReason = response.getStopReason();
+            ScheduledTurn.checkCost(runtime, conversation.getId(), turn.getId());
 
             if(ModelResponse.STOP_CANCELLED.equals(stopReason))
             {
@@ -539,6 +555,7 @@ public class TurnEngine implements Runnable
       {
          return (new ModelResponse().withStopReason(ModelResponse.STOP_CANCELLED));
       }
+      ScheduledTurn.checkCost(runtime, conversation.getId(), turn.getId());
       PolicyService.BudgetStatus configuredBudget = runtime.getPolicyService().checkConfiguredBudget(policy, userId, usage.billableTokens(), costMicros);
       if(configuredBudget.hardExceeded())
       {
@@ -552,7 +569,7 @@ public class TurnEngine implements Runnable
          throw (new BudgetService.Blocked(budgetDecision.reason()));
       }
       ProviderService.Active selected = budgetDecision.active();
-      if(!java.util.Objects.equals(active.providerId(), selected.providerId()) || !java.util.Objects.equals(active.model(), selected.model()))
+      if(!Objects.equals(active.providerId(), selected.providerId()) || !Objects.equals(active.model(), selected.model()))
       {
          active = selected;
          model = active.model();
@@ -748,11 +765,11 @@ public class TurnEngine implements Runnable
          {
             future.get(waitMillis, TimeUnit.MILLISECONDS);
          }
-         catch(java.util.concurrent.TimeoutException e)
+         catch(TimeoutException e)
          {
             future.cancel(true);
          }
-         catch(java.util.concurrent.ExecutionException e)
+         catch(ExecutionException e)
          {
             LOG.debug("tool future failed", hipaaSafe(e));
          }
@@ -834,6 +851,7 @@ public class TurnEngine implements Runnable
             .withUserId(userId)
             .withToolCallId(use.getToolUseId())
             .withToolName(use.getToolName())
+            .withClientChannel(scheduledTask == null ? null : "assistant/scheduled/" + scheduledTask.getId())
             .withInputJson(truncate(redactInput(use.getInput()), MAX_INPUT_JSON_CHARS))
             .withOutcome(outcome)
             .withPermissionCheck(result.getPermissionCheck())
@@ -865,7 +883,7 @@ public class TurnEngine implements Runnable
     *******************************************************************************/
    private UiApiToolbox.Context toolContext()
    {
-      return (new UiApiToolbox.Context(session.getUuid(), userTimezone(), runtime.getUiApiGateway(), policy.tools(), this::proposeWrite));
+      return (new UiApiToolbox.Context(session.getUuid(), userTimezone(), runtime.getUiApiGateway(), toolPolicy, this::proposeWrite));
    }
 
 
@@ -1039,6 +1057,10 @@ public class TurnEngine implements Runnable
       finally
       {
          running.getLog().close();
+         if(scheduledTask != null)
+         {
+            runtime.getScheduledTurn().detach(conversation.getId(), session.getUuid());
+         }
          runtime.unregister(turn.getId());
          runtime.getRateLimiter().release(userId);
       }

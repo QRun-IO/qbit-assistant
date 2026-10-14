@@ -524,3 +524,53 @@ CREATE TABLE assistant_rag_source (
 -- );
 -- CREATE INDEX IF NOT EXISTS assistant_rag_chunk_cosine
 --    ON assistant_rag.assistant_rag_chunk USING hnsw (embedding vector_cosine_ops);
+
+-- P-g: designated-user scheduled assistant tasks. Install before enabling jobs.
+CREATE TABLE assistant_scheduled_task (
+   id SERIAL PRIMARY KEY,
+   name VARCHAR(200) NOT NULL,
+   enabled BOOLEAN NOT NULL DEFAULT FALSE,
+   prompt TEXT NOT NULL CHECK (char_length(prompt) BETWEEN 1 AND 4000),
+   run_as_user_id VARCHAR(200) NOT NULL,
+   credential_env_name VARCHAR(200) NOT NULL,
+   credential_status VARCHAR(200), -- computed; always NULL in stored rows
+   profile_id INTEGER REFERENCES assistant_profile(id),
+   cron_expression VARCHAR(200) NOT NULL,
+   timezone VARCHAR(100) NOT NULL DEFAULT 'UTC',
+   next_run_at TIMESTAMPTZ,
+   output_mode VARCHAR(20) NOT NULL DEFAULT 'RECORD' CHECK (output_mode IN ('RECORD', 'NOTIFICATION', 'BOTH')),
+   write_mode_requested BOOLEAN NOT NULL DEFAULT FALSE,
+   write_mode_approved_by VARCHAR(200),
+   write_mode_approved_at TIMESTAMPTZ,
+   write_mode_approval_hash VARCHAR(64),
+   max_cost_usd_per_run NUMERIC(18,6) CHECK (max_cost_usd_per_run >= 0),
+   last_run_at TIMESTAMPTZ,
+   last_run_status VARCHAR(20),
+   last_run_error VARCHAR(500),
+   create_date TIMESTAMPTZ,
+   modify_date TIMESTAMPTZ
+);
+CREATE INDEX assistant_scheduled_task_due ON assistant_scheduled_task(next_run_at) WHERE enabled;
+
+ALTER TABLE assistant_conversation ADD COLUMN scheduled_task_id INTEGER REFERENCES assistant_scheduled_task(id);
+ALTER TABLE assistant_conversation ADD COLUMN channel VARCHAR(64) NOT NULL DEFAULT 'panel';
+ALTER TABLE assistant_tool_call ADD COLUMN client_channel VARCHAR(64);
+
+CREATE TABLE assistant_scheduled_run (
+   id SERIAL PRIMARY KEY,
+   task_id INTEGER NOT NULL REFERENCES assistant_scheduled_task(id),
+   user_id VARCHAR(200) NOT NULL,
+   scheduled_for TIMESTAMPTZ NOT NULL,
+   started_at TIMESTAMPTZ,
+   ended_at TIMESTAMPTZ,
+   status VARCHAR(20) NOT NULL CHECK (status IN ('RUNNING', 'OK', 'FAILED', 'SKIPPED', 'BLOCKED')),
+   conversation_id INTEGER REFERENCES assistant_conversation(id) ON DELETE SET NULL,
+   turn_id INTEGER REFERENCES assistant_turn(id) ON DELETE SET NULL,
+   summary VARCHAR(2000),
+   cost_micros BIGINT,
+   error VARCHAR(500),
+   create_date TIMESTAMPTZ,
+   modify_date TIMESTAMPTZ,
+   UNIQUE (task_id, scheduled_for)
+);
+CREATE INDEX assistant_scheduled_run_owner ON assistant_scheduled_run(user_id, started_at);

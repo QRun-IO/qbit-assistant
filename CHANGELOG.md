@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased - P-g
+
+- Add admin Scheduled tasks, owner-locked run history, Quartz cron/timezones,
+  and a 60-second QQQ scheduled process using the host's scheduler context.
+- Log in through the loopback UI API with a separately allow-listed credential
+  environment reference; verify the designated user before starting a normal turn.
+- Add Review/Result Approve write mode, Revoke write mode and Run now actions.
+  Approval binds the task definition; scheduled writes always await confirmation.
+- Attribute scheduled UI API requests and tool logs, apply per-run STOP caps,
+  and send optional Alerts notifications to the designated user. HIPAA summaries
+  contain only `see conversation`.
+- Add unique schedule-slot claims, fixed-clock fixture integration tests and
+  additive Postgres DDL. No API routes or provider modules change.
+
 ## Unreleased - P-f
 
 - Add OpenAI-compatible embeddings (including Azure), explicit CHAT/EMBEDDING

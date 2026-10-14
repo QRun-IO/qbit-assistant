@@ -162,6 +162,35 @@ public class LoopbackUiApiGateway implements UiApiGateway
 
 
    /*******************************************************************************
+    ** Add server-owned client attribution for a scheduled turn. All operation,
+    ** session, encoding and transport rules remain those of this gateway.
+    *******************************************************************************/
+   public UiApiResult invokeWithClient(UiApiCall call, String clientChannel) throws QException
+   {
+      if(call == null || !isInvocable(call.getMethod(), call.getPathTemplate()) || !StringUtils.hasContent(call.getSessionUUID()))
+      {
+         throw (new QException("A scheduled UI API call requires a spec'd operation and a session."));
+      }
+      try
+      {
+         HttpRequest request = HttpRequest.newBuilder(buildRequest(call), (name, value) -> true).setHeader("X-QQQ-Client", clientChannel).build();
+         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+         return (new UiApiResult(response.statusCode(), response.body()));
+      }
+      catch(InterruptedException e)
+      {
+         Thread.currentThread().interrupt();
+         throw (new QException("Scheduled UI API request interrupted."));
+      }
+      catch(IOException e)
+      {
+         throw (new QException("Scheduled UI API request failed."));
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** The HTTP request: path parameters filled and encoded, query string, JSON
     ** body, the session cookie and the marker headers.
     *******************************************************************************/
