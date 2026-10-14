@@ -35,6 +35,7 @@ import com.kingsrook.qbits.assistant.provider.ModelRequest;
 import com.kingsrook.qbits.assistant.provider.ModelToolDefinition;
 import com.kingsrook.qbits.assistant.provider.SystemBlock;
 import com.kingsrook.qbits.assistant.tools.KnowledgeTool;
+import com.kingsrook.qbits.assistant.tools.PresentResultsTool;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolDefinition;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolKernel;
@@ -123,6 +124,7 @@ public class ContextBuilder
       {
          byName.put(KnowledgeTool.NAME, knowledgeTool.definition());
       }
+      byName.put(PresentResultsTool.NAME, PresentResultsTool.definition(isStrict(PresentResultsTool.NAME, true)));
       return (new ArrayList<>(byName.values()));
    }
 

@@ -13,6 +13,14 @@
   masking/redaction, PHI embedding guards, classification propagation and citations.
 - Add embedding HTTP contracts, real UI API RAG security/golden tests and
   always-on JDBC contracts; the pgvector container test skips without Docker.
+## Unreleased - Answer presentation
+
+- Add `present_results`: server-formatted metrics, tables, computed percentages,
+  charts and validated in-app filter/record/action links.
+- Persist and stream presentation parts with a multi-line GFM fallback and
+  record-data retention; add a static default presentation skill.
+- Add the owner's 81 JPEG / 20 PNG golden example, shared live eval coverage,
+  permission/formatting/input tests and strict-schema budget coverage.
 
 ## Unreleased - P-e
 

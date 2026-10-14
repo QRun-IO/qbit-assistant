@@ -71,6 +71,7 @@ embedding model's vector space, so an incompatible downgrade stops the call.
 Scheduling is deferred to P-g. Its designated-user runner can call
 `RagService.index` within that user's authenticated context; P-f creates no system
 session, stored admin credentials, scheduler or background content crawler.
+Data tools call the QQQ UI API through `UiApiToolbox` and `UiApiGateway` with the signed-in user's session. The UI enforces permissions and record security; the assistant further narrows access and caps and redacts returned values. Data tool results reach the model wrapped as untrusted data. Only record-free navigation and help use the core AI tool kernel.
 
 ## Requirements
 
@@ -264,6 +265,7 @@ Base path `/qqq/v1/assistant`. Every request is authenticated through the app's 
 The stream sends these events, each with a `seq`:
 - `message.start`, `text.delta`
 - `tool.start`, `tool.result` (with `render` and `recordRefs`)
+- `presentation` (`messageId`, `part`: summary, blocks and server-built GFM markdown)
 - `ui.navigate`, `notice`
 - `usage`, `message.end`
 - `error`
@@ -548,3 +550,16 @@ NETWORK/TIMEOUT marks a provider DOWN for 60 seconds; success marks it UP. Local
 health is probed when unknown/stale with a two-second timeout. Provider cards show
 health and down-until, failures show fallback totals, and turn records show the
 route and final destination. See [UPGRADE.md](UPGRADE.md) for the additive schema.
+
+### Answer presentation
+
+The always-available `present_results` tool turns retrieved results into metrics,
+tables, charts and actionable in-app links. The server validates the user's UI API
+visibility, formats field values, computes shares and builds all links. It emits
+and stores a `presentation` part with a complete GFM Markdown fallback. Profile
+skills can extend the built-in presentation instructions. See the
+[part, stream and input contract](docs/answer-presentation.md).
+
+The image-breakdown golden task also runs in the existing opt-in live provider suite:
+`./mvnw verify -Dassistant.live=true -Dtest.excludedGroups= -Dgroups=live -Djacoco.skip=true -pl qbit-assistant-provider-anthropic -am`
+(with `ANTHROPIC_API_KEY` set). Live calls are excluded from normal verification.

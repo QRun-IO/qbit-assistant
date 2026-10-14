@@ -27,6 +27,7 @@ import java.util.Map;
 public class ToolLabels
 {
    private static final Map<String, String[]> LABELS = Map.ofEntries(
+      Map.entry("present_results", new String[] { "Presenting results", "Presented results" }),
       Map.entry("list_tables", new String[] { "Listing tables", "Listed tables" }),
       Map.entry("describe_table", new String[] { "Reading table details", "Read table details" }),
       Map.entry("query_records", new String[] { "Querying records", "Queried records" }),

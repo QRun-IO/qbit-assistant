@@ -93,6 +93,10 @@ class ClassificationTest extends BaseAssistantTest
       assertThat(record.getClassification()).isEqualTo(DataClassification.PHI);
       page.observe(ModelPart.toolUse("1", "describe_table", Map.of("table", "page")), new AiToolResult());
       assertThat(page.getClassification()).isEqualTo(DataClassification.PUBLIC);
+      page.observe(ModelPart.toolUse("present", "present_results", Map.of("summary", "Available results")), new AiToolResult());
+      assertThat(page.getClassification()).isEqualTo(DataClassification.PUBLIC);
+      record.observe(ModelPart.toolUse("present", "present_results", Map.of("summary", "Available results")), new AiToolResult());
+      assertThat(record.getClassification()).isEqualTo(DataClassification.PHI);
       page.observe(ModelPart.toolUse("2", "search_records", Map.of()), new AiToolResult().withModelContent("<qqq_data>{\"results\":[{\"table\":\"media\"}]}</qqq_data>"));
       assertThat(page.getClassification()).isEqualTo(DataClassification.PII);
       page.observe(ModelPart.toolUse("3", "search_records", Map.of()), new AiToolResult());
