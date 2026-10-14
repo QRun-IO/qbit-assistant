@@ -42,7 +42,7 @@ import com.kingsrook.qqq.backend.core.utils.JsonUtils;
  *******************************************************************************/
 public class TurnClassification
 {
-   private static final Set<String> METADATA_TOOLS = Set.of("list_tables", "describe_table", "navigate", "search_help");
+   private static final Set<String> METADATA_TOOLS = Set.of("list_tables", "describe_table", "navigate", "search_help", "present_results");
    private final ClassificationSource source;
    private final Set<String> tables = new LinkedHashSet<>();
    private DataClassification classification;
@@ -65,7 +65,8 @@ public class TurnClassification
 
 
    /*******************************************************************************
-    ** Observe before appending any result to a model request. Metadata tools carry no record values.
+    ** Observe before appending results. Metadata reads no records; presentation
+    ** only reuses values whose originating data tools were already classified.
     *******************************************************************************/
    public void observe(ModelPart use, AiToolResult result)
    {
