@@ -93,6 +93,21 @@ public class AssistantTurn extends QRecordEntity
    private Instant endedAt;
 
    @QField(isEditable = false)
+   private Instant heartbeatAt;
+
+   @QField(isEditable = false, maxLength = 100)
+   private String leaseOwner;
+
+   @QField(isEditable = false)
+   private Instant cancelRequestedAt;
+
+   @QField(isEditable = false, maxLength = 64)
+   private String phase;
+
+   @QField(isEditable = false, maxLength = 16)
+   private String concurrencyMode;
+
+   @QField(isEditable = false)
    private Integer toolCallCount;
 
    @QField(isEditable = false)
@@ -1011,4 +1026,160 @@ public class AssistantTurn extends QRecordEntity
       this.providerId = providerId;
       return (this);
    }
+
+
+
+   /*******************************************************************************
+    ** Getter for heartbeatAt
+    *******************************************************************************/
+   public Instant getHeartbeatAt()
+   {
+      return (this.heartbeatAt);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for heartbeatAt
+    *******************************************************************************/
+   public void setHeartbeatAt(Instant heartbeatAt)
+   {
+      this.heartbeatAt = heartbeatAt;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for heartbeatAt
+    *******************************************************************************/
+   public AssistantTurn withHeartbeatAt(Instant heartbeatAt)
+   {
+      this.heartbeatAt = heartbeatAt;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for leaseOwner
+    *******************************************************************************/
+   public String getLeaseOwner()
+   {
+      return (this.leaseOwner);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for leaseOwner
+    *******************************************************************************/
+   public void setLeaseOwner(String leaseOwner)
+   {
+      this.leaseOwner = leaseOwner;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for leaseOwner
+    *******************************************************************************/
+   public AssistantTurn withLeaseOwner(String leaseOwner)
+   {
+      this.leaseOwner = leaseOwner;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for cancelRequestedAt
+    *******************************************************************************/
+   public Instant getCancelRequestedAt()
+   {
+      return (this.cancelRequestedAt);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for cancelRequestedAt
+    *******************************************************************************/
+   public void setCancelRequestedAt(Instant cancelRequestedAt)
+   {
+      this.cancelRequestedAt = cancelRequestedAt;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for cancelRequestedAt
+    *******************************************************************************/
+   public AssistantTurn withCancelRequestedAt(Instant cancelRequestedAt)
+   {
+      this.cancelRequestedAt = cancelRequestedAt;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for phase
+    *******************************************************************************/
+   public String getPhase()
+   {
+      return (this.phase);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for phase
+    *******************************************************************************/
+   public void setPhase(String phase)
+   {
+      this.phase = phase;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for phase
+    *******************************************************************************/
+   public AssistantTurn withPhase(String phase)
+   {
+      this.phase = phase;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for concurrencyMode
+    *******************************************************************************/
+   public String getConcurrencyMode()
+   {
+      return (this.concurrencyMode);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for concurrencyMode
+    *******************************************************************************/
+   public void setConcurrencyMode(String concurrencyMode)
+   {
+      this.concurrencyMode = concurrencyMode;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for concurrencyMode
+    *******************************************************************************/
+   public AssistantTurn withConcurrencyMode(String concurrencyMode)
+   {
+      this.concurrencyMode = concurrencyMode;
+      return (this);
+   }
+
 }

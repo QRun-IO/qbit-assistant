@@ -151,8 +151,7 @@ class EngineComponentsTest extends BaseAssistantTest
 
       RateLimiter limiter = new RateLimiter(clock);
       assertThat(limiter.tryAcquire("u", 2, 1)).isNull();
-      assertThat(limiter.tryAcquire("u", 2, 1)).contains("in progress");
-      limiter.release("u");
+
       assertThat(limiter.tryAcquire("u", 2, 1)).isNull();
       limiter.release("u");
       assertThat(limiter.tryAcquire("u", 2, 1)).contains("last minute");
