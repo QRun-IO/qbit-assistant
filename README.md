@@ -4,10 +4,28 @@ An in-app AI assistant for any QQQ application. The user asks a question in a ch
 
 Design spec: `QRun-IO/qqq` `docs/specs/2026-10-11-qqq-assistant-qbit-design.md`.
 
+## Modules
+
 | Artifact | What it is |
 |---|---|
-| `com.kingsrook.qbits:qbit-assistant` | The QBit: conversation tables, turn engine, `/qqq/v1/assistant` routes (JSON + Server-Sent Events), budgets, kill switch, the provider SPI, and a scripted provider for tests and demos. |
+| `com.kingsrook.qbits:qbit-assistant-provider-api` | Provider SPI, connection settings, messages, usage and pricing types; only Jackson annotations at runtime. |
+| `com.kingsrook.qbits:qbit-assistant` | The QBit: conversation tables, turn engine, `/qqq/v1/assistant` routes (JSON + Server-Sent Events), budgets, kill switch, the provider registry, and a scripted provider for tests and demos. |
 | `com.kingsrook.qbits:qbit-assistant-provider-anthropic` | The Claude provider (`com.anthropic:anthropic-java`). Add it to use Claude. The core QBit has no LLM SDK dependency. |
+| `com.kingsrook.qbits:qbit-assistant-provider-openai` | OpenAI-compatible chat and embedding providers. |
+| `com.kingsrook.qbits:qbit-assistant-provider-bedrock` | Claude through AWS Bedrock. |
+| `com.kingsrook.qbits:qbit-assistant-provider-vertex` | Claude and Gemini through Google Vertex AI. |
+| `com.kingsrook.qbits:qbit-assistant-rag-pgvector` | JDBC vector store; retains the runtime dependency for `VectorStore` and `ChunkVector`. |
+
+### Implementing a provider outside qbit-assistant
+
+Depend on `com.kingsrook.qbits:qbit-assistant-provider-api` at the same version as
+QBit Assistant, and implement `AssistantModelProvider` and optionally
+`AssistantProviderType`. No assistant runtime dependency is needed. Existing
+`com.kingsrook.qbits.assistant.provider.*` imports and
+`com.kingsrook.qbits.assistant.engine.ModelPricing` stay the same.
+`AssistantProviderType.validate(ProviderSettings)` receives unresolved settings
+(including `apiKeyEnvName`), without a database entity or resolved credentials.
+Hosts register providers through `AssistantQBitConfig` in `qbit-assistant`.
 
 Data tools use the QQQ UI API (`/qqq/v1`) with the signed-in user's session. The UI API enforces permissions and record locks; assistant data-access policy and field exposure can only narrow access. Only record-free navigation and help use the core AI tool kernel. Every tool result reaches the model wrapped as untrusted data.
 
@@ -551,6 +569,45 @@ health is probed when unknown/stale with a two-second timeout. Provider cards sh
 health and down-until, failures show fallback totals, and turn records show the
 route and final destination. See [UPGRADE.md](UPGRADE.md) for the additive schema.
 
+## Scheduled tasks
+
+Administrators configure recurring prompts in **Assistant → Scheduled tasks**.
+Tasks use Quartz cron syntax (for example `0 0 8 * * ?`) and an IANA timezone
+(for example `America/Chicago`; default `UTC`). Tasks start disabled.
+
+```java
+config.withUiApiBaseUrl("http://127.0.0.1:8000")
+   .withScheduledTasksSchedulerName("hostScheduler")
+   .withAllowedScheduledCredentialEnvNames(Set.of("ASSISTANT_SCHEDULED_TOKEN"));
+```
+
+Provide a long-lived access token accepted by the host's authentication provider
+in that environment variable. Store only its **name** on the task and set
+`runAsUserId` to the corresponding QQQ user id. The runner posts the token to
+`/qqq/v1/manageSession`, reads its session cookie and verifies the returned
+session's user before starting a new conversation. No system session reads user
+data. Configure the loopback URL at startup; a scheduled job cannot rely on a
+browser having visited first.
+
+For kof22, provision a designated Authentik account with the intended application
+permissions, obtain a token that kof22's QQQ authentication provider accepts as an
+`accessToken`, and inject it through the existing secret-manager/ExternalSecret
+pipeline. An Authentik management API token is suitable only if the host's auth
+adapter explicitly accepts it. Rotate the token in the secret manager, never in
+the task table. This feature does not provision an account or token.
+
+**Run now**, **Approve write mode** and **Revoke write mode** are Review/Result
+record actions. Write approval names the designated user and displays the exact
+prompt SHA-256. Changing prompt, user, credential reference, profile or write-mode
+request clears approval. Scheduled writes always wait for that user's panel
+confirmation, even if normal policy disables confirmation.
+
+Each run keeps an owner-locked audit row and a normal conversation. RECORD adds
+no notification; NOTIFICATION and BOTH also notify the designated user through
+the optional Alerts QBit SPI. Without Alerts, notification delivery is log-only.
+HIPAA summaries are always `see conversation`. Cost caps stop at dispatch
+boundaries, so the last completed call can cross the cap; no further call starts.
+Apply the [P-g migration](UPGRADE.md#p-g-scheduled-tasks) before enabling jobs.
 ### Answer presentation
 
 The always-available `present_results` tool turns retrieved results into metrics,

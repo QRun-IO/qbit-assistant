@@ -36,6 +36,7 @@ public class ProviderSettings
    private String tlsCaBundle;
    @JsonIgnore
    private transient SSLContext sslContext;
+   private String apiKeyEnvName;
    private String kind;
    private String apiKey;
    private String baseUrl;
@@ -395,6 +396,37 @@ public class ProviderSettings
    public ProviderSettings withBearerTokenSupplier(Supplier<String> bearerTokenSupplier)
    {
       this.bearerTokenSupplier = bearerTokenSupplier;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** The configured environment variable name, never its secret value.
+    *******************************************************************************/
+   public String getApiKeyEnvName()
+   {
+      return (this.apiKeyEnvName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for apiKeyEnvName
+    *******************************************************************************/
+   public void setApiKeyEnvName(String apiKeyEnvName)
+   {
+      this.apiKeyEnvName = apiKeyEnvName;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for apiKeyEnvName
+    *******************************************************************************/
+   public ProviderSettings withApiKeyEnvName(String apiKeyEnvName)
+   {
+      this.apiKeyEnvName = apiKeyEnvName;
       return (this);
    }
 }
