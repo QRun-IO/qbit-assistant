@@ -29,6 +29,7 @@ import com.kingsrook.qqq.backend.core.utils.JsonUtils;
  *******************************************************************************/
 public class TurnEvent
 {
+   public static final String TURN_PHASE = "turn.phase";
    public static final String MESSAGE_START = "message.start";
    public static final String TEXT_DELTA    = "text.delta";
    public static final String TOOL_START    = "tool.start";

@@ -17,6 +17,7 @@
 package com.kingsrook.qbits.assistant;
 
 
+import javax.net.ssl.SSLContext;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -31,6 +32,7 @@ import java.util.regex.Pattern;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.kingsrook.qbits.assistant.classification.ClassificationSource;
 import com.kingsrook.qbits.assistant.classification.ConfiguredClassificationSource;
+import com.kingsrook.qbits.assistant.jobs.AssistantRunTracker;
 import com.kingsrook.qbits.assistant.rag.VectorStore;
 import com.kingsrook.qbits.assistant.spi.AssistantModelProvider;
 import com.kingsrook.qbits.assistant.spi.AssistantProviderType;
@@ -44,7 +46,6 @@ import com.kingsrook.qqq.backend.core.model.metadata.producers.MetaDataCustomize
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitConfig;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
-import javax.net.ssl.SSLContext;
 
 
 /*******************************************************************************
@@ -99,12 +100,20 @@ public class AssistantQBitConfig implements QBitConfig
    private Integer               maxParallelToolCalls       = 4;
    private Integer               maxRowsToModel             = 50;
    private Integer               maxCellChars               = 500;
+   private Integer turnHeartbeatSeconds = 5;
+   private Integer turnLeaseSeconds = 45;
+   private Integer turnForceFinalizeGraceSeconds = 20;
+   private Integer shutdownGraceSeconds = 8;
+   private String defaultConcurrencyMode = "SUPERSEDE";
+   private Boolean registerShutdownHook = true;
+   private AssistantRunTracker runTracker = AssistantRunTracker.NOOP;
+
    private Integer               maxTurnSeconds             = 300;
    private Integer               maxUserMessageChars        = 8000;
    private Integer               historyMessageLimit        = 40;
    private AssistantBudgets      budgets                    = new AssistantBudgets();
    private Integer               maxTurnsPerUserPerMinute   = 10;
-   private Integer               maxConcurrentTurnsPerUser  = 1;
+   private Integer               maxConcurrentTurnsPerUser  = 3;
    private Integer               conversationRetentionDays  = 90;
    private Integer               toolResultRetentionDays    = 30;
    private Integer               approvalRetentionDays      = 365;
@@ -206,6 +215,23 @@ public class AssistantQBitConfig implements QBitConfig
       requirePositive(errors, "maxRowsToModel", maxRowsToModel);
       requirePositive(errors, "maxCellChars", maxCellChars);
       requirePositive(errors, "maxTurnSeconds", maxTurnSeconds);
+      requirePositive(errors, "turnHeartbeatSeconds", turnHeartbeatSeconds);
+      requirePositive(errors, "turnLeaseSeconds", turnLeaseSeconds);
+      requirePositive(errors, "turnForceFinalizeGraceSeconds", turnForceFinalizeGraceSeconds);
+      requirePositive(errors, "shutdownGraceSeconds", shutdownGraceSeconds);
+      if(turnHeartbeatSeconds != null && turnLeaseSeconds != null && turnLeaseSeconds < 2 * turnHeartbeatSeconds)
+      {
+         errors.add("turnLeaseSeconds must be at least twice turnHeartbeatSeconds.");
+      }
+      if(!"SUPERSEDE".equals(defaultConcurrencyMode) && !"CONCURRENT".equals(defaultConcurrencyMode))
+      {
+         errors.add("defaultConcurrencyMode must be SUPERSEDE or CONCURRENT.");
+      }
+      if(turnHeartbeatSeconds != null && turnLeaseSeconds != null && turnHeartbeatSeconds >= turnLeaseSeconds)
+      {
+         errors.add("turnHeartbeatSeconds must be less than turnLeaseSeconds.");
+      }
+
       requirePositive(errors, "maxUserMessageChars", maxUserMessageChars);
       requirePositive(errors, "historyMessageLimit", historyMessageLimit);
       requirePositive(errors, "maxTurnsPerUserPerMinute", maxTurnsPerUserPerMinute);
@@ -2008,4 +2034,223 @@ public class AssistantQBitConfig implements QBitConfig
       this.scheduledTasksSchedulerName = scheduledTasksSchedulerName;
       return (this);
    }
+
+
+
+   /*******************************************************************************
+    ** Getter for turnHeartbeatSeconds
+    *******************************************************************************/
+   public Integer getTurnHeartbeatSeconds()
+   {
+      return (this.turnHeartbeatSeconds);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for turnHeartbeatSeconds
+    *******************************************************************************/
+   public void setTurnHeartbeatSeconds(Integer turnHeartbeatSeconds)
+   {
+      this.turnHeartbeatSeconds = turnHeartbeatSeconds;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for turnHeartbeatSeconds
+    *******************************************************************************/
+   public AssistantQBitConfig withTurnHeartbeatSeconds(Integer turnHeartbeatSeconds)
+   {
+      this.turnHeartbeatSeconds = turnHeartbeatSeconds;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for turnLeaseSeconds
+    *******************************************************************************/
+   public Integer getTurnLeaseSeconds()
+   {
+      return (this.turnLeaseSeconds);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for turnLeaseSeconds
+    *******************************************************************************/
+   public void setTurnLeaseSeconds(Integer turnLeaseSeconds)
+   {
+      this.turnLeaseSeconds = turnLeaseSeconds;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for turnLeaseSeconds
+    *******************************************************************************/
+   public AssistantQBitConfig withTurnLeaseSeconds(Integer turnLeaseSeconds)
+   {
+      this.turnLeaseSeconds = turnLeaseSeconds;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for turnForceFinalizeGraceSeconds
+    *******************************************************************************/
+   public Integer getTurnForceFinalizeGraceSeconds()
+   {
+      return (this.turnForceFinalizeGraceSeconds);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for turnForceFinalizeGraceSeconds
+    *******************************************************************************/
+   public void setTurnForceFinalizeGraceSeconds(Integer turnForceFinalizeGraceSeconds)
+   {
+      this.turnForceFinalizeGraceSeconds = turnForceFinalizeGraceSeconds;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for turnForceFinalizeGraceSeconds
+    *******************************************************************************/
+   public AssistantQBitConfig withTurnForceFinalizeGraceSeconds(Integer turnForceFinalizeGraceSeconds)
+   {
+      this.turnForceFinalizeGraceSeconds = turnForceFinalizeGraceSeconds;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for shutdownGraceSeconds
+    *******************************************************************************/
+   public Integer getShutdownGraceSeconds()
+   {
+      return (this.shutdownGraceSeconds);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for shutdownGraceSeconds
+    *******************************************************************************/
+   public void setShutdownGraceSeconds(Integer shutdownGraceSeconds)
+   {
+      this.shutdownGraceSeconds = shutdownGraceSeconds;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for shutdownGraceSeconds
+    *******************************************************************************/
+   public AssistantQBitConfig withShutdownGraceSeconds(Integer shutdownGraceSeconds)
+   {
+      this.shutdownGraceSeconds = shutdownGraceSeconds;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for defaultConcurrencyMode
+    *******************************************************************************/
+   public String getDefaultConcurrencyMode()
+   {
+      return (this.defaultConcurrencyMode);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for defaultConcurrencyMode
+    *******************************************************************************/
+   public void setDefaultConcurrencyMode(String defaultConcurrencyMode)
+   {
+      this.defaultConcurrencyMode = defaultConcurrencyMode;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for defaultConcurrencyMode
+    *******************************************************************************/
+   public AssistantQBitConfig withDefaultConcurrencyMode(String defaultConcurrencyMode)
+   {
+      this.defaultConcurrencyMode = defaultConcurrencyMode;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for registerShutdownHook
+    *******************************************************************************/
+   public Boolean getRegisterShutdownHook()
+   {
+      return (this.registerShutdownHook);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for registerShutdownHook
+    *******************************************************************************/
+   public void setRegisterShutdownHook(Boolean registerShutdownHook)
+   {
+      this.registerShutdownHook = registerShutdownHook;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for registerShutdownHook
+    *******************************************************************************/
+   public AssistantQBitConfig withRegisterShutdownHook(Boolean registerShutdownHook)
+   {
+      this.registerShutdownHook = registerShutdownHook;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for runTracker
+    *******************************************************************************/
+   @JsonIgnore
+   public AssistantRunTracker getRunTracker()
+   {
+      return (this.runTracker == null ? AssistantRunTracker.NOOP : this.runTracker);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for runTracker
+    *******************************************************************************/
+   public void setRunTracker(AssistantRunTracker runTracker)
+   {
+      this.runTracker = runTracker;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for runTracker
+    *******************************************************************************/
+   public AssistantQBitConfig withRunTracker(AssistantRunTracker runTracker)
+   {
+      this.runTracker = runTracker;
+      return (this);
+   }
+
 }
