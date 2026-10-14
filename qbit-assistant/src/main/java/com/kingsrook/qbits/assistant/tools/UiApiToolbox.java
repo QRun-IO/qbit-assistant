@@ -151,14 +151,36 @@ public class UiApiToolbox
     ** Where a tool call runs: the user's session, the gateway, the policy, and
     ** what to do with a write that needs confirmation.
     *******************************************************************************/
-   public record Context(String sessionUUID, String userTimezone, UiApiGateway gateway, PolicyService.ToolPolicy policy, PendingActions pendingActions, UiApiCredentials credentials)
+   public record Context(String sessionUUID, String userTimezone, UiApiGateway gateway, PolicyService.ToolPolicy policy, PendingActions pendingActions, UiApiCredentials credentials, String turnId)
    {
       /*******************************************************************************
        ** With the session UUID only (no request credentials captured).
        *******************************************************************************/
       public Context(String sessionUUID, String userTimezone, UiApiGateway gateway, PolicyService.ToolPolicy policy, PendingActions pendingActions)
       {
-         this(sessionUUID, userTimezone, gateway, policy, pendingActions, null);
+         this(sessionUUID, userTimezone, gateway, policy, pendingActions, null, null);
+      }
+
+
+
+      /*******************************************************************************
+       ** With the request credentials, outside a turn.
+       *******************************************************************************/
+      public Context(String sessionUUID, String userTimezone, UiApiGateway gateway, PolicyService.ToolPolicy policy, PendingActions pendingActions, UiApiCredentials credentials)
+      {
+         this(sessionUUID, userTimezone, gateway, policy, pendingActions, credentials, null);
+      }
+
+
+
+      /*******************************************************************************
+       ** A call made by this context: the caller's credentials, timezone and
+       ** the client detail (the turn id, labelled assistant/turnId in the access
+       ** log) filled in.
+       *******************************************************************************/
+      public UiApiCall prepare(UiApiCall call)
+      {
+         return (call.withSessionUUID(sessionUUID).withCredentials(credentials).withUserTimezone(userTimezone).withClientDetail(turnId));
       }
    }
 
@@ -207,6 +229,21 @@ public class UiApiToolbox
       Outcome(AiToolResult result)
       {
          this.result = result;
+      }
+
+
+
+      /*******************************************************************************
+       ** An outcome built by another tool family (e.g. the bulk-load tools), so
+       ** TurnEngine and the confirm route log it the same way.
+       *******************************************************************************/
+      public static Outcome of(AiToolResult result, String operation, Integer httpStatus, Integer pendingActionId)
+      {
+         Outcome outcome = new Outcome(result);
+         outcome.operation = operation;
+         outcome.httpStatus = httpStatus;
+         outcome.pendingActionId = pendingActionId;
+         return (outcome);
       }
 
 
@@ -651,7 +688,7 @@ public class UiApiToolbox
       if(truncated)
       {
          UiApiResult counted = context.gateway().invoke(new UiApiCall("POST", "/table/{tableName}/count").withPathParam("tableName", tableName).withJsonBody(filterBody(linkFilter))
-            .withSessionUUID(context.sessionUUID()).withCredentials(context.credentials()).withUserTimezone(context.userTimezone()));
+            .withSessionUUID(context.sessionUUID()).withCredentials(context.credentials()).withUserTimezone(context.userTimezone()).withClientDetail(context.turnId()));
          totalCount = counted.isSuccess() ? asMap(counted.json()).get("count") : null;
       }
 
@@ -1248,7 +1285,7 @@ public class UiApiToolbox
     *******************************************************************************/
    private UiApiResult call(Context context, Outcome outcome, UiApiCall call) throws QException
    {
-      call.withSessionUUID(context.sessionUUID()).withCredentials(context.credentials()).withUserTimezone(context.userTimezone()).withInvokedBy("assistant");
+      context.prepare(call).withInvokedBy("assistant");
       outcome.operation = call.operation();
       UiApiResult response = context.gateway().invoke(call);
       outcome.httpStatus = response.status();

@@ -52,6 +52,10 @@
    <modules>
       <module>qbit-assistant</module>
       <module>qbit-assistant-provider-anthropic</module>
+      <module>qbit-assistant-provider-openai</module>
+      <module>qbit-assistant-provider-bedrock</module>
+      <module>qbit-assistant-provider-vertex</module>
+      <module>qbit-assistant-rag-pgvector</module>
    </modules>
 
    <licenses>
@@ -81,6 +85,21 @@
 
    <dependencyManagement>
       <dependencies>
+         <dependency>
+            <groupId>com.kingsrook.qbits</groupId>
+            <artifactId>qbit-assistant-provider-anthropic</artifactId>
+            <version>${revision}</version>
+         </dependency>
+         <dependency>
+            <groupId>com.anthropic</groupId>
+            <artifactId>anthropic-java-bedrock</artifactId>
+            <version>${anthropic.version}</version>
+         </dependency>
+         <dependency>
+            <groupId>com.anthropic</groupId>
+            <artifactId>anthropic-java-vertex</artifactId>
+            <version>${anthropic.version}</version>
+         </dependency>
          <!-- QQQ 4.1 is built on Jackson 2.21; the Anthropic SDK asks for 2.19. -->
          <!-- Pin the newer one so both resolve to the same line.               -->
          <dependency>
@@ -100,6 +119,11 @@
             <artifactId>qbit-assistant</artifactId>
             <version>${revision}</version>
             <type>test-jar</type>
+         </dependency>
+         <dependency>
+            <groupId>com.kingsrook.qbits</groupId>
+            <artifactId>qbit-assistant-provider-openai</artifactId>
+            <version>${revision}</version>
          </dependency>
          <dependency>
             <groupId>com.anthropic</groupId>

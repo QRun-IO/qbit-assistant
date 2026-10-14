@@ -20,22 +20,29 @@ package com.kingsrook.qbits.assistant.metadata;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import com.kingsrook.qbits.assistant.AssistantModelRouting;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.access.DataAccessMode;
 import com.kingsrook.qbits.assistant.engine.ProfileService;
 import com.kingsrook.qbits.assistant.engine.ProviderService;
+import com.kingsrook.qbits.assistant.model.AssistantBudget;
+import com.kingsrook.qbits.assistant.model.AssistantBudgetEvent;
+import com.kingsrook.qbits.assistant.model.AssistantBudgetOverride;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantDataAccess;
+import com.kingsrook.qbits.assistant.model.AssistantDataAudit;
 import com.kingsrook.qbits.assistant.model.AssistantFeedback;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
+import com.kingsrook.qbits.assistant.model.AssistantModel;
 import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
 import com.kingsrook.qbits.assistant.model.AssistantPendingAction;
 import com.kingsrook.qbits.assistant.model.AssistantPolicy;
 import com.kingsrook.qbits.assistant.model.AssistantProfile;
 import com.kingsrook.qbits.assistant.model.AssistantProfileSkill;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
+import com.kingsrook.qbits.assistant.model.AssistantRagSource;
 import com.kingsrook.qbits.assistant.model.AssistantSkill;
 import com.kingsrook.qbits.assistant.model.AssistantToolCall;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
@@ -46,6 +53,9 @@ import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.ChildRecordListRenderer;
 import com.kingsrook.qqq.backend.core.instances.QInstanceEnricher;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReferenceWithProperties;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.AdornmentType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.DisplayFormat;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldAdornment;
@@ -122,6 +132,13 @@ public final class AssistantRecordScreens
       }
 
       return (List.of(
+         QPossibleValueSource.newForTable(AssistantBudget.TABLE_NAME),
+         QPossibleValueSource.newForTable(AssistantModel.TABLE_NAME).withName("assistant_registry_model"),
+         QPossibleValueSource.newForTable(AssistantModel.TABLE_NAME).withName("assistant_budget_model"),
+         budgetEnum("scopeType", "INSTANCE", "USER", "ROLE", "PROVIDER", "MODEL"),
+         budgetEnum("period", "DAY", "MONTH"),
+         budgetEnum("metric", "COST_USD", "TOKENS"),
+         budgetEnum("atLimitAction", "DOWNGRADE", "STOP"),
          new QPossibleValueSource().withName(EFFORT_PVS_NAME).withType(QPossibleValueSourceType.ENUM)
             .withValueFormatAndFields(PVSValueFormatAndFields.LABEL_ONLY).withEnumValues(efforts),
          QPossibleValueSource.newForTable(AssistantTurn.TABLE_NAME),
@@ -156,6 +173,12 @@ public final class AssistantRecordScreens
    {
       switch(table.getName())
       {
+         case AssistantBudget.TABLE_NAME -> budget(table);
+         case AssistantBudgetOverride.TABLE_NAME, AssistantBudgetEvent.TABLE_NAME ->
+         {
+            link(table, "budgetId", AssistantBudget.TABLE_NAME, "Budget");
+            sections(table);
+         }
          case AssistantConversation.TABLE_NAME -> conversation(table);
          case AssistantMessage.TABLE_NAME -> message(table);
          case AssistantTurn.TABLE_NAME -> turn(table);
@@ -165,6 +188,8 @@ public final class AssistantRecordScreens
          case AssistantPolicy.TABLE_NAME -> policy(table);
          case AssistantUsageDaily.TABLE_NAME -> usageDaily(table);
          case AssistantProvider.TABLE_NAME -> provider(table);
+         case AssistantModel.TABLE_NAME -> model(table);
+         case AssistantRagSource.TABLE_NAME -> knowledge(table);
          case AssistantModelPrice.TABLE_NAME -> price(table);
          case AssistantUsage.TABLE_NAME -> usage(table);
          case AssistantDataAccess.TABLE_NAME -> dataAccess(table);
@@ -172,6 +197,7 @@ public final class AssistantRecordScreens
          case AssistantSkill.TABLE_NAME -> skill(table);
          case AssistantProfileSkill.TABLE_NAME -> profileSkill(table);
          case AssistantPendingAction.TABLE_NAME -> pendingAction(table);
+         case AssistantDataAudit.TABLE_NAME -> sections(table);
          default ->
          {
             // not an assistant table
@@ -198,6 +224,7 @@ public final class AssistantRecordScreens
       childList(qInstance, conversation, AssistantToolCall.TABLE_NAME, "Tool Calls", "build", List.of("toolName", "uiApiOperation", "httpStatus", "outcome", "tableName", "rowCount", "createDate"));
       childList(qInstance, conversation, AssistantPendingAction.TABLE_NAME, "Pending Actions", "pending_actions", List.of("toolName", "tableName", "recordId", "status", "httpStatus", "createDate"));
       childList(qInstance, conversation, AssistantFeedback.TABLE_NAME, "Feedback", "thumbs_up_down", List.of("rating", "reason", "createDate"));
+      childList(qInstance, conversation, AssistantDataAudit.TABLE_NAME, "Data Audit", "shield", List.of("classification", "tables", "decision", "providerName", "model", "createDate"));
       childList(qInstance, conversation, AssistantUsage.TABLE_NAME, "Model Calls", "receipt_long", USAGE_LIST_FIELDS);
 
       QTableMetaData profile = qInstance.getTable(AssistantProfile.TABLE_NAME);
@@ -214,9 +241,16 @@ public final class AssistantRecordScreens
          }
       }
 
+      QTableMetaData budget = qInstance.getTable(AssistantBudget.TABLE_NAME);
+      if(budget != null)
+      {
+         childList(qInstance, budget, AssistantBudgetOverride.TABLE_NAME, "Overrides", "approval", List.of("scopeValue", "extraValue", "unlimitedUntil", "reason", "grantedBy", "expiresAt"), "budgetId", "budget");
+         childList(qInstance, budget, AssistantBudgetEvent.TABLE_NAME, "Events", "notifications", List.of("scopeKey", "periodStart", "state", "usedValue", "limitValue", "userId", "createDate"), "budgetId", "budget");
+      }
       QTableMetaData provider = qInstance.getTable(AssistantProvider.TABLE_NAME);
       if(provider != null)
       {
+         childList(qInstance, provider, AssistantModel.TABLE_NAME, "Models", "memory", List.of("modelId", "displayName", "enabled", "supportsTools", "lastTestStatus"), "providerId", "provider");
          childList(qInstance, provider, AssistantUsage.TABLE_NAME, "Model Calls", "receipt_long", USAGE_LIST_FIELDS, "providerId", "provider");
       }
    }
@@ -248,15 +282,65 @@ public final class AssistantRecordScreens
          ////////////////////////////////////////////////////////////////////
          types.add(new QPossibleValue<>(config.getProviderName(), config.getProviderName()));
       }
+      List<QPossibleValue<?>> kinds = new ArrayList<>();
+      Set<String> kindNames = new LinkedHashSet<>(List.of("ANTHROPIC", "OPENAI", "AZURE_OPENAI", "OPENROUTER", "OLLAMA", "LM_STUDIO", "VLLM", "LLAMA_CPP", "OPENAI_COMPATIBLE", "BEDROCK", "VERTEX"));
+      config.getProviderTypes().values().forEach(t -> kindNames.addAll(t.getKinds()));
+      kindNames.forEach(k -> kinds.add(new QPossibleValue<>(k, providerKindLabel(k))));
       List<QPossibleValue<?>> modelValues = new ArrayList<>();
       models.forEach(m -> modelValues.add(new QPossibleValue<>(m, m)));
 
       return (List.of(
          new QPossibleValueSource().withName(PROVIDER_TYPE_PVS_NAME).withType(QPossibleValueSourceType.ENUM).withIdType(QFieldType.STRING)
             .withValueFormatAndFields(PVSValueFormatAndFields.LABEL_ONLY).withEnumValues(types),
-         new QPossibleValueSource().withName(MODEL_PVS_NAME).withType(QPossibleValueSourceType.ENUM).withIdType(QFieldType.STRING)
-            .withValueFormatAndFields(PVSValueFormatAndFields.LABEL_ONLY).withEnumValues(modelValues),
+         settingsSource(MODEL_PVS_NAME, modelValues, true, true),
+         settingsSource("assistant_price_model", modelValues, true, false),
+         settingsSource("assistant_provider_kind", kinds, false, false),
+         enumSource("assistant_provider_location", List.of(new QPossibleValue<>("LOCAL", "Local"), new QPossibleValue<>("CLOUD", "Cloud"))),
+         enumSource("assistant_routing_mode", List.of(new QPossibleValue<>("OFF", "Off"), new QPossibleValue<>("HEURISTIC", "Heuristic"), new QPossibleValue<>("CLASSIFIER", "Classifier"))),
+         enumSource("assistant_model_kind", List.of(new QPossibleValue<>("CHAT", "Chat"), new QPossibleValue<>("EMBEDDING", "Embedding"))),
+         enumSource("assistant_model_source", List.of(new QPossibleValue<>("DISCOVERED", "Discovered"), new QPossibleValue<>("MANUAL", "Manual"))),
          QPossibleValueSource.newForTable(AssistantProvider.TABLE_NAME)));
+   }
+
+
+
+   /*******************************************************************************
+    ** Contingent searches use RC.5's otherValues input.
+    *******************************************************************************/
+   private static QPossibleValueSource settingsSource(String name, List<QPossibleValue<?>> union, Boolean models, Boolean providerRow)
+   {
+      return (new QPossibleValueSource().withName(name).withType(QPossibleValueSourceType.CUSTOM).withIdType(QFieldType.STRING)
+         .withValueFormatAndFields(PVSValueFormatAndFields.LABEL_ONLY)
+         .withCustomCodeReference(new QCodeReferenceWithProperties(AssistantSettingsPossibleValueProvider.class, Map.of("union", new ArrayList<>(union), "models", models, "providerRow", providerRow))));
+   }
+
+
+
+   /*******************************************************************************
+    ** Display label shared by provider settings and home cards. Custom kinds
+    ** retain their registered name.
+    *******************************************************************************/
+   public static String providerKindLabel(String kind)
+   {
+      if(kind == null)
+      {
+         return (null);
+      }
+      return (switch(kind)
+      {
+         case "ANTHROPIC" -> "Anthropic";
+         case "OPENAI" -> "OpenAI";
+         case "AZURE_OPENAI" -> "Azure OpenAI";
+         case "OPENROUTER" -> "OpenRouter";
+         case "OLLAMA" -> "Ollama";
+         case "LM_STUDIO" -> "LM Studio";
+         case "VLLM" -> "vLLM";
+         case "LLAMA_CPP" -> "llama.cpp server";
+         case "OPENAI_COMPATIBLE" -> "OpenAI-compatible (other)";
+         case "BEDROCK" -> "AWS Bedrock";
+         case "VERTEX" -> "Google Vertex AI";
+         default -> kind;
+      });
    }
 
 
@@ -267,20 +351,36 @@ public final class AssistantRecordScreens
    private static void provider(QTableMetaData table)
    {
       pvs(table, "providerType", PROVIDER_TYPE_PVS_NAME, "Type");
+      /////////////////////////////////////////////////////////////////////////
+      // Add possibleValueSourceDependsOn("providerType") to model and kind   //
+      // once the next QQQ RC includes core feature/contingent-possible-values. //
+      // See QQQ docs/CONTINGENT-POSSIBLE-VALUES.md.                           //
+      /////////////////////////////////////////////////////////////////////////
       pvs(table, "model", MODEL_PVS_NAME, "Model");
+      pvs(table, "kind", "assistant_provider_kind", "Kind");
+      pvs(table, "location", "assistant_provider_location", "Location");
+      table.getField("hipaaEligible").withLabel("HIPAA-eligible");
+      table.getField("apiVersion").withLabel("API version");
+      table.getField("connectTimeoutSeconds").withLabel("Connect timeout (s)");
+      table.getField("requestTimeoutSeconds").withLabel("Request timeout (s)");
+      help(table, "hipaaEligible", "Records a fact (local, or cloud under a signed BAA). It does not create a BAA.");
       table.getField("isDefault").withLabel("Default");
       table.getField("apiKeyEnvName").withLabel("API Key Variable");
+      table.getField("tlsCaBundle").withLabel("TLS CA bundle");
       table.getField("baseUrl").withLabel("Base URL Override");
+      table.getField("cloudProject").withLabel("GCP Project ID");
+      help(table, "cloudProject", "Required for Vertex: the Google Cloud project id, not a credential.");
       table.getField("monthlyCostCapUsd").withLabel("Monthly Cost Cap (USD)").withDisplayFormat(DisplayFormat.CURRENCY);
       counts(table, "maxOutputTokensPerRequest", "lastTestLatencyMs");
-      table.getField("lastTestLatencyMs").withLabel("Last Test Latency (ms)");
+      table.getField("lastTestLatencyMs").withLabel("Last test latency (ms)");
       help(table, "name", "A name for this provider, e.g. Claude (production).");
       help(table, "providerType", "Which kind of provider this is. Only the types installed on this server are offered.");
       help(table, "model", "The model answers come from. Empty uses the policy's (or the application's) main model.");
       help(table, "enabled", "Off: the assistant never uses this provider.");
       help(table, "isDefault", "The assistant uses the default enabled provider (else the first enabled one). Marking one default unmarks the others.");
       help(table, "apiKeyEnvName", "The NAME of the environment variable that holds the API key (e.g. ANTHROPIC_API_KEY), never the key itself. "
-         + "The key stays in the server's secret store; only allowed variable names are accepted. Empty uses the type's default variable. To replace the key, change it in the secret store.");
+         + "The key stays in the server's secret store; only allowed variable names are accepted. Empty uses the type's default variable. Bedrock and Vertex require this field to be empty and use server credentials. To replace the key, change it in the secret store.");
+      help(table, "tlsCaBundle", "Name of a CA bundle configured on the server (withTrustedCaBundle). Leave empty to use the JVM trust store.");
       help(table, "baseUrl", "Leave empty to use the provider's own API. Other URLs must be allowed in the server's configuration.");
       help(table, "monthlyCostCapUsd", "When this provider's cost this month (UTC) reaches the cap, new requests are refused. Empty: no cap.");
       help(table, "maxOutputTokensPerRequest", "The most output tokens one model call may produce. Empty uses the configured limit.");
@@ -288,8 +388,11 @@ public final class AssistantRecordScreens
       table.getField(ProviderService.KEY_STATUS_FIELD).withLabel("API Key").withHelpContent(new QHelpContent("Whether the key variable is set on this server, with the key's last four characters. The key itself is never shown or returned."));
       sections(table,
          section("provider", "Provider", "settings_input_component", Tier.T1, "id", "name", "providerType", "model", "enabled", "isDefault"),
-         section("connection", "Connection", "key", Tier.T2, "apiKeyEnvName", ProviderService.KEY_STATUS_FIELD, "baseUrl"),
+         section("connection", "Connection", "key", Tier.T2, "apiKeyEnvName", ProviderService.KEY_STATUS_FIELD, "baseUrl", "tlsCaBundle", "cloudProject"),
          section("limits", "Limits", "speed", Tier.T2, "monthlyCostCapUsd", "maxOutputTokensPerRequest", "maxConcurrentRequests"),
+         section("registry", "Provider settings", "settings", Tier.T2, "kind", "location", "hipaaEligible", "region", "apiVersion", "connectTimeoutSeconds", "requestTimeoutSeconds"),
+         section("health", "Health", "network_check", Tier.T2, "healthState", "healthCheckedAt", "downUntil"),
+         section("discovery", "Last discovery", "memory", Tier.T2, "lastDiscoveryAt", "lastDiscoveryStatus", "lastDiscoveryError"),
          section("lastTest", "Last connection test", "network_check", Tier.T2, "lastTestAt", "lastTestStatus", "lastTestLatencyMs", "lastTestModel", "lastTestError"));
    }
 
@@ -301,12 +404,17 @@ public final class AssistantRecordScreens
    private static void price(QTableMetaData table)
    {
       pvs(table, "providerType", PROVIDER_TYPE_PVS_NAME, "Provider Type");
+      /////////////////////////////////////////////////////////////////////////
+      // Add possibleValueSourceDependsOn("providerType") when the next QQQ  //
+      // RC includes it (QQQ docs/CONTINGENT-POSSIBLE-VALUES.md).              //
+      /////////////////////////////////////////////////////////////////////////
+      pvs(table, "model", "assistant_price_model", "Model");
       for(String field : List.of("inputUsdPerMTok", "outputUsdPerMTok", "cacheWrite5mUsdPerMTok", "cacheWrite1hUsdPerMTok"))
       {
          help(table, field, "USD per million tokens.");
       }
-      table.getField("inputUsdPerMTok").withLabel("Input (USD / MTok)");
-      table.getField("outputUsdPerMTok").withLabel("Output (USD / MTok)");
+      table.getField("inputUsdPerMTok").withLabel("Input (USD per million tokens)");
+      table.getField("outputUsdPerMTok").withLabel("Output (USD per million tokens)");
       table.getField("cacheReadUsdPerMTok").withLabel("Cache Read (USD / MTok)");
       table.getField("cacheWrite5mUsdPerMTok").withLabel("Cache Write 5m (USD / MTok)");
       table.getField("cacheWrite1hUsdPerMTok").withLabel("Cache Write 1h (USD / MTok)");
@@ -330,7 +438,7 @@ public final class AssistantRecordScreens
       micros(table, "costMicros");
       counts(table, "inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens", "latencyMs");
       table.getField("latencyMs").withLabel("Latency (ms)");
-      help(table, "purpose", "TURN: a step of an answer. TEST: a Test connection call.");
+      help(table, "purpose", "TURN: a step of an answer. ROUTE: a routing classifier call. TEST: a Test connection call.");
       sections(table,
          section("call", "Model Call", "receipt_long", Tier.T1, "id", "purpose", "status", "model", "providerId", "providerType", "userId", "conversationId", "turnId"),
          section("result", "Result", "fact_check", Tier.T2, "latencyMs", "errorKind", "httpStatus", "requestId"),
@@ -391,11 +499,13 @@ public final class AssistantRecordScreens
     *******************************************************************************/
    private static void turn(QTableMetaData table)
    {
+      link(table, "providerId", AssistantProvider.TABLE_NAME, "Final provider");
       link(table, "userMessageId", AssistantMessage.TABLE_NAME, "User Message");
       link(table, "assistantMessageId", AssistantMessage.TABLE_NAME, "Assistant Message");
       micros(table, "costMicros");
       counts(table, "inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens", "toolCallCount", "modelCallCount");
       sections(table,
+         section("routing", "Routing", "route", Tier.T2, "routeDecision", "routeSource", "fallbackCount", "providerId"),
          section("turn", "Turn", "sync_alt", Tier.T1, "id", "conversationId", "status", "model", "startedAt", "endedAt", "userMessageId", "assistantMessageId", "userId"),
          section("outcome", "Outcome", "flag", Tier.T2, "stopReason", "cancelReason", "errorCode"),
          section("usage", "Usage", "query_stats", Tier.T2, "inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens", "costMicros", "toolCallCount", "modelCallCount"),
@@ -444,6 +554,10 @@ public final class AssistantRecordScreens
       help(table, "name", "An internal name for this profile.");
       help(table, "displayName", "The assistant's name in the panel header and its messages, e.g. Ada.");
       help(table, "icon", "A Material icon name for the panel, e.g. auto_awesome, support_agent, school.");
+      pvs(table, "routingMode", "assistant_routing_mode", "Routing mode");
+      pvs(table, "simpleModelId", "assistant_registry_model", "Simple model");
+      pvs(table, "complexModelId", "assistant_registry_model", "Complex model");
+      pvs(table, "classifierModelId", "assistant_registry_model", "Classifier model");
       help(table, "personality", "Tone and style instructions, at most " + ProfileService.MAX_PERSONALITY_CHARS + " characters, e.g. \"Friendly and brief. Use the user's first name.\" Added to the assistant's instructions; it never changes its rules, tools or what the user may do.");
       help(table, "greeting", "Shown when a new conversation opens.");
       help(table, "starterPrompts", "Suggested first questions, one per line (at most " + ProfileService.MAX_STARTER_PROMPTS + ").");
@@ -452,6 +566,7 @@ public final class AssistantRecordScreens
       help(table, "permissionName", "Optional: use this profile only for users who hold this permission (a role).");
       sections(table,
          section("profile", "Profile", "face", Tier.T1, "id", "name", "displayName", "icon", "enabled", "isDefault"),
+         section("routing", "Model routing", "route", Tier.T2, "routingMode", "simpleModelId", "complexModelId", "classifierModelId"),
          section("voice", "Personality", "record_voice_over", Tier.T2, "personality", "greeting", "starterPrompts"),
          section("scope", "Where it applies", "filter_alt", Tier.T2, "appName", "permissionName"));
    }
@@ -785,11 +900,88 @@ public final class AssistantRecordScreens
       qInstance.addWidget(ChildRecordListRenderer.widgetMetaDataBuilder(join)
          .withLabel(label)
          .withMaxRows(50)
-         .withCanAddChildRecord(false)
+         .withCanAddChildRecord(AssistantModel.TABLE_NAME.equals(childTableName) || AssistantBudgetOverride.TABLE_NAME.equals(childTableName))
          .withOnlyIncludeFieldNames(shown)
          .getWidgetMetaData());
 
       String sectionName = sectionPrefix + label.replace(" ", "");
       conversation.addSection(new QFieldSection(sectionName, new QIcon(icon), Tier.T2).withLabel(label).withWidgetName(join.getName()));
    }
+
+
+
+   /*******************************************************************************
+    ** The model sub-table record screen.
+    *******************************************************************************/
+   private static void model(QTableMetaData table)
+   {
+      link(table, "providerId", AssistantProvider.TABLE_NAME, "Provider");
+      pvs(table, "source", "assistant_model_source", "Source");
+      pvs(table, "modelKind", "assistant_model_kind", "Model kind");
+      pvs(table, "fallbackModelId", "assistant_registry_model", "Fallback model");
+      table.getField("contextWindowTokens").withLabel("Context window (tokens)");
+      table.getField("maxOutputTokens").withLabel("Max output tokens");
+      table.getField("supportsReasoningEffort").withLabel("Supports reasoning effort");
+      table.getField("inputUsdPerMTok").withLabel("Input (USD per million tokens)");
+      table.getField("outputUsdPerMTok").withLabel("Output (USD per million tokens)");
+      table.getField("lastTestLatencyMs").withLabel("Last test latency (ms)");
+      sections(table,
+         section("model", "Model", "memory", Tier.T1, "id", "providerId", "modelId", "displayName", "enabled", "modelKind", "embeddingDimensions", "source", "discoveredAt", "fallbackModelId"),
+         section("capabilities", "Capabilities", "settings", Tier.T2, "supportsTools", "supportsVision", "supportsStreaming", "supportsReasoningEffort", "contextWindowTokens", "maxOutputTokens"),
+         section("prices", "Prices", "payments", Tier.T2, "inputUsdPerMTok", "outputUsdPerMTok"),
+         section("lastTest", "Last connection test", "network_check", Tier.T2, "lastTestAt", "lastTestStatus", "lastTestLatencyMs", "lastTestError"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Budget choices use standard possible-value sources.
+    *******************************************************************************/
+   private static QPossibleValueSource budgetEnum(String field, String... values)
+   {
+      List<QPossibleValue<?>> choices = new ArrayList<>();
+      for(String value : values)
+      {
+         choices.add(new QPossibleValue<>(value, value));
+      }
+      return (enumSource("assistant_budget_" + field, choices));
+   }
+
+
+
+   /*******************************************************************************
+    ** Budget record screen.
+    *******************************************************************************/
+   private static void budget(QTableMetaData table)
+   {
+      for(String field : List.of("scopeType", "period", "metric", "atLimitAction"))
+      {
+         table.getField(field).withPossibleValueSourceName("assistant_budget_" + field);
+      }
+      table.getField("downgradeModelId").withPossibleValueSourceName("assistant_budget_model");
+      help(table, "scopeValue", "Empty for INSTANCE; user id, permission name, provider row id or model registry row id for the selected scope.");
+      help(table, "limitValue", "USD for COST_USD, or whole tokens for TOKENS. Periods use UTC.");
+      help(table, "downgradeModelId", "Empty chooses the cheapest enabled eligible model, preferring LOCAL providers.");
+      sections(table,
+         section("budget", "Budget", "savings", Tier.T1, "id", "name", "enabled", "scopeType", "scopeValue", "period", "metric", "limitValue"),
+         section("thresholds", "Thresholds", "notifications", Tier.T2, "warnPercent", "atLimitAction", "downgradeModelId", "hardCeilingPercent", "notes"));
+   }
+
+
+   /*******************************************************************************
+    ** Standard source editor and status, with explicit embedding model selection.
+    *******************************************************************************/
+   private static void knowledge(QTableMetaData table)
+   {
+      pvs(table, "embeddingModelId", "assistant_registry_model", "Embedding model");
+      table.getField("embeddingModelId").withPossibleValueSourceFilter(new QQueryFilter()
+         .withCriteria("modelKind", QCriteriaOperator.EQUALS, "EMBEDDING").withCriteria("enabled", QCriteriaOperator.EQUALS, true));
+      help(table, "embeddingModelId", "Select an enabled EMBEDDING model. Chat models are refused on save.");
+      help(table, "filterJson", "Optional QQQ query filter JSON. Index now reads it through the UI API as the clicking administrator.");
+      sections(table,
+         section("source", "Knowledge source", "manage_search", Tier.T1, "id", "name", "enabled", "tableName", "fieldNames", "titleFieldName", "filterJson"),
+         section("embedding", "Embedding", "memory", Tier.T2, "embeddingModelId", "chunkChars", "chunkOverlapChars"),
+         section("status", "Last index", "info", Tier.T2, "lastIndexedAt", "lastIndexStatus", "lastIndexError", "indexedRecordCount", "indexedChunkCount"));
+   }
+
 }

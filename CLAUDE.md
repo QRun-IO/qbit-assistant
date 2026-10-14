@@ -42,6 +42,11 @@ Always use the wrapper: Maven 3.10 cannot read the parent POM. The committed def
   - `processes/`: `AssistantRetentionStep` and `TestConnectionProcess` (record action on `assistant_provider`).
   - `engine/ProviderService` (active provider from `assistant_provider` rows, key references, prices), `UsageRecorder` (one `assistant_usage` row per model call), `ConnectionTest`.
 - `qbit-assistant-provider-anthropic`: `AnthropicModelProvider` and `AnthropicMapping` (anthropic-java streaming).
+- `qbit-assistant-provider-openai`: OpenAI-compatible Chat Completions, model discovery and health using JDK HTTP and Jackson.
+- `qbit-assistant-provider-bedrock`: Claude through the Anthropic Bedrock backend, AWS default credentials and SigV4; IRSA/web-identity hosts supply STS.
+- `qbit-assistant-provider-vertex`: Claude through the Anthropic Vertex backend and Gemini through OpenAI-compatible Chat Completions, with refreshed Google ADC tokens.
+
+- `qbit-assistant-rag-pgvector`: optional host-supplied JDBC vector store, isolated by instance schema; no QQQ RDBMS internals.
 
 ## Invariants (do not break)
 
@@ -50,6 +55,7 @@ Always use the wrapper: Maven 3.10 cannot read the parent POM. The committed def
   - Every route uses `ExecutorSessionUtils.setupSession` (the user's own session).
   - `AssistantSecurity` only ever adds the user's OWN id key, or the all-access key for `assistant.admin` holders.
 - **Data access:**
+  - The vector index stores no record content: only source/table/key/field/chunk, content hash and embedding. Retrieval re-reads every hit through the UI API as the asking user, then applies the existing get_record exposure/masking path.
   - Only `persistence/` calls QueryAction, InsertAction and the other data actions (ArchUnit).
   - Data tools run only through `UiApiToolbox` → `UiApiGateway` (spec'd `/qqq/v1` operations with the user's `sessionUUID`); never core data actions for user data. Only `navigate` and `search_help` use `AiToolKernel.execute`.
   - Data access (`DataAccessService`) and the policy only ever narrow what the UI API allows; a table whose AI exposure is NONE stays NONE.
@@ -64,6 +70,10 @@ Always use the wrapper: Maven 3.10 cannot read the parent POM. The committed def
 - **Logging:** never log message content, prompts, tool results or keys. Structured end-of-turn log only.
 - **Thinking:** thinking is never streamed or stored. The Anthropic adapter keeps the raw assistant message (with signatures) only in memory, as `providerState`, for the tool loop.
 - **Links:** only `/app` or `/app/...` hrefs are emitted (`TurnEngine.isAppHref`).
+- **PHI routing:** PHI only to `hipaaEligible` providers; checked before every model call. Conversation classification never decreases.
+- **HIPAA storage:** Conversation storage encrypted in HIPAA mode, only in `AssistantStore`; encryption keys are environment references and never logged or stored in tables.
+- **Fallback:** fallback never crosses the PHI rule; never local-to-cloud by default. No retry after partial output from that call; provider switches rebuild neutral history without providerState.
+- **Budgets:** budgets are checked before every model call; downgrade never crosses the PHI rule.
 - **Kill switch:** read fresh before every model call and every tool step.
 
 ## Tests
@@ -92,4 +102,4 @@ QQQ style:
 - `develop` publishes SNAPSHOTs.
 - `release/*` publishes RCs; the orb bumps `<revision>` in the root POM.
 - `v*` tags publish releases.
-- Both modules and the parent POM publish. The flatten plugin resolves `${revision}`.
+- All six modules and the parent POM publish. The flatten plugin resolves `${revision}`.

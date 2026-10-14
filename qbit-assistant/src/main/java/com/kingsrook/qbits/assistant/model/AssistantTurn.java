@@ -38,6 +38,24 @@ public class AssistantTurn extends QRecordEntity
    @Deprecated(since = "0.1.0-RC.3")
    public static final String LEGACY_TABLE_NAME = "assistantTurn";
 
+   @QField(isEditable = false, maxLength = 16)
+   private String classification;
+
+   @QField(isEditable = false, maxLength = 500)
+   private String classificationTables;
+
+   @QField(isEditable = false, maxLength = 16)
+   private String routeDecision;
+
+   @QField(isEditable = false, maxLength = 16)
+   private String routeSource;
+
+   @QField(isEditable = false)
+   private Integer fallbackCount;
+
+   @QField(isEditable = false)
+   private Integer providerId;
+
    @QField(isEditable = false, isPrimaryKey = true)
    private Integer id;
 
@@ -65,7 +83,7 @@ public class AssistantTurn extends QRecordEntity
    @QField(isEditable = false, maxLength = 64)
    private String cancelReason;
 
-   @QField(isEditable = false, maxLength = 64)
+   @QField(isEditable = false, maxLength = 200)
    private String model;
 
    @QField(isEditable = false)
@@ -805,4 +823,192 @@ public class AssistantTurn extends QRecordEntity
       return (this);
    }
 
+
+
+   /*******************************************************************************
+    ** Getter for classification
+    *******************************************************************************/
+   public String getClassification()
+   {
+      return (classification);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for classification
+    *******************************************************************************/
+   public void setClassification(String classification)
+   {
+      this.classification = classification;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for classification
+    *******************************************************************************/
+   public AssistantTurn withClassification(String classification)
+   {
+      this.classification = classification;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for classificationTables
+    *******************************************************************************/
+   public String getClassificationTables()
+   {
+      return (classificationTables);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for classificationTables
+    *******************************************************************************/
+   public void setClassificationTables(String classificationTables)
+   {
+      this.classificationTables = classificationTables;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for classificationTables
+    *******************************************************************************/
+   public AssistantTurn withClassificationTables(String classificationTables)
+   {
+      this.classificationTables = classificationTables;
+      return (this);
+   }
+
+
+
+
+
+
+   /*******************************************************************************
+    ** Get routeDecision.
+    *******************************************************************************/
+   public String getRouteDecision()
+   {
+      return (this.routeDecision);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set routeDecision.
+    *******************************************************************************/
+   public void setRouteDecision(String routeDecision)
+   {
+      this.routeDecision = routeDecision;
+   }
+
+
+
+   /*******************************************************************************
+    ** With routeDecision.
+    *******************************************************************************/
+   public AssistantTurn withRouteDecision(String routeDecision)
+   {
+      this.routeDecision = routeDecision;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Get routeSource.
+    *******************************************************************************/
+   public String getRouteSource()
+   {
+      return (this.routeSource);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set routeSource.
+    *******************************************************************************/
+   public void setRouteSource(String routeSource)
+   {
+      this.routeSource = routeSource;
+   }
+
+
+
+   /*******************************************************************************
+    ** With routeSource.
+    *******************************************************************************/
+   public AssistantTurn withRouteSource(String routeSource)
+   {
+      this.routeSource = routeSource;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Get fallbackCount.
+    *******************************************************************************/
+   public Integer getFallbackCount()
+   {
+      return (this.fallbackCount);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set fallbackCount.
+    *******************************************************************************/
+   public void setFallbackCount(Integer fallbackCount)
+   {
+      this.fallbackCount = fallbackCount;
+   }
+
+
+
+   /*******************************************************************************
+    ** With fallbackCount.
+    *******************************************************************************/
+   public AssistantTurn withFallbackCount(Integer fallbackCount)
+   {
+      this.fallbackCount = fallbackCount;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Get providerId.
+    *******************************************************************************/
+   public Integer getProviderId()
+   {
+      return (this.providerId);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set providerId.
+    *******************************************************************************/
+   public void setProviderId(Integer providerId)
+   {
+      this.providerId = providerId;
+   }
+
+
+
+   /*******************************************************************************
+    ** With providerId.
+    *******************************************************************************/
+   public AssistantTurn withProviderId(Integer providerId)
+   {
+      this.providerId = providerId;
+      return (this);
+   }
 }

@@ -215,7 +215,7 @@ public class ProfileService
    /*******************************************************************************
     **
     *******************************************************************************/
-   private AssistantProfile pick(QSession session, String appName)
+   public AssistantProfile pick(QSession session, String appName)
    {
       List<AssistantProfile> enabled = load().profiles().stream().filter(p -> !Boolean.FALSE.equals(p.getEnabled())).toList();
       return (enabled.stream()

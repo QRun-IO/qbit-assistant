@@ -35,7 +35,50 @@ import com.kingsrook.qqq.backend.core.model.data.QRecordEntity;
  *******************************************************************************/
 public class AssistantProvider extends QRecordEntity
 {
+   @QField(maxLength = 100)
+   private String cloudProject;
+
+   @QField(maxLength = 30)
+   private String kind;
+
+   @QField(maxLength = 10)
+   private String location;
+
+   @QField()
+   private Boolean hipaaEligible;
+
+   @QField(maxLength = 50)
+   private String region;
+
+   @QField(maxLength = 30)
+   private String apiVersion;
+
+   @QField()
+   private Integer connectTimeoutSeconds;
+
+   @QField()
+   private Integer requestTimeoutSeconds;
+
+   @QField(isEditable = false)
+   private Instant lastDiscoveryAt;
+
+   @QField(isEditable = false, maxLength = 16)
+   private String lastDiscoveryStatus;
+
+   @QField(isEditable = false, maxLength = 500)
+   private String lastDiscoveryError;
+
+
    public static final String TABLE_NAME = "assistant_provider";
+
+   @QField(isEditable = false, maxLength = 8)
+   private String healthState;
+
+   @QField(isEditable = false)
+   private Instant healthCheckedAt;
+
+   @QField(isEditable = false)
+   private Instant downUntil;
 
    @QField(isEditable = false, isPrimaryKey = true)
    private Integer id;
@@ -46,7 +89,7 @@ public class AssistantProvider extends QRecordEntity
    @QField(isRequired = true, maxLength = 50)
    private String providerType;
 
-   @QField(maxLength = 100)
+   @QField(maxLength = 200)
    private String model;
 
    @QField()
@@ -57,6 +100,9 @@ public class AssistantProvider extends QRecordEntity
 
    @QField(maxLength = 255)
    private String baseUrl;
+
+   @QField(maxLength = 100)
+   private String tlsCaBundle;
 
    @QField(maxLength = 100)
    private String apiKeyEnvName;
@@ -86,7 +132,7 @@ public class AssistantProvider extends QRecordEntity
    @QField(isEditable = false)
    private Integer lastTestLatencyMs;
 
-   @QField(isEditable = false, maxLength = 100)
+   @QField(isEditable = false, maxLength = 200)
    private String lastTestModel;
 
    @QField(isEditable = false, maxLength = 500)
@@ -706,4 +752,470 @@ public class AssistantProvider extends QRecordEntity
       return (this);
    }
 
+
+
+
+   /*******************************************************************************
+    ** Getter for kind
+    *******************************************************************************/
+   public String getKind()
+   {
+      return (this.kind);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for kind
+    *******************************************************************************/
+   public void setKind(String kind)
+   {
+      this.kind = kind;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for kind
+    *******************************************************************************/
+   public AssistantProvider withKind(String kind)
+   {
+      this.kind = kind;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for location
+    *******************************************************************************/
+   public String getLocation()
+   {
+      return (this.location);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for location
+    *******************************************************************************/
+   public void setLocation(String location)
+   {
+      this.location = location;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for location
+    *******************************************************************************/
+   public AssistantProvider withLocation(String location)
+   {
+      this.location = location;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for hipaaEligible
+    *******************************************************************************/
+   public Boolean getHipaaEligible()
+   {
+      return (this.hipaaEligible);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for hipaaEligible
+    *******************************************************************************/
+   public void setHipaaEligible(Boolean hipaaEligible)
+   {
+      this.hipaaEligible = hipaaEligible;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for hipaaEligible
+    *******************************************************************************/
+   public AssistantProvider withHipaaEligible(Boolean hipaaEligible)
+   {
+      this.hipaaEligible = hipaaEligible;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for region
+    *******************************************************************************/
+   public String getRegion()
+   {
+      return (this.region);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for region
+    *******************************************************************************/
+   public void setRegion(String region)
+   {
+      this.region = region;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for region
+    *******************************************************************************/
+   public AssistantProvider withRegion(String region)
+   {
+      this.region = region;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for apiVersion
+    *******************************************************************************/
+   public String getApiVersion()
+   {
+      return (this.apiVersion);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for apiVersion
+    *******************************************************************************/
+   public void setApiVersion(String apiVersion)
+   {
+      this.apiVersion = apiVersion;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for apiVersion
+    *******************************************************************************/
+   public AssistantProvider withApiVersion(String apiVersion)
+   {
+      this.apiVersion = apiVersion;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for connectTimeoutSeconds
+    *******************************************************************************/
+   public Integer getConnectTimeoutSeconds()
+   {
+      return (this.connectTimeoutSeconds);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for connectTimeoutSeconds
+    *******************************************************************************/
+   public void setConnectTimeoutSeconds(Integer connectTimeoutSeconds)
+   {
+      this.connectTimeoutSeconds = connectTimeoutSeconds;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for connectTimeoutSeconds
+    *******************************************************************************/
+   public AssistantProvider withConnectTimeoutSeconds(Integer connectTimeoutSeconds)
+   {
+      this.connectTimeoutSeconds = connectTimeoutSeconds;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for requestTimeoutSeconds
+    *******************************************************************************/
+   public Integer getRequestTimeoutSeconds()
+   {
+      return (this.requestTimeoutSeconds);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for requestTimeoutSeconds
+    *******************************************************************************/
+   public void setRequestTimeoutSeconds(Integer requestTimeoutSeconds)
+   {
+      this.requestTimeoutSeconds = requestTimeoutSeconds;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for requestTimeoutSeconds
+    *******************************************************************************/
+   public AssistantProvider withRequestTimeoutSeconds(Integer requestTimeoutSeconds)
+   {
+      this.requestTimeoutSeconds = requestTimeoutSeconds;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for lastDiscoveryAt
+    *******************************************************************************/
+   public Instant getLastDiscoveryAt()
+   {
+      return (this.lastDiscoveryAt);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for lastDiscoveryAt
+    *******************************************************************************/
+   public void setLastDiscoveryAt(Instant lastDiscoveryAt)
+   {
+      this.lastDiscoveryAt = lastDiscoveryAt;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for lastDiscoveryAt
+    *******************************************************************************/
+   public AssistantProvider withLastDiscoveryAt(Instant lastDiscoveryAt)
+   {
+      this.lastDiscoveryAt = lastDiscoveryAt;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for lastDiscoveryStatus
+    *******************************************************************************/
+   public String getLastDiscoveryStatus()
+   {
+      return (this.lastDiscoveryStatus);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for lastDiscoveryStatus
+    *******************************************************************************/
+   public void setLastDiscoveryStatus(String lastDiscoveryStatus)
+   {
+      this.lastDiscoveryStatus = lastDiscoveryStatus;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for lastDiscoveryStatus
+    *******************************************************************************/
+   public AssistantProvider withLastDiscoveryStatus(String lastDiscoveryStatus)
+   {
+      this.lastDiscoveryStatus = lastDiscoveryStatus;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for lastDiscoveryError
+    *******************************************************************************/
+   public String getLastDiscoveryError()
+   {
+      return (this.lastDiscoveryError);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for lastDiscoveryError
+    *******************************************************************************/
+   public void setLastDiscoveryError(String lastDiscoveryError)
+   {
+      this.lastDiscoveryError = lastDiscoveryError;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for lastDiscoveryError
+    *******************************************************************************/
+   public AssistantProvider withLastDiscoveryError(String lastDiscoveryError)
+   {
+      this.lastDiscoveryError = lastDiscoveryError;
+      return (this);
+   }
+
+
+
+
+   /*******************************************************************************
+    ** Getter for tlsCaBundle
+    *******************************************************************************/
+   public String getTlsCaBundle()
+   {
+      return (this.tlsCaBundle);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for tlsCaBundle
+    *******************************************************************************/
+   public void setTlsCaBundle(String tlsCaBundle)
+   {
+      this.tlsCaBundle = tlsCaBundle;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for tlsCaBundle
+    *******************************************************************************/
+   public AssistantProvider withTlsCaBundle(String tlsCaBundle)
+   {
+      this.tlsCaBundle = tlsCaBundle;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for cloudProject
+    *******************************************************************************/
+   public String getCloudProject()
+   {
+      return (this.cloudProject);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for cloudProject
+    *******************************************************************************/
+   public void setCloudProject(String cloudProject)
+   {
+      this.cloudProject = cloudProject;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for cloudProject
+    *******************************************************************************/
+   public AssistantProvider withCloudProject(String cloudProject)
+   {
+      this.cloudProject = cloudProject;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Get healthState.
+    *******************************************************************************/
+   public String getHealthState()
+   {
+      return (this.healthState);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set healthState.
+    *******************************************************************************/
+   public void setHealthState(String healthState)
+   {
+      this.healthState = healthState;
+   }
+
+
+
+   /*******************************************************************************
+    ** With healthState.
+    *******************************************************************************/
+   public AssistantProvider withHealthState(String healthState)
+   {
+      this.healthState = healthState;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Get healthCheckedAt.
+    *******************************************************************************/
+   public Instant getHealthCheckedAt()
+   {
+      return (this.healthCheckedAt);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set healthCheckedAt.
+    *******************************************************************************/
+   public void setHealthCheckedAt(Instant healthCheckedAt)
+   {
+      this.healthCheckedAt = healthCheckedAt;
+   }
+
+
+
+   /*******************************************************************************
+    ** With healthCheckedAt.
+    *******************************************************************************/
+   public AssistantProvider withHealthCheckedAt(Instant healthCheckedAt)
+   {
+      this.healthCheckedAt = healthCheckedAt;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Get downUntil.
+    *******************************************************************************/
+   public Instant getDownUntil()
+   {
+      return (this.downUntil);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set downUntil.
+    *******************************************************************************/
+   public void setDownUntil(Instant downUntil)
+   {
+      this.downUntil = downUntil;
+   }
+
+
+
+   /*******************************************************************************
+    ** With downUntil.
+    *******************************************************************************/
+   public AssistantProvider withDownUntil(Instant downUntil)
+   {
+      this.downUntil = downUntil;
+      return (this);
+   }
 }

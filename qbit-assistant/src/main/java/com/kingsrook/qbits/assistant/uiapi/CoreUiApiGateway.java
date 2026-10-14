@@ -23,8 +23,8 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiCredentials;
+import com.kingsrook.qqq.middleware.javalin.specs.invoke.HeaderedUiApiInvoker;
 import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiInvoker;
-import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiRequest;
 import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiResponse;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.MiddlewareVersionV1;
 import com.kingsrook.qqq.openapi.model.HttpMethod;
@@ -40,7 +40,8 @@ import com.kingsrook.qqq.openapi.model.HttpMethod;
  *******************************************************************************/
 public class CoreUiApiGateway implements UiApiGateway
 {
-   public static final String OWN_PREFIX = "/assistant";
+   public static final String OWN_PREFIX     = "/assistant";
+   public static final String CLIENT_CHANNEL = "assistant";
 
    private final Supplier<String> baseUrlSupplier;
    private final QInstance        qInstance;
@@ -71,7 +72,12 @@ public class CoreUiApiGateway implements UiApiGateway
       {
          MiddlewareVersionV1 version = new MiddlewareVersionV1();
          version.setQInstance(qInstance);
-         current = new UiApiInvoker(baseUrlSupplier, version);
+         ////////////////////////////////////////////////////////////////////////////
+         // the same as UiApiInvoker.forServer(server, "assistant"): this server's  //
+         // loopback address, its first version, the client channel "assistant"     //
+         // (a call adds only the detail after the slash: the turn id)              //
+         ////////////////////////////////////////////////////////////////////////////
+         current = new HeaderedUiApiInvoker(baseUrlSupplier, version).withClientChannel(CLIENT_CHANNEL);
          invoker = current;
       }
       return (current);
@@ -126,15 +132,18 @@ public class CoreUiApiGateway implements UiApiGateway
          throw (new QException("A session is required to invoke " + call.operation()));
       }
 
-      UiApiRequest request = new UiApiRequest()
-         .withMethod(HttpMethod.valueOf(call.getMethod().toUpperCase(Locale.ROOT)))
+      HeaderedUiApiInvoker.HeaderedRequest request = new HeaderedUiApiInvoker.HeaderedRequest();
+      request.withMethod(HttpMethod.valueOf(call.getMethod().toUpperCase(Locale.ROOT)))
          .withPath(call.getPathTemplate())
          .withCredentials(credentials)
          .withUserTimezone(call.getUserTimezone())
          .withInvokedBy(call.getInvokedBy())
-         .withTimeout(call.getTimeout());
+         .withTimeout(call.getTimeout())
+         .withClientDetail(call.getClientDetail());
+      call.getHeaders().forEach(request::withHeader);
       call.getPathParams().forEach(request::withPathParam);
       call.getQueryParams().forEach(request::withQueryParam);
+      call.getFormParams().forEach(request::withFormParam);
       if(call.getJsonBody() instanceof String json)
       {
          ////////////////////////////////////////////////////////////////

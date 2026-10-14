@@ -129,7 +129,10 @@ class AssistantRouteProviderTest extends BaseAssistantTest
       List<Frame> frames = new ArrayList<>();
       try(BufferedReader reader = new BufferedReader(new InputStreamReader(body, StandardCharsets.UTF_8)))
       {
-         String id = null, event = null, data = null, line;
+         String id = null;
+         String event = null;
+         String data = null;
+         String line;
          while((line = reader.readLine()) != null)
          {
             if(line.isEmpty())
@@ -376,7 +379,7 @@ class AssistantRouteProviderTest extends BaseAssistantTest
    {
       assertThat(AssistantApi.deriveTitle("  how many posts?\nmore lines")).isEqualTo("how many posts?");
       String title = AssistantApi.deriveTitle("find every published blog post that is missing a meta description and an excerpt please");
-      assertThat(title).endsWith("\u2026").hasSizeLessThanOrEqualTo(AssistantApi.TITLE_MAX_CHARS);
+      assertThat(title).endsWith("…").hasSizeLessThanOrEqualTo(AssistantApi.TITLE_MAX_CHARS);
       assertThat(AssistantApi.deriveTitle("x".repeat(100))).hasSize(AssistantApi.TITLE_MAX_CHARS);
    }
 

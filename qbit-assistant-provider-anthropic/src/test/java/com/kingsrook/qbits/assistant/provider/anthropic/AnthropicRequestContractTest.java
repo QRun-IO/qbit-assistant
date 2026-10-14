@@ -109,6 +109,24 @@ class AnthropicRequestContractTest
 
 
    /*******************************************************************************
+    ** Presentation remains inside the actual serialized strict request budget.
+    *******************************************************************************/
+   @Test
+   void testPresentationStrictOptIn() throws Exception
+   {
+      Map<String, Object> body = requestBody(new AssistantQBitConfig().withModelProvider(new ScriptedModelProvider()).withStrictToolNames(Set.of("present_results")));
+      assertThat(violations(body)).isEmpty();
+      assertThat(strictBudgetViolations(body)).isEmpty();
+      assertThat(tools(body)).anySatisfy(tool ->
+      {
+         assertThat(tool.get("name")).isEqualTo("present_results");
+         assertThat(tool.get("strict")).isEqualTo(true);
+      });
+   }
+
+
+
+   /*******************************************************************************
     ** The RC.3 shape (every tool strict) is recognized as over budget, and a
     ** host can still opt a few tools in.
     *******************************************************************************/

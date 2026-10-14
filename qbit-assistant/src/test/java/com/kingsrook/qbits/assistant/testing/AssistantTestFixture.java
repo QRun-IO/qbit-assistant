@@ -39,6 +39,7 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.ClientChannelsMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.QAuditRules;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
@@ -137,11 +138,25 @@ public class AssistantTestFixture
          .withField(new QFieldMetaData("statDate", QFieldType.DATE).withLabel("Stat Date"))
          .withField(new QFieldMetaData("pageviews", QFieldType.INTEGER).withLabel("Pageviews")));
 
+      if(config.getClassificationSource().ofTable("patient") == com.kingsrook.qqq.backend.core.actions.ai.DataClassification.PHI)
+      {
+         qInstance.addTable(table("patient", "Patient", "status")
+            .withField(new QFieldMetaData("email", QFieldType.STRING))
+            .withField(new QFieldMetaData("status", QFieldType.STRING))
+            .withField(new QFieldMetaData("diagnosis", QFieldType.STRING)));
+      }
+
       new AuditsMetaDataProvider().defineAll(qInstance, BACKEND, null);
       for(String auditTable : List.of(AuditsMetaDataProvider.TABLE_NAME_AUDIT, AuditsMetaDataProvider.TABLE_NAME_AUDIT_DETAIL, AuditsMetaDataProvider.TABLE_NAME_AUDIT_TABLE, AuditsMetaDataProvider.TABLE_NAME_AUDIT_USER))
       {
          qInstance.getTable(auditTable).setPermissionRules(new QPermissionRules().withLevel(PermissionLevel.READ_INSERT_EDIT_DELETE_PERMISSIONS));
       }
+
+      //////////////////////////////////////////////////////////////////////////
+      // core denies the assistant channel the audit tables by default; this   //
+      // host opts in so get_record_history can read a record's change history //
+      //////////////////////////////////////////////////////////////////////////
+      ClientChannelsMetaData.ofOrWithNew(qInstance).getDeniedPatterns().get(ClientChannelsMetaData.CHANNEL_ASSISTANT).remove("audit*");
 
       qInstance.addApp(new QAppMetaData().withName("content").withLabel("Content")
          .withChild(qInstance.getTable("blog_post"))
@@ -189,6 +204,12 @@ public class AssistantTestFixture
       QContext.init(qInstance, seeder);
       try
       {
+         if(qInstance.getTable("patient") != null)
+         {
+            insert("patient", List.of(
+               new QRecord().withValue("email", "patient1@example.test").withValue("status", "Active").withValue("diagnosis", "PHI_DIAGNOSIS_SENTINEL"),
+               new QRecord().withValue("email", "patient2@example.test").withValue("status", "Inactive").withValue("diagnosis", "PHI_SECOND_SENTINEL")));
+         }
          List<QRecord> posts = new ArrayList<>();
          posts.add(post("Proxmox home lab notes", "proxmox-home-lab", "PUBLISHED", "How I run Proxmox at home.", null, "Proxmox clusters, VLANs and backups."));
          posts.add(post("Talos on Proxmox", "talos-proxmox", "PUBLISHED", null, "Running Talos Linux on Proxmox.", "Talos is an immutable Kubernetes OS."));
@@ -212,9 +233,13 @@ public class AssistantTestFixture
          update("page", new QRecord().withValue("id", 12).withValue("metaDescription", "Who I am and what I build."));
          update("page", new QRecord().withValue("id", 12).withValue("content", "Body of page 12, rewritten with a longer story about the home lab."));
 
-         insert("media", List.of(
-            new QRecord().withValue("fileName", "cover.heic").withValue("mimeType", "image/heic"),
-            new QRecord().withValue("fileName", "logo.png").withValue("mimeType", "image/png").withValue("width", 512)));
+         List<QRecord> media = new ArrayList<>();
+         for(Integer i = 0; i < 101; i++)
+         {
+            media.add(new QRecord().withValue("fileName", "image-" + i + (i < 81 ? ".jpg" : ".png"))
+               .withValue("mimeType", i < 81 ? "image/jpeg" : "image/png").withValue("width", 512));
+         }
+         insert("media", media);
 
          List<QRecord> stats = new ArrayList<>();
          for(int d = 1; d <= 5; d++)
@@ -312,7 +337,7 @@ public class AssistantTestFixture
       List<String> readable = new ArrayList<>();
       if(all || userId.startsWith("editor"))
       {
-         readable.addAll(List.of("blog_post", "page", "media", AuditsMetaDataProvider.TABLE_NAME_AUDIT, AuditsMetaDataProvider.TABLE_NAME_AUDIT_DETAIL,
+         readable.addAll(List.of("blog_post", "page", "media", "patient", AuditsMetaDataProvider.TABLE_NAME_AUDIT, AuditsMetaDataProvider.TABLE_NAME_AUDIT_DETAIL,
             AuditsMetaDataProvider.TABLE_NAME_AUDIT_TABLE, AuditsMetaDataProvider.TABLE_NAME_AUDIT_USER));
       }
       if(all || userId.startsWith("analyst"))

@@ -32,6 +32,11 @@ import java.util.List;
  *******************************************************************************/
 public class ModelRequest
 {
+
+   private ModelCapabilities capabilities;
+
+
+   private Boolean                   streaming = true;
    private String                    model;
    private String                    effort;
    private Integer                   maxTokens;
@@ -48,7 +53,9 @@ public class ModelRequest
    public ModelRequest copy()
    {
       return (new ModelRequest()
+         .withStreaming(streaming)
          .withModel(model)
+         .withCapabilities(capabilities)
          .withEffort(effort)
          .withMaxTokens(maxTokens)
          .withParallelToolCalls(parallelToolCalls)
@@ -274,4 +281,57 @@ public class ModelRequest
       return (this);
    }
 
+
+
+
+   /*******************************************************************************
+    ** Getter for capabilities
+    *******************************************************************************/
+   public ModelCapabilities getCapabilities()
+   {
+      return (this.capabilities);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for capabilities
+    *******************************************************************************/
+   public void setCapabilities(ModelCapabilities capabilities)
+   {
+      this.capabilities = capabilities;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for capabilities
+    *******************************************************************************/
+   public ModelRequest withCapabilities(ModelCapabilities capabilities)
+   {
+      this.capabilities = capabilities;
+      return (this);
+   }
+
+
+
+
+   /*******************************************************************************
+    ** Whether to request streaming transport (classifiers use one JSON reply).
+    *******************************************************************************/
+   public Boolean getStreaming()
+   {
+      return (streaming);
+   }
+
+
+
+   /*******************************************************************************
+    ** Select streaming transport independently of model capability.
+    *******************************************************************************/
+   public ModelRequest withStreaming(Boolean streaming)
+   {
+      this.streaming = streaming;
+      return (this);
+   }
 }

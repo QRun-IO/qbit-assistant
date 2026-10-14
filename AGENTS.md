@@ -42,6 +42,9 @@ Always use the wrapper: Maven 3.10 cannot read the parent POM. The committed def
   - `processes/`: `AssistantRetentionStep` and `TestConnectionProcess` (record action on `assistant_provider`).
   - `engine/ProviderService` (active provider from `assistant_provider` rows, key references, prices), `UsageRecorder` (one `assistant_usage` row per model call), `ConnectionTest`.
 - `qbit-assistant-provider-anthropic`: `AnthropicModelProvider` and `AnthropicMapping` (anthropic-java streaming).
+- `qbit-assistant-provider-openai`: OpenAI-compatible Chat Completions, model discovery and health using JDK HTTP and Jackson.
+- `qbit-assistant-provider-bedrock`: Claude through the Anthropic Bedrock backend, AWS default credentials and SigV4; IRSA/web-identity hosts supply STS.
+- `qbit-assistant-provider-vertex`: Claude through the Anthropic Vertex backend and Gemini through OpenAI-compatible Chat Completions, with refreshed Google ADC tokens.
 
 ## Invariants (do not break)
 
@@ -90,4 +93,4 @@ QQQ style:
 - `develop` publishes SNAPSHOTs.
 - `release/*` publishes RCs; the orb bumps `<revision>` in the root POM.
 - `v*` tags publish releases.
-- Both modules and the parent POM publish. The flatten plugin resolves `${revision}`.
+- All five modules and the parent POM publish. The flatten plugin resolves `${revision}`.

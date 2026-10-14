@@ -1,5 +1,155 @@
 # Upgrading qbit-assistant
 
+## P-f: knowledge retrieval
+
+Apply the **P-f** assistant-table DDL in
+[docs/schema-postgres.sql](docs/schema-postgres.sql) before deployment. It adds
+`assistant_model.model_kind` (existing rows default to CHAT),
+`embedding_dimensions`, and the admin-only `assistant_rag_source` table.
+No sources are seeded. Existing chat selections remain unchanged; explicitly
+EMBEDDING models are excluded from chat, classifier, fallback and downgrade
+selection. Correct discovery's kind/dimensions if a model name is ambiguous.
+
+For persistent vectors, add `qbit-assistant-rag-pgvector` at the same version as
+the QBit, supply the host's JDBC DataSource/driver, and install pgvector in the
+database. A DBA runs `CREATE EXTENSION IF NOT EXISTS vector`; the application
+role needs schema creation rights for initial setup (or a DBA-created schema),
+then normal DML rights. `ensureSchema()` checks for an existing extension first
+and does not require extension installation privileges when it is already present.
+The optional pgvector DDL is a **commented reference block**, separate from the
+assistant-table migration. See [RAG setup](README.md#rag-setup).
+
+Use a distinct validated schema for each QQQ instance. `vector(N)` fixes dimensions
+for that store; changing dimensions requires a new schema and re-indexing.
+Sources can use different models with that dimension; ranking is restricted to
+sources using the query's model. If the weights behind an unchanged model id
+change, clear and rebuild its sources. Editing source chunk/filter/model settings
+or registry model identity/dimensions automatically clears affected vectors.
+
+Every indexing batch produces EMBED usage and updates existing budget rollups.
+PHI source content and PHI conversation queries require a HIPAA-eligible embedding
+provider. No background runner or designated credentials are installed in P-f.
+The default in-memory store is lost on restart and must be indexed again.
+
+## P-e: profile routing and provider fallback
+
+Apply the additive **P-e** ALTER TABLE statements at the end of
+[docs/schema-postgres.sql](docs/schema-postgres.sql) before deploying. Existing
+profiles default to OFF; optional model references and health columns start null.
+No routing or fallback configuration is seeded. Existing turns retain unknown
+routing/final-provider values; fallback_count defaults to zero.
+
+Profiles now have a **Model routing** section. Select HEURISTIC or CLASSIFIER,
+then optional simple/complex registry models and a classifier model. Empty route
+slots retain provider/policy selection. CLASSIFIER with no usable classifier
+uses HEURISTIC. OFF preserves prior provider selection. With no effective profile,
+code-configured escalation supplies the complex model/effort when enabled.
+
+Set a model's **Fallback model** to opt into a cross-provider chain. Saves reject
+cycles, more than four edges, or disabled/missing targets. Provider health is
+read-only; NETWORK/TIMEOUT opens a 60-second circuit, and successful calls close
+it. Local endpoints with stale health get a bounded two-second probe. Automatic
+fallback without an explicit link is confined to local models of the same adapter
+family. PHI/HIPAA eligibility and budgets apply to every destination.
+
+Classifier usage is recorded with purpose ROUTE and included in budgets. Reports
+that filter usage purpose should include ROUTE. Turn screens show route decision,
+source, fallback count and final provider; the home shows health and fallback totals.
+All configuration remains assistant.admin-only, with AI exposure NONE.
+
+## P-d: data-driven budgets
+
+Requires QQQ 4.1.0-RC.5 for the core Alerts API and alert type metadata.
+
+Create `assistant_budget`, `assistant_budget_override`, `assistant_budget_event`
+and `assistant_budget_usage`
+using the P-d DDL in [schema-postgres.sql](docs/schema-postgres.sql) before deploying.
+The event unique key is required: it deduplicates each state per budget, scope and
+UTC period across replicas. Do not remove it or truncate events during a period.
+
+Budgets appear in Assistant navigation. Overrides and immutable events are child
+lists. All four tables require `assistant.admin` and have AI exposure NONE.
+Overrides record the actual session grantor and require a reason and expiry.
+The standard host QQQ audit configuration applies to budget and override edits.
+`assistant_budget_usage` is a private accounting projection populated from persisted
+usage writes. It copies only counters, time, user, provider and model, with no owner
+lock, so shared INSTANCE/PROVIDER/MODEL sums can run under the caller's own session.
+The source usage table retains its owner locks. The projection is read-only, has no
+nav entry and no AI exposure. **Pause usage writes during migration and run the DDL's
+backfill before restarting**; otherwise shared totals would omit pre-upgrade usage.
+Keep accounting rows through their budget periods even if detail rows are removed.
+ROLE budgets give each permission holder a separate allowance, checked with their
+current session. Override scopeValue, when set, narrows the allowance to one user id.
+
+Existing policy/config budgets and provider monthly caps remain additional limits;
+an override of a budget row does not waive those existing caps.
+
+Provider and MODEL scope values are numeric provider/model registry row ids;
+USER is a user id and ROLE is a permission name. INSTANCE has no scope value.
+Periods reset at midnight UTC or the first of the month UTC. Token usage includes
+input, output, cache-read and cache-write tokens; USD uses the recorded micro-dollar
+cost, not today's model price. No default budget rows are seeded.
+
+## P-c: classification, PHI routing and encrypted storage
+
+Apply these additive schema changes before deploying P-c (adjust column mappings
+for your backend). New conversations/turns record `PUBLIC`, `CONFIDENTIAL`, `PII`
+or `PHI`; legacy null classifications read as PUBLIC. Backfill known historical
+PHI conversations to PHI before allowing their history to be used with a provider.
+
+```sql
+ALTER TABLE assistant_conversation ADD COLUMN max_classification VARCHAR(16);
+ALTER TABLE assistant_turn ADD COLUMN classification VARCHAR(16);
+ALTER TABLE assistant_turn ADD COLUMN classification_tables VARCHAR(500);
+ALTER TABLE assistant_conversation ALTER COLUMN title TYPE TEXT;
+ALTER TABLE assistant_tool_call ALTER COLUMN result_summary TYPE TEXT;
+ALTER TABLE assistant_pending_action ALTER COLUMN summary TYPE TEXT;
+ALTER TABLE assistant_pending_action ALTER COLUMN result_summary TYPE TEXT;
+CREATE TABLE assistant_data_audit
+(
+   id SERIAL PRIMARY KEY,
+   user_id VARCHAR(255),
+   conversation_id INTEGER,
+   turn_id INTEGER,
+   provider_id INTEGER,
+   provider_name VARCHAR(200),
+   model VARCHAR(200),
+   hipaa_eligible BOOLEAN,
+   classification VARCHAR(16),
+   tables VARCHAR(500),
+   decision VARCHAR(16),
+   reason VARCHAR(1000),
+   create_date TIMESTAMP WITH TIME ZONE
+);
+CREATE INDEX assistant_data_audit_user_id ON assistant_data_audit (user_id);
+CREATE INDEX assistant_data_audit_conversation_id ON assistant_data_audit (conversation_id);
+CREATE INDEX assistant_data_audit_turn_id ON assistant_data_audit (turn_id);
+```
+
+`assistant_data_audit` is an admin read-only, owner-locked child list on a
+conversation, outside navigation. It records each model call carrying PII/PHI and
+each routing block, without record values. It expires with the conversation.
+PHI conversations use `hipaaRetentionDays` (2190 by default), even outside HIPAA
+mode; null uses normal retention. Existing tool-result/replay cleanup still uses
+`toolResultRetentionDays`.
+
+Before enabling HIPAA mode, mark the permitted provider rows `hipaaEligible = true`
+and provision `conversationEncryptionKeyEnvName` with a base64-encoded 32-byte
+key. Startup refuses missing or invalid keys. A code-only provider is not eligible.
+The flag records the operator's eligibility decision; it does not establish a BAA.
+
+New/updated message parts, titles, conversation context, tool payloads/redactions
+and summaries, replay data, and pending-action payloads/summaries use
+`enc:v1:<base64(iv|ciphertext|tag)>` (AES-256-GCM, random 12-byte IV, 16-byte tag).
+Only `AssistantStore` decrypts; direct backend/admin record views show ciphertext.
+String columns holding encrypted summaries/titles must be TEXT to allow expansion.
+Legacy plaintext reads are supported; existing rows are not automatically rewritten.
+For an existing deployment, migrate legacy payloads through AssistantStore under
+the appropriate owner/admin session before treating the whole archive as encrypted.
+Keep the key available for the lifetime of encrypted data and backups. Changing the
+key requires a controlled decrypt/re-encrypt migration; P-c has no key rotation job.
+Corrupt ciphertext, a wrong key, and encrypted data without a key fail closed.
+
 ## 0.1.0-RC.3 to 0.1.0-RC.4: provider settings, prices, per-call usage, app home
 
 Three new tables. Create them before you deploy (see `docs/schema-postgres.sql`, which also seeds the Anthropic prices):
@@ -118,3 +268,93 @@ Database (see `docs/schema-postgres.sql`):
 Runtime: the tools call this server's own `/qqq/v1` on `127.0.0.1` and the port the first assistant request arrived on. If the server is not reachable that way (a different bind address, a TLS-only listener), set `withUiApiBaseUrl(...)`. Grant `assistant.admin` holders the new tables through the qbit's existing admin permission (no new permission names).
 
 Behavior: nothing is writable until an admin adds a READ_WRITE data access row; before that the assistant reads exactly what it did before, now through the UI API.
+
+## P-a: provider and model registry
+
+Before starting the new version, database-backed hosts add the provider columns
+and model sub-table below. Memory-backed hosts need no migration. Existing rows
+derive kind and location from the adapter and keep their model behavior until
+models are registered. Keys remain environment-variable references.
+
+```sql
+ALTER TABLE assistant_provider
+   ADD COLUMN kind VARCHAR(30),
+   ADD COLUMN tls_ca_bundle VARCHAR(100),
+   ADD COLUMN location VARCHAR(10),
+   ADD COLUMN hipaa_eligible BOOLEAN DEFAULT FALSE,
+   ADD COLUMN region VARCHAR(50),
+   ADD COLUMN api_version VARCHAR(30),
+   ADD COLUMN connect_timeout_seconds INTEGER DEFAULT 10 CHECK (connect_timeout_seconds BETWEEN 1 AND 600),
+   ADD COLUMN request_timeout_seconds INTEGER DEFAULT 120 CHECK (request_timeout_seconds BETWEEN 1 AND 600),
+   ADD COLUMN last_discovery_at TIMESTAMP WITH TIME ZONE,
+   ADD COLUMN last_discovery_status VARCHAR(16),
+   ADD COLUMN last_discovery_error VARCHAR(500);
+ALTER TABLE assistant_provider ALTER COLUMN model TYPE VARCHAR(200);
+ALTER TABLE assistant_provider ALTER COLUMN last_test_model TYPE VARCHAR(200);
+ALTER TABLE assistant_usage ALTER COLUMN model TYPE VARCHAR(200);
+ALTER TABLE assistant_message ALTER COLUMN model TYPE VARCHAR(200);
+ALTER TABLE assistant_turn ALTER COLUMN model TYPE VARCHAR(200);
+
+CREATE TABLE assistant_model
+(
+   id SERIAL PRIMARY KEY,
+   provider_id INTEGER NOT NULL REFERENCES assistant_provider(id),
+   model_id VARCHAR(200) NOT NULL,
+   display_name VARCHAR(200),
+   enabled BOOLEAN,
+   supports_tools BOOLEAN,
+   supports_vision BOOLEAN,
+   supports_streaming BOOLEAN,
+   supports_reasoning_effort BOOLEAN,
+   context_window_tokens INTEGER,
+   max_output_tokens INTEGER,
+   input_usd_per_m_tok NUMERIC(12, 4),
+   output_usd_per_m_tok NUMERIC(12, 4),
+   source VARCHAR(16),
+   discovered_at TIMESTAMP WITH TIME ZONE,
+   last_test_at TIMESTAMP WITH TIME ZONE,
+   last_test_status VARCHAR(16),
+   last_test_latency_ms INTEGER,
+   last_test_error VARCHAR(500),
+   create_date TIMESTAMP WITH TIME ZONE,
+   modify_date TIMESTAMP WITH TIME ZONE,
+   UNIQUE (provider_id, model_id)
+);
+```
+
+Register the optional `qbit-assistant-provider-openai` module and
+`OpenAiCompatibleProviderType` to offer its kinds. Azure and generic endpoints
+require an explicit `allowedBaseUrls` entry; local defaults may be keyless.
+Discover models preserves existing rows. Cloud catalogs larger than 20 are added
+disabled; enable the models to offer before leaving the provider's model empty.
+HIPAA eligibility records an administrator's fact; P-a does not implement PHI routing.
+
+Custom CA bundles are server configuration, never database content. Register them
+with `withTrustedCaBundle(name, pem)` or `withTrustedCaBundleFile(name, path)` at
+startup, then set the HTTPS provider row's `tlsCaBundle` to that name. Empty
+references retain JVM default trust. The bundle adds trust without replacing JVM
+roots; hostname verification remains enabled. If the P-a columns were already
+applied, add only `tls_ca_bundle VARCHAR(100)` to `assistant_provider`.
+
+
+## P-b: AWS Bedrock and Google Vertex
+
+Before starting this version, database-backed hosts that already applied P-a add:
+
+```sql
+ALTER TABLE assistant_provider ADD COLUMN cloud_project VARCHAR(100);
+```
+
+Fresh installations use `docs/schema-postgres.sql`; memory-backed hosts need no
+migration. Existing providers leave the new column null. Vertex requires the GCP
+project id in `cloudProject`; Bedrock and Vertex both require `region` and reject
+`apiKeyEnvName`. They default to CLOUD; `hipaaEligible` remains a manual admin fact.
+
+Add the optional `qbit-assistant-provider-bedrock` and/or
+`qbit-assistant-provider-vertex` module at the QBit version and register
+`BedrockProviderType` / `VertexProviderType`. Credentials come from the server's
+AWS default chain / Google Application Default Credentials. No credentials are
+stored in provider rows. Hosts using AWS IRSA or web identity supply
+`software.amazon.awssdk:sts` on their own runtime classpath (matching the
+transitive AWS SDK version); this QBit does not add it. See README Providers for
+configuration, endpoint overrides and static discovery limitations.

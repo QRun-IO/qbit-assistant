@@ -17,6 +17,26 @@
 package com.kingsrook.qbits.assistant.home;
 
 
+import com.kingsrook.qbits.assistant.model.AssistantTurn;
+import com.kingsrook.qbits.assistant.AssistantRuntime;
+import com.kingsrook.qbits.assistant.AssistantSecurity;
+import com.kingsrook.qbits.assistant.engine.BudgetService;
+import com.kingsrook.qbits.assistant.engine.PolicyService;
+import com.kingsrook.qbits.assistant.engine.ProviderService;
+import com.kingsrook.qbits.assistant.engine.UsageRecorder;
+import com.kingsrook.qbits.assistant.model.AssistantBudget;
+import com.kingsrook.qbits.assistant.model.AssistantBudgetOverride;
+import com.kingsrook.qbits.assistant.model.AssistantConversation;
+import com.kingsrook.qbits.assistant.model.AssistantProvider;
+import com.kingsrook.qbits.assistant.model.AssistantToolCall;
+import com.kingsrook.qbits.assistant.model.AssistantUsage;
+import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
+import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -26,20 +46,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import com.kingsrook.qbits.assistant.AssistantRuntime;
-import com.kingsrook.qbits.assistant.engine.PolicyService;
-import com.kingsrook.qbits.assistant.engine.ProviderService;
-import com.kingsrook.qbits.assistant.engine.UsageRecorder;
-import com.kingsrook.qbits.assistant.model.AssistantConversation;
-import com.kingsrook.qbits.assistant.model.AssistantProvider;
-import com.kingsrook.qbits.assistant.model.AssistantToolCall;
-import com.kingsrook.qbits.assistant.model.AssistantUsage;
-import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
-import com.kingsrook.qqq.backend.core.exceptions.QException;
-import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
-import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
-import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
-import com.kingsrook.qqq.backend.core.model.data.QRecord;
 
 
 /*******************************************************************************
@@ -65,6 +71,12 @@ public class AssistantHomeData
    private final List<QRecord>            failedTools   = new ArrayList<>();
    private final List<QRecord>            deniedTools   = new ArrayList<>();
 
+   private final List<BudgetService.Snapshot> budgets = new ArrayList<>();
+   private final List<Totals> byProvider = new ArrayList<>();
+
+   private Long fallbackCount = 0L;
+   private Boolean hipaaMode;
+   private Integer hipaaRetentionDays;
    private LocalDate today;
    private long      monthCostMicros;
    private long      monthRequests;
@@ -79,7 +91,7 @@ public class AssistantHomeData
    /*******************************************************************************
     ** One provider's health.
     *******************************************************************************/
-   public record ProviderHealth(AssistantProvider row, String typeLabel, String keyStatus, boolean keyPresent, List<String> problems, boolean active, long monthCostMicros, Long capMicros)
+   public record ProviderHealth(AssistantProvider row, String typeLabel, String keyStatus, boolean keyPresent, List<String> problems, boolean active, long monthCostMicros, Long capMicros, String kind, String location, long enabledModels)
    {
    }
 
@@ -133,6 +145,16 @@ public class AssistantHomeData
    public static AssistantHomeData load(AssistantRuntime runtime) throws QException
    {
       AssistantHomeData data = new AssistantHomeData();
+      data.hipaaMode = runtime.getConfig().getHipaaMode();
+      data.hipaaRetentionDays = runtime.getConfig().getHipaaRetentionDays();
+      for(AssistantBudget budget : runtime.getStore().budgets())
+      {
+         BudgetService.Snapshot snapshot = runtime.getBudgetService().snapshot(budget, AssistantSecurity.userId(QContext.getQSession()));
+         List<AssistantBudgetOverride> overrides = runtime.getStore().budgetOverrides(budget.getId()).stream()
+            .filter(o -> o.getExpiresAt() != null && o.getExpiresAt().isAfter(runtime.getClock().instant()))
+            .filter(o -> o.getUnlimitedUntil() == null || o.getUnlimitedUntil().isAfter(runtime.getClock().instant())).toList();
+         data.budgets.add(new BudgetService.Snapshot(budget, snapshot.scopeKey(), snapshot.periodStart(), snapshot.used(), snapshot.limit(), snapshot.percent(), snapshot.state(), overrides));
+      }
       data.today = LocalDate.now(runtime.getClock().withZone(ZoneOffset.UTC));
       LocalDate firstDay   = data.today.minusDays(DAYS - 1);
       LocalDate monthStart = data.today.withDayOfMonth(1);
@@ -159,6 +181,7 @@ public class AssistantHomeData
          .withOrderBy(new QFilterOrderBy("id", false)), max);
       data.truncated |= usage.size() >= max;
 
+      Map<String, Totals> providerTotals = new LinkedHashMap<>();
       Map<String, Totals> users          = new LinkedHashMap<>();
       Map<String, Totals> models         = new LinkedHashMap<>();
       Map<Integer, Long>  providerMonth  = new LinkedHashMap<>();
@@ -183,6 +206,9 @@ public class AssistantHomeData
             day.tokensIn += in;
             day.tokensOut += out;
             day.costMicros += cost;
+            add(users, row.getValueString("userId") == null ? "(none)" : row.getValueString("userId"), in, out, cost);
+            add(models, row.getValueString("model") == null ? "(unknown)" : row.getValueString("model"), in, out, cost);
+            add(providerTotals, row.getValueString("providerId") == null ? "Code-registered provider" : "Provider #" + row.getValueString("providerId"), in, out, cost);
          }
 
          if(!at.isBefore(weekAt) && turn)
@@ -200,8 +226,6 @@ public class AssistantHomeData
          {
             data.monthCostMicros += cost;
             data.monthRequests++;
-            add(users, row.getValueString("userId") == null ? "(none)" : row.getValueString("userId"), in, out, cost);
-            add(models, row.getValueString("model") == null ? "(unknown)" : row.getValueString("model"), in, out, cost);
             Integer providerId = row.getValueInteger("providerId");
             if(providerId != null)
             {
@@ -209,6 +233,7 @@ public class AssistantHomeData
             }
          }
       }
+      data.byProvider.addAll(top(providerTotals));
       data.byUser.addAll(top(users));
       data.byModel.addAll(top(models));
 
@@ -216,6 +241,16 @@ public class AssistantHomeData
       // conversations started per day      //
       ////////////////////////////////////////
       Instant dayOneAt = firstDay.atStartOfDay().toInstant(ZoneOffset.UTC);
+      List<QRecord> routedTurns = runtime.getStore().queryRecords(AssistantTurn.TABLE_NAME, new QQueryFilter()
+         .withCriteria("startedAt", QCriteriaOperator.GREATER_THAN_OR_EQUALS, dayOneAt), max);
+      data.truncated |= routedTurns.size() >= max;
+      for(QRecord row : routedTurns)
+      {
+         if(row.getValueInteger("fallbackCount") != null)
+         {
+            data.fallbackCount += row.getValueInteger("fallbackCount");
+         }
+      }
       List<QRecord> conversations = runtime.getStore().queryRecords(AssistantConversation.TABLE_NAME, new QQueryFilter()
          .withCriteria("createDate", QCriteriaOperator.GREATER_THAN_OR_EQUALS, dayOneAt), max);
       data.truncated |= conversations.size() >= max;
@@ -275,8 +310,8 @@ public class AssistantHomeData
       {
          String status = service.keyStatus(row);
          AssistantProviderType type = row.getProviderType() == null ? null : runtime.getConfig().getProviderTypes().get(row.getProviderType());
-         data.providers.add(new ProviderHealth(row, type == null ? row.getProviderType() : type.getLabel(), status, status.startsWith("Set"), service.validate(row), active != null && active.getId().equals(row.getId()),
-            providerMonth.getOrDefault(row.getId(), 0L), ProviderService.capMicros(row)));
+         data.providers.add(new ProviderHealth(row, type == null ? row.getProviderType() : type.getLabel(), status, (status.startsWith("Set") || status.startsWith("Not needed")), service.validate(row), active != null && active.getId().equals(row.getId()),
+            providerMonth.getOrDefault(row.getId(), 0L), ProviderService.capMicros(row), service.kind(row), service.location(row), service.models(row.getId()).stream().filter(m -> Boolean.TRUE.equals(m.getEnabled())).count()));
       }
       return (data);
    }
@@ -494,4 +529,53 @@ public class AssistantHomeData
       return (truncated);
    }
 
+
+
+   /*******************************************************************************
+    ** Read-only instance HIPAA status.
+    *******************************************************************************/
+   public Boolean getHipaaMode()
+   {
+      return (hipaaMode);
+   }
+
+
+
+   /*******************************************************************************
+    ** Configured PHI retention in days.
+    *******************************************************************************/
+   public Integer getHipaaRetentionDays()
+   {
+      return (hipaaRetentionDays);
+   }
+
+
+
+   /*******************************************************************************
+    ** Current enabled budgets and active overrides.
+    *******************************************************************************/
+   public List<BudgetService.Snapshot> getBudgets()
+   {
+      return (budgets);
+   }
+
+
+
+   /*******************************************************************************
+    ** Provider usage over the same 30-day window as users and models.
+    *******************************************************************************/
+   public List<Totals> getByProvider()
+   {
+      return (byProvider);
+   }
+
+
+
+   /*******************************************************************************
+    ** Provider switches in the displayed period, including recovered failures.
+    *******************************************************************************/
+   public Long getFallbackCount()
+   {
+      return (fallbackCount);
+   }
 }

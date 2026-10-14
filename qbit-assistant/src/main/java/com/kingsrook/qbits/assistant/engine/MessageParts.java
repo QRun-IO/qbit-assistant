@@ -31,7 +31,7 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
  ** assistantMessage.partsJson and returned by the API:
  **   {type:"text", text} | {type:"tool", toolCallId, name, summary, outcome, render?}
  **   | {type:"record_refs", refs:[...]} | {type:"navigate", href}
- **   | {type:"notice", level, text}
+ **   | {type:"notice", level, text} | {type:"presentation", summary, blocks, markdown}
  ** Consecutive text is merged into one part. Thread-safe.
  *******************************************************************************/
 public class MessageParts
@@ -111,6 +111,17 @@ public class MessageParts
 
 
    /*******************************************************************************
+    ** Append a server-built presentation, one part per successful tool call.
+    *******************************************************************************/
+   public synchronized MessageParts addPresentation(Map<String, Object> presentation)
+   {
+      parts.add(new LinkedHashMap<>(presentation));
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
     ** Append record references.
     *******************************************************************************/
    public synchronized MessageParts addRecordRefs(List<Map<String, Object>> refs)
@@ -150,12 +161,12 @@ public class MessageParts
 
    /*******************************************************************************
     ** Remove record data (retention): the render payloads of tool parts and
-    ** the record_refs parts. Tool summaries, text, navigation and notices
+    ** the record_refs and presentation parts. Tool summaries, text, navigation and notices
     ** stay. Returns whether anything was removed.
     *******************************************************************************/
    public synchronized boolean stripRecordData()
    {
-      boolean changed = parts.removeIf(p -> "record_refs".equals(p.get("type")));
+      boolean changed = parts.removeIf(p -> ("record_refs".equals(p.get("type")) || "presentation".equals(p.get("type"))));
       for(Map<String, Object> part : parts)
       {
          if("tool".equals(part.get("type")) && part.remove("render") != null)
@@ -169,7 +180,7 @@ public class MessageParts
 
 
    /*******************************************************************************
-    ** All text parts joined (for the model's history and titles).
+    ** Text and presentation fallbacks joined (for model history and titles).
     *******************************************************************************/
    public synchronized String text()
    {
@@ -179,6 +190,10 @@ public class MessageParts
          if("text".equals(part.get("type")) && part.get("text") != null)
          {
             builder.append(part.get("text"));
+         }
+         else if("presentation".equals(part.get("type")))
+         {
+            builder.append("\n").append(part.get("markdown")).append("\n");
          }
       }
       return (builder.toString());

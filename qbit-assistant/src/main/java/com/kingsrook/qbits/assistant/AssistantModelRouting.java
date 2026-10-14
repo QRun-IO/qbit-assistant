@@ -28,9 +28,9 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
  ** from the provider (no date suffix). Effort is sent explicitly on every
  ** request, because the models' defaults differ (Sonnet 5.5 defaults to high).
  **
- ** Phase 1 uses only the main slot. Escalation (Opus) and the summary model
- ** (Haiku: titles, compaction) arrive in phase 2; they are configurable now
- ** so the admin policy shape is stable.
+ ** With no effective profile, enabled escalation supplies the complex route's
+ ** model and effort. A profile's routing mode takes precedence. The summary
+ ** slot remains available for titles and compaction.
  *******************************************************************************/
 public class AssistantModelRouting implements Serializable
 {
