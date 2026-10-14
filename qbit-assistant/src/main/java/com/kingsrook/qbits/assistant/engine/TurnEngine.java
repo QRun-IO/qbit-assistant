@@ -17,6 +17,21 @@
 package com.kingsrook.qbits.assistant.engine;
 
 
+import java.io.Serializable;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.Future;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
@@ -36,6 +51,7 @@ import com.kingsrook.qbits.assistant.provider.ModelRequest;
 import com.kingsrook.qbits.assistant.provider.ModelResponse;
 import com.kingsrook.qbits.assistant.provider.ModelUsage;
 import com.kingsrook.qbits.assistant.provider.StreamHandle;
+import com.kingsrook.qbits.assistant.tools.KnowledgeTool;
 import com.kingsrook.qbits.assistant.tools.PresentResultsTool;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
 import com.kingsrook.qqq.backend.core.actions.ai.AiRecordRef;
@@ -50,21 +66,6 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
-import java.io.Serializable;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.ZoneOffset;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.Future;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
@@ -711,8 +712,15 @@ public class TurnEngine implements Runnable
                         QContext.init(runtime.getQInstance(), session);
                         try
                         {
-                           outcomes[index] = runtime.getToolbox().execute(toolContext(), call.getId(), call.getName(), call.getInput());
-                           results[index] = outcomes[index].getResult();
+                           if(KnowledgeTool.NAME.equals(call.getName()))
+                           {
+                              results[index] = runtime.getKnowledgeTool().execute(toolContext(), call.getId(), call.getInput(), classification.getClassification(), conversation.getId(), turn.getId());
+                           }
+                           else
+                           {
+                              outcomes[index] = runtime.getToolbox().execute(toolContext(), call.getId(), call.getName(), call.getInput());
+                              results[index] = outcomes[index].getResult();
+                           }
                         }
                         finally
                         {
@@ -850,7 +858,7 @@ public class TurnEngine implements Runnable
             .withResultSummary(summary)
             .withResultJson(truncate(result.getModelContent(), MAX_RESULT_JSON_CHARS))
             .withRedactionsJson(result.getRedactions() == null || result.getRedactions().isEmpty() ? null : JsonUtils.toJson(result.getRedactions()))
-            .withUiApiOperation(extras == null ? null : extras.getOperation())
+            .withUiApiOperation(extras == null ? ("search_knowledge".equals(use.getToolName()) ? "GET /table/{tableName}/{primaryKey}" : null) : extras.getOperation())
             .withHttpStatus(extras == null ? null : extras.getHttpStatus())
             .withAuditHref(extras == null ? null : extras.getAuditHref())
             .withPendingActionId(extras == null ? null : extras.getPendingActionId()));
@@ -923,7 +931,7 @@ public class TurnEngine implements Runnable
    /*******************************************************************************
     ** Only same-origin application links are passed on.
     *******************************************************************************/
-   static boolean isAppHref(String href)
+   public static boolean isAppHref(String href)
    {
       return (href != null && (href.equals("/app") || href.startsWith("/app/")) && !href.contains("//") && !href.contains("\\"));
    }

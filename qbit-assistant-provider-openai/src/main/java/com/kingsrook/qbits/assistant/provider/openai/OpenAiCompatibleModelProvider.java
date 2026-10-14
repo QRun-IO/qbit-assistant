@@ -38,6 +38,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
 import com.kingsrook.qbits.assistant.provider.CompletableStreamHandle;
+import com.kingsrook.qbits.assistant.provider.EmbeddingRequest;
+import com.kingsrook.qbits.assistant.provider.EmbeddingResponse;
 import com.kingsrook.qbits.assistant.provider.ModelCapabilities;
 import com.kingsrook.qbits.assistant.provider.ModelEventListener;
 import com.kingsrook.qbits.assistant.provider.ModelPart;
@@ -78,6 +80,84 @@ public class OpenAiCompatibleModelProvider implements AssistantModelProvider
    public String getName()
    {
       return ("openai-compatible");
+   }
+
+
+
+   /*******************************************************************************
+    ** One bounded batch, with the deadline covering headers and the entire body.
+    ** Restore input order from the response indexes; reject malformed vectors.
+    *******************************************************************************/
+   @Override
+   public EmbeddingResponse embed(EmbeddingRequest request) throws ModelProviderException
+   {
+      ObjectNode body = OpenAiHttp.JSON.createObjectNode();
+      body.put("model", request.model());
+      body.set("input", OpenAiHttp.JSON.valueToTree(request.input()));
+      var pending = http.client.sendAsync(http.request(request.model(), http.settings.getRequestTimeoutSeconds(), "embeddings")
+         .POST(java.net.http.HttpRequest.BodyPublishers.ofString(body.toString())).build(), HttpResponse.BodyHandlers.ofString());
+      try
+      {
+         HttpResponse<String> response = pending.get(http.settings.getRequestTimeoutSeconds(), TimeUnit.SECONDS);
+         if(response.statusCode() != 200)
+         {
+            throw (http.error(response.statusCode(), response.body(), OpenAiHttp.requestId(response), false));
+         }
+         JsonNode json = OpenAiHttp.JSON.readTree(response.body());
+         if(json.has("error"))
+         {
+            throw (http.error(500, response.body(), OpenAiHttp.requestId(response), false));
+         }
+         float[][] vectors = new float[request.input().size()][];
+         Integer dimensions = null;
+         for(JsonNode item : json.path("data"))
+         {
+            Integer index = item.path("index").asInt(-1);
+            JsonNode values = item.path("embedding");
+            if(index < 0 || index >= vectors.length || vectors[index] != null || !values.isArray() || values.isEmpty()
+               || (dimensions != null && dimensions != values.size()))
+            {
+               throw (new IOException("Invalid embedding response."));
+            }
+            dimensions = values.size();
+            float[] vector = new float[dimensions];
+            for(Integer i = 0; i < vector.length; i++)
+            {
+               if(!values.get(i).isNumber())
+               {
+                  throw (new IOException("Invalid embedding coordinate."));
+               }
+               vector[i] = (float) values.get(i).asDouble();
+               if(!Float.isFinite(vector[i]))
+               {
+                  throw (new IOException("Non-finite embedding coordinate."));
+               }
+            }
+            vectors[index] = vector;
+         }
+         if(java.util.Arrays.stream(vectors).anyMatch(java.util.Objects::isNull))
+         {
+            throw (new IOException("Missing embedding."));
+         }
+         return (new EmbeddingResponse(List.of(vectors), new ModelUsage().withInputTokens(json.path("usage").path("prompt_tokens").asLong()), OpenAiHttp.requestId(response)));
+      }
+      catch(java.util.concurrent.TimeoutException e)
+      {
+         throw (new ModelProviderException(ModelProviderException.Kind.TIMEOUT, null, "The provider did not answer in time."));
+      }
+      catch(InterruptedException e)
+      {
+         Thread.currentThread().interrupt();
+         throw (new ModelProviderException(ModelProviderException.Kind.NETWORK, null, "The embedding request was interrupted."));
+      }
+      catch(java.util.concurrent.ExecutionException | IOException e)
+      {
+         throw (OpenAiHttp.transportError(e));
+      }
+      finally
+      {
+         pending.cancel(true);
+      }
    }
 
 

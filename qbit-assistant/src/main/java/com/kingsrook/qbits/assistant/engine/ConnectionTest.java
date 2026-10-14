@@ -21,6 +21,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
+import com.kingsrook.qbits.assistant.classification.DataClassification;
 import com.kingsrook.qbits.assistant.model.AssistantModel;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
 import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
@@ -31,6 +32,7 @@ import com.kingsrook.qbits.assistant.provider.ModelRequest;
 import com.kingsrook.qbits.assistant.provider.ModelResponse;
 import com.kingsrook.qbits.assistant.provider.RegistryModelProvider;
 import com.kingsrook.qbits.assistant.provider.StreamHandle;
+import com.kingsrook.qbits.assistant.rag.EmbeddingService;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 
@@ -209,10 +211,17 @@ public final class ConnectionTest
          {
             throw (new ProviderService.ProviderSetupException("The model's provider no longer exists."));
          }
-         AssistantProviderType type = runtime.getConfig().getProviderTypes().get(row.getProviderType());
-         var settings = runtime.getProviderService().settings(row);
-         var provider = new RegistryModelProvider(type.create(settings), model);
-         result = call(runtime, new ProviderService.Active(row, row.getProviderType(), model.getModelId(), provider), userId);
+         if(!model.isChat())
+         {
+            result = testEmbedding(runtime, model);
+         }
+         else
+         {
+            AssistantProviderType type = runtime.getConfig().getProviderTypes().get(row.getProviderType());
+            var settings = runtime.getProviderService().settings(row);
+            var provider = new RegistryModelProvider(type.create(settings), model);
+            result = call(runtime, new ProviderService.Active(row, row.getProviderType(), model.getModelId(), provider), userId);
+         }
       }
       catch(ProviderService.ProviderSetupException e)
       {
@@ -222,6 +231,27 @@ public final class ConnectionTest
          .withValue("lastTestAt", runtime.getClock().instant()).withValue("lastTestStatus", result.status())
          .withValue("lastTestLatencyMs", result.latencyMs()).withValue("lastTestError", truncate(result.error(), 500)));
       return (result);
+   }
+
+
+
+   /*******************************************************************************
+    ** An embedding model is tested with embeddings, never a chat completion.
+    ** The normal embedding budget, eligibility and usage rules still apply.
+    *******************************************************************************/
+   private static Result testEmbedding(AssistantRuntime runtime, AssistantModel model)
+   {
+      Long started = System.nanoTime();
+      try
+      {
+         new EmbeddingService(runtime).embed(model.getId(), List.of("Connection test."),
+            DataClassification.PUBLIC, "", null, null);
+         return (new Result(STATUS_OK, (int) ((System.nanoTime() - started) / 1_000_000), model.getModelId(), null));
+      }
+      catch(QException e)
+      {
+         return (new Result(STATUS_ERROR, null, model.getModelId(), e.getMessage()));
+      }
    }
 
 

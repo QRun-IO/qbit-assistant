@@ -17,7 +17,6 @@
 package com.kingsrook.qbits.assistant;
 
 
-import javax.net.ssl.SSLContext;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -29,6 +28,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Pattern;
+import javax.net.ssl.SSLContext;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.kingsrook.qbits.assistant.classification.ClassificationSource;
 import com.kingsrook.qbits.assistant.classification.ConfiguredClassificationSource;
@@ -37,6 +37,7 @@ import com.kingsrook.qbits.assistant.engine.ModelPricing;
 import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
 import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
 import com.kingsrook.qbits.assistant.provider.TrustedCaBundle;
+import com.kingsrook.qbits.assistant.rag.VectorStore;
 import com.kingsrook.qbits.assistant.uiapi.UiApiGateway;
 import com.kingsrook.qqq.backend.core.actions.ai.AiExposure;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -59,6 +60,8 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
  *******************************************************************************/
 public class AssistantQBitConfig implements QBitConfig
 {
+   private VectorStore vectorStore;
+
    public static final String ACCESS_PERMISSION        = "assistant.hasAccess";
    public static final String ADMIN_PERMISSION         = "assistant.admin";
    public static final String DEFAULT_OWNER_KEY_TYPE   = "assistant_user_id";
@@ -1786,6 +1789,37 @@ public class AssistantQBitConfig implements QBitConfig
    public AssistantQBitConfig withDataClassification(String tableName, String fieldName, DataClassification classification)
    {
       configuredClassifications.withClassification(tableName, fieldName, classification);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for vectorStore
+    *******************************************************************************/
+   public VectorStore getVectorStore()
+   {
+      return (vectorStore);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for vectorStore
+    *******************************************************************************/
+   public void setVectorStore(VectorStore vectorStore)
+   {
+      this.vectorStore = vectorStore;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for vectorStore
+    *******************************************************************************/
+   public AssistantQBitConfig withVectorStore(VectorStore vectorStore)
+   {
+      this.vectorStore = vectorStore;
       return (this);
    }
 }

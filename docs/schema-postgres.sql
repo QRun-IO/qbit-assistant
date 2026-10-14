@@ -477,3 +477,50 @@ ALTER TABLE assistant_turn ADD COLUMN route_decision VARCHAR(16);
 ALTER TABLE assistant_turn ADD COLUMN route_source VARCHAR(16);
 ALTER TABLE assistant_turn ADD COLUMN fallback_count INTEGER DEFAULT 0;
 ALTER TABLE assistant_turn ADD COLUMN provider_id INTEGER REFERENCES assistant_provider(id);
+
+
+-- P-f: embedding registry and admin-only knowledge-source configuration.
+ALTER TABLE assistant_model ADD COLUMN model_kind VARCHAR(16) DEFAULT 'CHAT'
+   CHECK (model_kind IN ('CHAT', 'EMBEDDING'));
+ALTER TABLE assistant_model ADD COLUMN embedding_dimensions INTEGER
+   CHECK (embedding_dimensions > 0);
+
+CREATE TABLE assistant_rag_source (
+   id SERIAL PRIMARY KEY,
+   name VARCHAR(200) NOT NULL,
+   enabled BOOLEAN DEFAULT TRUE,
+   table_name VARCHAR(200) NOT NULL,
+   field_names VARCHAR(500) NOT NULL,
+   title_field_name VARCHAR(200),
+   filter_json TEXT,
+   embedding_model_id INTEGER NOT NULL REFERENCES assistant_model(id),
+   chunk_chars INTEGER DEFAULT 1500 CHECK (chunk_chars BETWEEN 100 AND 16000),
+   chunk_overlap_chars INTEGER DEFAULT 200 CHECK (chunk_overlap_chars >= 0 AND chunk_overlap_chars < chunk_chars),
+   last_indexed_at TIMESTAMPTZ,
+   last_index_status VARCHAR(200),
+   last_index_error VARCHAR(500),
+   indexed_record_count INTEGER,
+   indexed_chunk_count INTEGER,
+   create_date TIMESTAMPTZ,
+   modify_date TIMESTAMPTZ
+);
+
+-- Optional pgvector part: reference only. Run the extension step as a DBA.
+-- PgVectorStore.ensureSchema() performs the remainder for the host's schema/N.
+-- Use a distinct schema per QQQ instance; match N to the embedding model.
+-- CREATE EXTENSION IF NOT EXISTS vector;
+-- CREATE SCHEMA IF NOT EXISTS assistant_rag;
+-- CREATE TABLE IF NOT EXISTS assistant_rag.assistant_rag_chunk (
+--    id BIGSERIAL PRIMARY KEY,
+--    source_id INT NOT NULL,
+--    table_name TEXT NOT NULL,
+--    record_pk TEXT NOT NULL,
+--    field_name TEXT NOT NULL,
+--    chunk_index INT NOT NULL,
+--    content_hash CHAR(64) NOT NULL,
+--    embedding vector(1024) NOT NULL,
+--    indexed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+--    UNIQUE(source_id, table_name, record_pk, field_name, chunk_index)
+-- );
+-- CREATE INDEX IF NOT EXISTS assistant_rag_chunk_cosine
+--    ON assistant_rag.assistant_rag_chunk USING hnsw (embedding vector_cosine_ops);

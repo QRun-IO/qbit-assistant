@@ -85,6 +85,7 @@ public final class ModelDiscovery
                }
                ModelCapabilities caps = provider.getCapabilities(model.modelId());
                runtime.getStore().insert(new AssistantModel().withProviderId(row.getId()).withModelId(model.modelId())
+                  .withModelKind(embedding(model.modelId()) ? "EMBEDDING" : "CHAT").withEmbeddingDimensions(dimensions(model.modelId()))
                   .withDisplayName(model.displayName()).withEnabled(local || discovered.size() <= 20)
                   .withSource("DISCOVERED").withDiscoveredAt(runtime.getClock().instant())
                   .withSupportsTools(caps.getTools()).withSupportsVision(caps.getVision()).withSupportsStreaming(caps.getStreaming())
@@ -115,4 +116,33 @@ public final class ModelDiscovery
          return (result);
       }
    }
+
+
+   /*******************************************************************************
+    ** Discovery is a suggestion; an administrator can correct the kind.
+    *******************************************************************************/
+   public static Boolean embedding(String id)
+   {
+      String lower = id.toLowerCase(java.util.Locale.ROOT);
+      return (List.of("embed", "bge", "e5", "gte", "nomic").stream().anyMatch(lower::contains));
+   }
+
+
+
+   /*******************************************************************************
+    ** Known local defaults; other models must declare their dimensions.
+    *******************************************************************************/
+   private static Integer dimensions(String id)
+   {
+      if(id.contains("bge-m3"))
+      {
+         return (1024);
+      }
+      if(id.contains("nomic-embed-text"))
+      {
+         return (768);
+      }
+      return (null);
+   }
+
 }

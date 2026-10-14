@@ -55,6 +55,7 @@
       <module>qbit-assistant-provider-openai</module>
       <module>qbit-assistant-provider-bedrock</module>
       <module>qbit-assistant-provider-vertex</module>
+      <module>qbit-assistant-rag-pgvector</module>
    </modules>
 
    <licenses>
