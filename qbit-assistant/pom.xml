@@ -73,6 +73,13 @@
          <artifactId>archunit-junit5</artifactId>
          <scope>test</scope>
       </dependency>
+      <!-- AssistantDefaultsChangelogTest runs the shipped seed changelog against H2 (PostgreSQL mode). -->
+      <dependency>
+         <groupId>com.h2database</groupId>
+         <artifactId>h2</artifactId>
+         <version>2.3.232</version>
+         <scope>test</scope>
+      </dependency>
    </dependencies>
 
    <build>

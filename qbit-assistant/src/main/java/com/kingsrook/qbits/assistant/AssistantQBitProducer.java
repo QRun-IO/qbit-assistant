@@ -26,10 +26,12 @@ import com.kingsrook.qbits.assistant.developer.AssistantDeveloperPanels;
 import com.kingsrook.qbits.assistant.home.AssistantAccessWidget;
 import com.kingsrook.qbits.assistant.home.AssistantHome;
 import com.kingsrook.qbits.assistant.metadata.AssistantChannelWall;
+import com.kingsrook.qbits.assistant.metadata.AssistantHelp;
 import com.kingsrook.qbits.assistant.metadata.AssistantInstanceMetaData;
 import com.kingsrook.qbits.assistant.metadata.AssistantMetaDataBuilder;
 import com.kingsrook.qbits.assistant.metadata.AssistantRecordScreens;
 import com.kingsrook.qbits.assistant.model.AssistantBudget;
+import com.kingsrook.qbits.assistant.processes.DataAccessDefaultsProcess;
 import com.kingsrook.qbits.assistant.processes.DiscoverModelsProcess;
 import com.kingsrook.qbits.assistant.processes.KnowledgeIndexProcess;
 import com.kingsrook.qbits.assistant.processes.ScheduledTaskProcess;
@@ -180,7 +182,7 @@ public class AssistantQBitProducer implements QBitMetaDataProducer<AssistantQBit
       QProcessMetaData testConnection = TestConnectionProcess.process();
       testConnection.setSourceQBitName(qBitMetaData.getName());
       qInstance.addProcess(testConnection);
-      for(QProcessMetaData process : List.of(DiscoverModelsProcess.process(), TestModelConnectionProcess.process()))
+      for(QProcessMetaData process : List.of(DiscoverModelsProcess.process(), TestModelConnectionProcess.process(), DataAccessDefaultsProcess.process()))
       {
          process.setSourceQBitName(qBitMetaData.getName());
          qInstance.addProcess(process);
@@ -202,6 +204,7 @@ public class AssistantQBitProducer implements QBitMetaDataProducer<AssistantQBit
 
       QAppMetaData app = builder.buildAdminApp(tables);
       qInstance.addApp(app);
+      AssistantHelp.apply(qInstance);
 
       AssistantChannelWall.register(qInstance);
       if(Boolean.TRUE.equals(qBitConfig.getRecordHistory()))

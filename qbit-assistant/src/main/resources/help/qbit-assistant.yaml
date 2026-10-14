@@ -1,0 +1,138 @@
+bundle: qbit-assistant
+version: 1
+layer: QBIT
+# Help for the Assistant app and every assistant_* table, in the QQQ help-bundle
+# format (qqq#1198). Each table entry says what the table is for and how its rows
+# get created, so an empty table explains itself. AssistantHelp applies it until
+# the core HelpBundles registry ships in a QQQ release (STAND-IN(core=#1198)).
+# Summaries stay under 120 characters (AssistantHelpTest).
+entries:
+  - key: app:assistantAdmin;slot:help
+    summary: "Set up and watch the in-app assistant: providers, budgets, profiles, skills, data access and usage."
+    content: |
+      The Setup card on the home lists every part of the assistant with its status and the next step. A new installation starts with a default profile, four starter skills, a monthly budget, a policy row, Anthropic prices and a disabled example scheduled task. Add a provider to start answering.
+
+  - key: table:assistant_provider;slot:help
+    summary: "A model provider the assistant can call: its type, model, endpoint and the variable that holds its key."
+    content: |
+      **How rows get created:** an administrator adds one with New (pick the type and model, and name the environment variable that holds the API key; the key itself is never stored). The default provider answers questions; Test connection checks it and Discover models fills the model list.
+
+  - key: table:assistant_model;slot:help
+    summary: "The models each provider offers, with what they support and their prices."
+    content: |
+      **How rows get created:** Discover models on a provider adds them, or an administrator adds one by hand. Budgets, fallbacks, routing and knowledge sources pick models from this list. Embedding models are used only for knowledge sources.
+
+  - key: table:assistant_model_price;slot:help
+    summary: "List prices per provider type and model, used to work out what each call costs."
+    content: |
+      **How rows get created:** the qbit seeds the current Anthropic list prices; add a row for any other priced model. Every call's cost in Usage is computed from these prices, and cost budgets count that cost. A model with no price costs zero, which is right for local models.
+
+  - key: table:assistant_policy;slot:help
+    summary: "The single policy row: kill switch, write confirmation, PII redaction, tool list and row limits."
+    content: |
+      **How rows get created:** the qbit seeds one `default` row. Only the first row is used. Empty values fall back to the code configuration. Turn on the kill switch to stop every answer at once.
+
+  - key: table:assistant_budget;slot:help
+    summary: "Spending or token limits per instance, user, role, provider or model, with warn, downgrade and stop."
+    content: |
+      **How rows get created:** the qbit seeds a monthly budget for the whole instance ($50: warn at 80%, switch to the cheapest allowed model at 100%, stop at 120%). Add more for users, roles, providers or models. Every question is checked against every budget that applies before the model is called.
+
+  - key: table:assistant_budget_override;slot:help
+    summary: "A temporary raise or unlimited window for one budget, with a reason and an expiry."
+    content: |
+      **How rows get created:** an administrator adds one when a budget is reached and work must continue. Empty means no budget is currently raised. Overrides expire on their own.
+
+  - key: table:assistant_budget_event;slot:help
+    summary: "Each time a budget warned, downgraded or stopped someone, once per period and state."
+    content: |
+      **How rows get created:** written by the assistant when usage crosses a budget threshold; it also raises an alert. Empty means no budget has been reached yet.
+
+  - key: table:assistant_budget_usage;slot:help
+    summary: "Accounting copy of every call's tokens and cost, kept for shared budgets."
+    content: |
+      **How rows get created:** written with every model call. Instance, provider and model budgets add up these rows. Empty means the assistant has not answered anything yet.
+
+  - key: table:assistant_profile;slot:help
+    summary: "Who the assistant is in an app or for a role: name, tone, greeting, starter prompts and skills."
+    content: |
+      **How rows get created:** the qbit seeds a `default` profile that applies everywhere. Add a profile with an app name or a permission to change the assistant for that app or role; the most specific match wins. Profiles change tone and know-how only, never permissions.
+
+  - key: table:assistant_skill;slot:help
+    summary: "Know-how text the assistant follows when a question matches its keywords or app."
+    content: |
+      **How rows get created:** the qbit seeds four starter skills (finding and counting, explaining a record, safe changes, access questions). Write your own for your business terms. A skill reaches the model only when it is linked to a profile and the question matches its keywords or app; it never grants tools or data.
+
+  - key: table:assistant_profile_skill;slot:help
+    summary: "Which skills each profile offers to the model."
+    content: |
+      **How rows get created:** the qbit links the starter skills to the default profile. Add a row to offer a skill through another profile.
+
+  - key: table:assistant_data_access;slot:help
+    summary: "What the assistant may do with each table or process: NONE, READ or READ and write."
+    content: |
+      **How rows get created:** a table with no row gets the default: READ (or NONE for sensitive tables), always limited by the user's own permissions; processes default to NONE. Use **Add rows for every table** to write those defaults out as rows you can edit, then raise a table to READ_WRITE to let the assistant propose changes there.
+
+  - key: table:assistant_rag_source;slot:help
+    summary: "A table the assistant can search by meaning (knowledge source), with its fields and embedding model."
+    content: |
+      **How rows get created:** an administrator adds one: pick a table the assistant can read, its text fields and an enabled embedding model, then run Index knowledge source. The index keeps no record text; every hit is re-read as the asking user. Empty means search_knowledge is not offered.
+
+  - key: table:assistant_scheduled_task;slot:help
+    summary: "A question the assistant answers on a schedule as a chosen user, with the result saved or sent."
+    content: |
+      **How rows get created:** the qbit seeds a disabled example. To use it, set the run-as user, an allowed credential variable and the schedule, then turn it on. Scheduled writes always wait for the user's confirmation in the panel.
+
+  - key: table:assistant_scheduled_run;slot:help
+    summary: "One run of a scheduled task: when, status, cost and the conversation it produced."
+    content: |
+      **How rows get created:** written each time a scheduled task runs. Empty means no task has run yet; see Scheduled tasks.
+
+  - key: table:assistant_conversation;slot:help
+    summary: "One chat between a user and the assistant, from the panel or a scheduled task."
+    content: |
+      **How rows get created:** created when someone asks the assistant a question. Users see only their own; administrators see all. Retention removes old ones.
+
+  - key: table:assistant_message;slot:help
+    summary: "The messages of each conversation: questions, answers and tool results."
+    content: |
+      **How rows get created:** written as a conversation happens. Content is encrypted in HIPAA mode and removed by retention.
+
+  - key: table:assistant_turn;slot:help
+    summary: "One question and its answer: status, model, tokens, cost, timing and routing."
+    content: |
+      **How rows get created:** written for every question the assistant answers. Use it to see failures, slow answers and costly questions.
+
+  - key: table:assistant_turn_event;slot:help
+    summary: "The step-by-step event stream of each answer, for replay and troubleshooting."
+    content: |
+      **How rows get created:** written while an answer streams. Retention removes old events.
+
+  - key: table:assistant_tool_call;slot:help
+    summary: "Every tool the assistant called: which, with what input, the result status and timing."
+    content: |
+      **How rows get created:** written for each tool call during an answer. Denied calls show where data access or permissions stopped the assistant.
+
+  - key: table:assistant_pending_action;slot:help
+    summary: "A create, update or delete the assistant proposed, waiting for the user to confirm it."
+    content: |
+      **How rows get created:** written when the assistant proposes a change on a READ_WRITE table. It runs once, only after the user confirms it in the panel. Empty means no change has been proposed.
+
+  - key: table:assistant_feedback;slot:help
+    summary: "Thumbs up or down and comments users gave on answers."
+    content: |
+      **How rows get created:** written when a user rates an answer in the panel. Empty means nobody has rated an answer yet.
+
+  - key: table:assistant_usage;slot:help
+    summary: "One row per model call: tokens, cost, provider, model and purpose."
+    content: |
+      **How rows get created:** written with every model call, including connection tests. Costs come from Model prices.
+
+  - key: table:assistant_usage_daily;slot:help
+    summary: "Daily token and cost totals per user and for the instance, for the configured limits."
+    content: |
+      **How rows get created:** updated after every answer. The policy's daily and monthly limits read these totals.
+
+  - key: table:assistant_data_audit;slot:help
+    summary: "Where data went: which provider and model received which tables' data, with its classification."
+    content: |
+      **How rows get created:** written before each model or embedding call that carries application data. Use it to show that sensitive data went only to allowed providers.

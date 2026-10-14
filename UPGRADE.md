@@ -1,5 +1,27 @@
 # Upgrading qbit-assistant
 
+## Starter defaults, setup card and table help
+
+The jar now ships `db/liquibase/qbit-assistant/assistant-defaults.changelog.sql`.
+Include it from the host's master changelog **after** the changesets that create
+the `assistant_*` tables:
+
+```yaml
+- include: { file: db/liquibase/qbit-assistant/assistant-defaults.changelog.sql }
+```
+
+It is insert-only (every row is skipped when its name or key exists, so edits
+survive) and guarded by preconditions. It adds: one `default` policy row (only
+when the host has none), a `default` profile, four starter skills linked to it,
+a **$50/month instance budget** (warn 80%, downgrade 100%, stop 120%), the
+current Anthropic list prices and a disabled example scheduled task. The budget
+is enforced from the next question: raise its limit, or turn it off, before
+deploying if $50 a month is too low for the host.
+
+No DDL changes. New: the Assistant home's Setup card, the `assistant_data_access`
+table action **Add rows for every table** (`assistantDataAccessAddDefaults`,
+admin only) and bundle help on every assistant table (`help/qbit-assistant.yaml`).
+
 ## X1/Y1: channel wall and audit attribution
 
 Requires QQQ 4.1.0-RC.6. Every assistant table, process, report and widget is
