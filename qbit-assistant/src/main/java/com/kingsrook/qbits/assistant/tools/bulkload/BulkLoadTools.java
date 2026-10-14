@@ -26,7 +26,7 @@ import java.util.Set;
 import com.kingsrook.qbits.assistant.persistence.TranscriptRedactor;
 import com.kingsrook.qbits.assistant.access.DataAccessService;
 import com.kingsrook.qbits.assistant.engine.PolicyService;
-import com.kingsrook.qbits.assistant.provider.ModelToolDefinition;
+import com.kingsrook.qbits.assistant.spi.ModelToolDefinition;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
 import com.kingsrook.qbits.assistant.uiapi.UiApiCall;
 import com.kingsrook.qbits.assistant.uiapi.UiApiResult;

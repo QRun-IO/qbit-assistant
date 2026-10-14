@@ -33,12 +33,12 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import javax.net.ssl.SSLHandshakeException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.kingsrook.qbits.assistant.provider.DiscoveredModel;
-import com.kingsrook.qbits.assistant.provider.ModelProviderException;
-import com.kingsrook.qbits.assistant.provider.ProviderSettings;
+import com.kingsrook.qbits.assistant.spi.DiscoveredModel;
+import com.kingsrook.qbits.assistant.spi.ModelProviderException;
+import com.kingsrook.qbits.assistant.spi.ProviderSettings;
+import javax.net.ssl.SSLHandshakeException;
 
 
 /*******************************************************************************

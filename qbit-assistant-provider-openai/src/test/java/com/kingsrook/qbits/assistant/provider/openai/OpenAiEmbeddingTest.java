@@ -18,9 +18,9 @@ package com.kingsrook.qbits.assistant.provider.openai;
 
 
 import java.util.List;
-import com.kingsrook.qbits.assistant.provider.EmbeddingRequest;
-import com.kingsrook.qbits.assistant.provider.ModelProviderException;
-import com.kingsrook.qbits.assistant.provider.ProviderSettings;
+import com.kingsrook.qbits.assistant.spi.EmbeddingRequest;
+import com.kingsrook.qbits.assistant.spi.ModelProviderException;
+import com.kingsrook.qbits.assistant.spi.ProviderSettings;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

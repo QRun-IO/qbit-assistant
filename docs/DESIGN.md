@@ -16,6 +16,13 @@ All of it is in standard QQQ tables with full record screens (D6), prefixed `ass
 
 `assistant_turn` keeps the per-turn totals and `assistant_usage_daily` the budget rollups, as before. `assistant_usage` adds the per-call detail the home needs: the provider, the failures and latency.
 
+## Provider SPI boundary
+
+All provider contracts and value types, including `ModelPricing`, belong exclusively
+to `com.kingsrook.qbits.assistant.spi` in `qbit-assistant-provider-api`. Consumers
+can depend on this artifact alone and allow its package in G1. Runtime provider
+registry and fake implementations remain in their existing internal packages.
+
 ## API keys
 
 Decision: **reference, not storage.** A provider row holds the NAME of an environment variable (`apiKeyEnvName`); `ProviderService` resolves it through `config.getSecretResolver()` (default `System::getenv`) when it builds a client.
@@ -59,7 +66,7 @@ The result goes on the row (`lastTest*`) and into `assistant_usage` (`TEST`), so
 
 ## Cost
 
-`cost = input × in + output × out + cacheRead × read + cacheWrite5m × w5 + cacheWrite1h × w1`, in micro-dollars, rounded up (`ModelPricing.costMicros`).
+`cost = input × in + output × out + cacheRead × read + cacheWrite5m × w5 + cacheWrite1h × w1`, in micro-dollars, rounded up (`com.kingsrook.qbits.assistant.spi.ModelPricing.costMicros`).
 
 Prices come from the `assistant_model_price` row for (type, model). Empty cache prices are 0.1x, 1.25x and 2x the input price. A model without a row uses the `pricing` config map, else costs 0. A price change affects later calls only; each usage row keeps the cost it was recorded with.
 

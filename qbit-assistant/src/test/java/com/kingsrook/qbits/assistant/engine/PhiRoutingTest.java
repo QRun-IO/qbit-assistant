@@ -31,8 +31,8 @@ import com.kingsrook.qbits.assistant.model.AssistantProvider;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
 import com.kingsrook.qbits.assistant.processes.AssistantRetentionStep;
-import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
-import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
+import com.kingsrook.qbits.assistant.spi.AssistantModelProvider;
+import com.kingsrook.qbits.assistant.spi.AssistantProviderType;
 import com.kingsrook.qbits.assistant.testing.AssistantTestFixture;
 import com.kingsrook.qbits.assistant.testing.BaseAssistantTest;
 import com.kingsrook.qbits.assistant.testing.TurnRunner;
@@ -248,9 +248,9 @@ class PhiRoutingTest extends BaseAssistantTest
          {
             QContext.clear();
          }
-         return (new com.kingsrook.qbits.assistant.provider.ModelResponse().withParts(List.of(
-            com.kingsrook.qbits.assistant.provider.ModelPart.toolUse("read", "query_records", Map.of("table", "patient"))))
-            .withStopReason(com.kingsrook.qbits.assistant.provider.ModelResponse.STOP_TOOL_USE));
+         return (new com.kingsrook.qbits.assistant.spi.ModelResponse().withParts(List.of(
+            com.kingsrook.qbits.assistant.spi.ModelPart.toolUse("read", "query_records", Map.of("table", "patient"))))
+            .withStopReason(com.kingsrook.qbits.assistant.spi.ModelResponse.STOP_TOOL_USE));
       });
       assertThat(runner.run(AssistantTestFixture.EDITOR, "read patients").errorCode()).isEqualTo("PHI_BLOCKED");
       assertThat(provider.getRequests()).hasSize(1);

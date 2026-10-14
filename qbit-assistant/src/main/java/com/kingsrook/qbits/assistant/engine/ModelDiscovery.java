@@ -24,11 +24,11 @@ import java.util.Set;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
 import com.kingsrook.qbits.assistant.model.AssistantModel;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
-import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
-import com.kingsrook.qbits.assistant.provider.DiscoveredModel;
-import com.kingsrook.qbits.assistant.provider.ModelCapabilities;
-import com.kingsrook.qbits.assistant.provider.ModelProviderException;
-import com.kingsrook.qbits.assistant.provider.ProviderSettings;
+import com.kingsrook.qbits.assistant.spi.AssistantProviderType;
+import com.kingsrook.qbits.assistant.spi.DiscoveredModel;
+import com.kingsrook.qbits.assistant.spi.ModelCapabilities;
+import com.kingsrook.qbits.assistant.spi.ModelProviderException;
+import com.kingsrook.qbits.assistant.spi.ProviderSettings;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 

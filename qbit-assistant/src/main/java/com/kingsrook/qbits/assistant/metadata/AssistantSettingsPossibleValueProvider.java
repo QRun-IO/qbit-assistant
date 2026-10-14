@@ -26,7 +26,7 @@ import com.kingsrook.qbits.assistant.AssistantRuntime;
 import com.kingsrook.qbits.assistant.model.AssistantModel;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
-import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
+import com.kingsrook.qbits.assistant.spi.AssistantProviderType;
 import com.kingsrook.qqq.backend.core.actions.values.QCustomPossibleValueProvider;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;

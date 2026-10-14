@@ -18,8 +18,8 @@ package com.kingsrook.qbits.assistant.provider.anthropic;
 
 
 import java.util.List;
-import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
-import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
+import com.kingsrook.qbits.assistant.spi.AssistantModelProvider;
+import com.kingsrook.qbits.assistant.spi.AssistantProviderType;
 
 
 /*******************************************************************************

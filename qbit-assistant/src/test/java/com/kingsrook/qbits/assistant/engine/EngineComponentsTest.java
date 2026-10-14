@@ -26,7 +26,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import com.kingsrook.qbits.assistant.AssistantModelRouting;
 import com.kingsrook.qbits.assistant.model.AssistantPolicy;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
-import com.kingsrook.qbits.assistant.provider.ModelUsage;
+import com.kingsrook.qbits.assistant.spi.ModelUsage;
 import com.kingsrook.qbits.assistant.testing.AssistantTestFixture;
 import com.kingsrook.qbits.assistant.testing.BaseAssistantTest;
 import com.kingsrook.qqq.backend.core.context.QContext;

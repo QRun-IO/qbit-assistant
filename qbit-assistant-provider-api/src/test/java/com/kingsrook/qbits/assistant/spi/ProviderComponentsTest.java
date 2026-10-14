@@ -14,11 +14,10 @@
  * limitations under the License.
  */
 
-package com.kingsrook.qbits.assistant.provider;
+package com.kingsrook.qbits.assistant.spi;
 
 
 import java.time.Duration;
-import com.kingsrook.qbits.assistant.engine.ModelPricing;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

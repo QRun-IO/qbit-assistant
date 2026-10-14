@@ -17,7 +17,6 @@
 package com.kingsrook.qbits.assistant;
 
 
-import javax.net.ssl.SSLContext;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -32,11 +31,11 @@ import java.util.regex.Pattern;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.kingsrook.qbits.assistant.classification.ClassificationSource;
 import com.kingsrook.qbits.assistant.classification.ConfiguredClassificationSource;
-import com.kingsrook.qbits.assistant.engine.ModelPricing;
-import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
-import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
-import com.kingsrook.qbits.assistant.provider.TrustedCaBundle;
 import com.kingsrook.qbits.assistant.rag.VectorStore;
+import com.kingsrook.qbits.assistant.spi.AssistantModelProvider;
+import com.kingsrook.qbits.assistant.spi.AssistantProviderType;
+import com.kingsrook.qbits.assistant.spi.ModelPricing;
+import com.kingsrook.qbits.assistant.spi.TrustedCaBundle;
 import com.kingsrook.qbits.assistant.uiapi.UiApiGateway;
 import com.kingsrook.qqq.backend.core.actions.ai.AiExposure;
 import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
@@ -45,6 +44,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.producers.MetaDataCustomize
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitConfig;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import javax.net.ssl.SSLContext;
 
 
 /*******************************************************************************

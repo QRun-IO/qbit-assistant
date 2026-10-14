@@ -20,9 +20,10 @@ Design spec: `QRun-IO/qqq` `docs/specs/2026-10-11-qqq-assistant-qbit-design.md`.
 
 Depend on `com.kingsrook.qbits:qbit-assistant-provider-api` at the same version as
 QBit Assistant, and implement `AssistantModelProvider` and optionally
-`AssistantProviderType`. No assistant runtime dependency is needed. Existing
-`com.kingsrook.qbits.assistant.provider.*` imports and
-`com.kingsrook.qbits.assistant.engine.ModelPricing` stay the same.
+`AssistantProviderType`. No assistant runtime dependency is needed. All API types, including
+`ModelPricing`, live exclusively in `com.kingsrook.qbits.assistant.spi`. External
+consumers such as qbit-marketing allow that package in their G1 guardrails;
+qbit-bom will add it to the G1 defaults. See [migration imports](UPGRADE.md#provider-api-extraction-30).
 `AssistantProviderType.validate(ProviderSettings)` receives unresolved settings
 (including `apiKeyEnvName`), without a database entity or resolved credentials.
 Hosts register providers through `AssistantQBitConfig` in `qbit-assistant`.

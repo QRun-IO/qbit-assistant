@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.kingsrook.qbits.assistant.provider;
+package com.kingsrook.qbits.assistant.spi;
 
 
 import java.util.ArrayList;
