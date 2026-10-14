@@ -1,5 +1,15 @@
 # Upgrading qbit-assistant
 
+## Index audit (2026-10-14)
+
+Recommended, not required: apply the "Index audit" block at the end of
+`docs/schema-postgres.sql`. It adds six indexes, every one `IF NOT EXISTS`:
+- usage by turn (read on each scheduled run)
+- the three retention date filters (turn events, tool calls, inactive conversations)
+- the two `ON DELETE SET NULL` foreign keys on `assistant_scheduled_run`
+
+No code change.
+
 ## X1/Y1: channel wall and audit attribution
 
 Requires QQQ 4.1.0-RC.6. Every assistant table, process, report and widget is
