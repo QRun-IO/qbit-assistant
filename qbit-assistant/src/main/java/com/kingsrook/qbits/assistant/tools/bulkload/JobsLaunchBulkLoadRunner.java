@@ -33,7 +33,7 @@ import com.kingsrook.qqq.backend.core.utils.ValueUtils;
  ** channel core creates the job AWAITING_CONFIRMATION, so it starts only when
  ** the user confirms it outside the assistant.
  **
- ** STAND-IN(core=#1171, removeBy=RC.8): until the jobs kernel ships in a QQQ
+ ** STAND-IN(core=#1178, removeBy=RC.8): until the jobs kernel ships in a QQQ
  ** RC, the launch is not a spec'd operation on the server; the runner then
  ** says so instead of guessing at another path (a load needs the upload ref,
  ** which the bulk-insert process endpoints cannot take).
