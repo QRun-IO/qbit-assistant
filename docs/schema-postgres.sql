@@ -592,3 +592,14 @@ CREATE INDEX assistant_turn_user_status ON assistant_turn (user_id, status);
 -- Check for pre-existing duplicate message.end rows before applying this index.
 CREATE UNIQUE INDEX assistant_turn_event_terminal ON assistant_turn_event (turn_id)
    WHERE event_type = 'message.end';
+
+-- Index audit (2026-10-14): lookup, retention and FK paths with no leading index.
+-- ScheduledTurn.cost reads usage by turn on every scheduled run.
+CREATE INDEX IF NOT EXISTS assistant_usage_turn ON assistant_usage (turn_id);
+-- Retention: deleteTurnEventsBefore, clearToolResultsBefore and listConversationsInactiveSince filter by date.
+CREATE INDEX IF NOT EXISTS assistant_turn_event_create_date ON assistant_turn_event (create_date);
+CREATE INDEX IF NOT EXISTS assistant_tool_call_create_date ON assistant_tool_call (create_date);
+CREATE INDEX IF NOT EXISTS assistant_conversation_modify_date ON assistant_conversation (modify_date);
+-- ON DELETE SET NULL children: deleting a conversation or turn would scan scheduled runs without these.
+CREATE INDEX IF NOT EXISTS assistant_scheduled_run_conversation ON assistant_scheduled_run (conversation_id);
+CREATE INDEX IF NOT EXISTS assistant_scheduled_run_turn ON assistant_scheduled_run (turn_id);
