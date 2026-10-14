@@ -32,11 +32,14 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
+import com.kingsrook.qbits.assistant.model.AssistantModel;
 import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
 import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
 import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
+import com.kingsrook.qbits.assistant.provider.ProviderSettings;
+import com.kingsrook.qbits.assistant.provider.RegistryModelProvider;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
@@ -75,6 +78,7 @@ public class ProviderService
    private volatile List<AssistantProvider>          cachedRows;
    private volatile Map<String, ModelPricing>        cachedPrices;
    private volatile Instant                          cachedAt;
+   private volatile List<AssistantModel> cachedModels;
 
 
 
@@ -129,6 +133,10 @@ public class ProviderService
    public Active resolve(String policyModel) throws QException
    {
       AssistantProvider row = activeRow();
+      if(Boolean.TRUE.equals(config.getHipaaMode()) && (row == null || !Boolean.TRUE.equals(row.getHipaaEligible())))
+      {
+         throw (new ProviderSetupException("HIPAA mode: only HIPAA-eligible providers can be enabled; a persisted eligible provider is required."));
+      }
       if(row == null)
       {
          AssistantModelProvider provider = config.getActiveModelProvider();
@@ -179,24 +187,55 @@ public class ProviderService
     *******************************************************************************/
    public Active forRow(AssistantProvider row, String fallbackModel) throws ProviderSetupException
    {
-      List<String> errors = validate(row);
-      if(!errors.isEmpty())
-      {
-         throw (new ProviderSetupException(String.join(" ", errors)));
-      }
+      return (forRow(row, fallbackModel, false));
+   }
 
+
+
+   /*******************************************************************************
+    ** Resolve only the requested kind; embedding calls never select chat models.
+    *******************************************************************************/
+   private Active forRow(AssistantProvider row, String fallbackModel, Boolean embedding) throws ProviderSetupException
+   {
+      if(Boolean.TRUE.equals(config.getHipaaMode()) && !Boolean.TRUE.equals(row.getHipaaEligible()))
+      {
+         throw (new ProviderSetupException("HIPAA mode: only HIPAA-eligible providers can be used."));
+      }
+      ProviderSettings settings = settings(row);
       AssistantProviderType type = config.getProviderTypes().get(row.getProviderType());
-      String                key  = resolveKey(row);
-      if(!StringUtils.hasContent(key))
+      List<AssistantModel> models;
+      try
       {
-         throw (new ProviderSetupException("No API key: the environment variable " + keyEnvName(row) + " is not set on this server."));
+         models = models(row.getId());
       }
-
-      String model = StringUtils.hasContent(row.getModel()) ? row.getModel() : (StringUtils.hasContent(fallbackModel) ? fallbackModel : first(type.getModels()));
-      String baseUrl = StringUtils.hasContent(row.getBaseUrl()) ? row.getBaseUrl().trim() : null;
-      String cacheKey = row.getId() + "|" + row.getProviderType() + "|" + baseUrl + "|" + fingerprint(key);
-      AssistantModelProvider provider = built.computeIfAbsent(cacheKey, k -> type.create(key, baseUrl));
-      return (new Active(row, row.getProviderType(), model, provider));
+      catch(QException e)
+      {
+         throw (new ProviderSetupException("Could not read the provider's model registry."));
+      }
+      String model = StringUtils.hasContent(row.getModel()) ? row.getModel() : null;
+      if(model == null && !models.isEmpty())
+      {
+         model = models.stream().filter(m -> Boolean.TRUE.equals(m.getEnabled()) && !m.isChat().equals(embedding)).map(AssistantModel::getModelId).findFirst().orElse(null);
+         if(model == null)
+         {
+            throw (new ProviderSetupException("All models of this provider are disabled. Enable a model first."));
+         }
+      }
+      if(model == null)
+      {
+         model = StringUtils.hasContent(fallbackModel) ? fallbackModel : first(type.getModels());
+      }
+      String selected = model;
+      AssistantModel registry = models.stream().filter(m -> java.util.Objects.equals(selected, m.getModelId())).findFirst().orElse(null);
+      if(registry != null && (!Boolean.TRUE.equals(registry.getEnabled()) || registry.isChat().equals(embedding)))
+      {
+         throw (new ProviderSetupException("The selected model is disabled in this provider's model registry."));
+      }
+      String cacheKey = row.getId() + "|" + row.getProviderType() + "|" + settings.getKind() + "|" + settings.getBaseUrl()
+         + "|" + settings.getApiVersion() + "|" + settings.getRegion() + "|" + settings.getCloudProject() + "|" + settings.getConnectTimeoutSeconds()
+         + "|" + settings.getTlsCaBundle() + "|" + settings.getRequestTimeoutSeconds() + "|" + fingerprint(settings.getApiKey());
+      AssistantModelProvider provider = built.computeIfAbsent(cacheKey, k -> type.create(settings));
+      return (new Active(row, row.getProviderType(), model, registry == null ? provider : new RegistryModelProvider(provider, registry)));
    }
 
 
@@ -208,6 +247,10 @@ public class ProviderService
    public List<String> validate(AssistantProvider row)
    {
       List<String> errors = new ArrayList<>();
+      if(Boolean.TRUE.equals(config.getHipaaMode()) && !Boolean.FALSE.equals(row.getEnabled()) && !Boolean.TRUE.equals(row.getHipaaEligible()))
+      {
+         errors.add("HIPAA mode: only HIPAA-eligible providers can be enabled");
+      }
       AssistantProviderType type = row.getProviderType() == null ? null : config.getProviderTypes().get(row.getProviderType());
       if(type == null)
       {
@@ -215,12 +258,17 @@ public class ProviderService
          return (errors);
       }
 
+      errors.addAll(type.validate(new ProviderSettings().withKind(kind(row))
+         .withApiKeyEnvName(row.getApiKeyEnvName()).withBaseUrl(row.getBaseUrl())
+         .withApiVersion(row.getApiVersion()).withRegion(row.getRegion()).withCloudProject(row.getCloudProject())
+         .withTlsCaBundle(row.getTlsCaBundle()).withConnectTimeoutSeconds(row.getConnectTimeoutSeconds())
+         .withRequestTimeoutSeconds(row.getRequestTimeoutSeconds())));
       String envName = keyEnvName(row);
-      if(!AssistantQBitConfig.ENV_NAME.matcher(envName).matches())
+      if(envName != null && !AssistantQBitConfig.ENV_NAME.matcher(envName).matches())
       {
          errors.add("API key variable must be the NAME of an environment variable (capital letters, digits and _), not the key itself.");
       }
-      else if(!config.getEffectiveAllowedApiKeyEnvNames().contains(envName))
+      else if(envName != null && !config.getEffectiveAllowedApiKeyEnvNames().contains(envName))
       {
          errors.add("API key variable " + envName + " is not allowed on this server. Allowed: " + String.join(", ", config.getEffectiveAllowedApiKeyEnvNames()) + ".");
       }
@@ -228,12 +276,44 @@ public class ProviderService
       if(StringUtils.hasContent(row.getBaseUrl()))
       {
          String url = row.getBaseUrl().trim();
-         if(!url.equals(type.getDefaultBaseUrl()) && (config.getAllowedBaseUrls() == null || !config.getAllowedBaseUrls().contains(url)))
+         if(!url.equals(type.getDefaultBaseUrl(kind(row))) && (config.getAllowedBaseUrls() == null || !config.getAllowedBaseUrls().contains(url)))
          {
-            errors.add("Base URL " + url + " is not allowed on this server; leave it empty to use " + type.getDefaultBaseUrl() + ".");
+            errors.add("Base URL " + url + " is not allowed on this server; leave it empty to use " + type.getDefaultBaseUrl(kind(row)) + ".");
          }
       }
 
+      if(StringUtils.hasContent(row.getTlsCaBundle()))
+      {
+         if(!config.getTrustedCaBundles().containsKey(row.getTlsCaBundle()))
+         {
+            errors.add("TLS CA bundle must name a bundle configured on this server (withTrustedCaBundle).");
+         }
+         String url = StringUtils.hasContent(row.getBaseUrl()) ? row.getBaseUrl().trim() : type.getDefaultBaseUrl(kind(row));
+         if(url == null || !url.regionMatches(true, 0, "https://", 0, 8))
+         {
+            errors.add("TLS CA bundle requires an HTTPS base URL.");
+         }
+      }
+
+      if(!type.getKinds().contains(kind(row)))
+      {
+         errors.add("The provider kind is not supported by the installed adapter.");
+      }
+      if(!List.of("LOCAL", "CLOUD").contains(location(row)))
+      {
+         errors.add("Location must be LOCAL or CLOUD.");
+      }
+      if(!StringUtils.hasContent(row.getBaseUrl()) && type.requiresBaseUrl(kind(row)))
+      {
+         errors.add("An allow-listed base URL is required for this provider kind.");
+      }
+      for(Integer timeout : java.util.Arrays.asList(row.getConnectTimeoutSeconds(), row.getRequestTimeoutSeconds()))
+      {
+         if(timeout != null && (timeout < 1 || timeout > 600))
+         {
+            errors.add("Connection and request timeouts must be between 1 and 600 seconds.");
+         }
+      }
       if(row.getMonthlyCostCapUsd() != null && row.getMonthlyCostCapUsd().signum() < 0)
       {
          errors.add("Monthly cost cap must not be negative.");
@@ -258,6 +338,10 @@ public class ProviderService
    public String keyStatus(AssistantProvider row)
    {
       String envName = keyEnvName(row);
+      if(envName == null)
+      {
+         return ("Not needed (no API key)");
+      }
       if(!AssistantQBitConfig.ENV_NAME.matcher(envName).matches() || !config.getEffectiveAllowedApiKeyEnvNames().contains(envName))
       {
          return ("Not usable: the reference is not an allowed environment variable name");
@@ -298,7 +382,7 @@ public class ProviderService
          return (row.getApiKeyEnvName().trim());
       }
       AssistantProviderType type = row.getProviderType() == null ? null : config.getProviderTypes().get(row.getProviderType());
-      return (type == null ? "" : type.getDefaultApiKeyEnvName());
+      return (type == null ? "" : type.getDefaultApiKeyEnvName(kind(row)));
    }
 
 
@@ -309,6 +393,10 @@ public class ProviderService
    private String resolveKey(AssistantProvider row)
    {
       String envName = keyEnvName(row);
+      if(envName == null)
+      {
+         return (null);
+      }
       if(!AssistantQBitConfig.ENV_NAME.matcher(envName).matches() || !config.getEffectiveAllowedApiKeyEnvNames().contains(envName))
       {
          return (null);
@@ -447,11 +535,12 @@ public class ProviderService
    /*******************************************************************************
     ** Drop the cached rows and prices (after a settings change).
     *******************************************************************************/
-   public void invalidate()
+   public synchronized void invalidate()
    {
       cachedAt = null;
       cachedRows = null;
       cachedPrices = null;
+      cachedModels = null;
    }
 
 
@@ -459,7 +548,7 @@ public class ProviderService
    /*******************************************************************************
     ** The provider rows (cached for policyCacheSeconds).
     *******************************************************************************/
-   public List<AssistantProvider> rows() throws QException
+   public synchronized List<AssistantProvider> rows() throws QException
    {
       refresh();
       return (cachedRows);
@@ -470,7 +559,7 @@ public class ProviderService
    /*******************************************************************************
     **
     *******************************************************************************/
-   private Map<String, ModelPricing> prices() throws QException
+   private synchronized Map<String, ModelPricing> prices() throws QException
    {
       refresh();
       return (cachedPrices);
@@ -497,6 +586,7 @@ public class ProviderService
             prices.put(priceKey(price.getProviderType(), price.getModel()), toPricing(price));
          }
       }
+      cachedModels = store.listModels();
       cachedRows = rows;
       cachedPrices = prices;
       cachedAt = now;
@@ -521,7 +611,7 @@ public class ProviderService
    {
       try
       {
-         return (HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8))));
+         return (HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest((key == null ? "" : key).getBytes(StandardCharsets.UTF_8))));
       }
       catch(Exception e)
       {
@@ -547,6 +637,221 @@ public class ProviderService
    private static double d(BigDecimal value)
    {
       return (value == null ? 0 : value.doubleValue());
+   }
+
+
+
+
+   /*******************************************************************************
+    ** Effective kind, including legacy rows.
+    *******************************************************************************/
+   public String kind(AssistantProvider row)
+   {
+      return (StringUtils.hasContent(row.getKind()) ? row.getKind() : (row.getProviderType() == null ? "" : row.getProviderType().toUpperCase(java.util.Locale.ROOT).replace('-', '_')));
+   }
+
+
+
+   /*******************************************************************************
+    ** Effective location, including legacy rows.
+    *******************************************************************************/
+   public String location(AssistantProvider row)
+   {
+      AssistantProviderType type = config.getProviderTypes().get(row.getProviderType());
+      return (StringUtils.hasContent(row.getLocation()) ? row.getLocation() : (type == null ? "CLOUD" : type.getDefaultLocation(kind(row))));
+   }
+
+
+
+   /*******************************************************************************
+    ** Validate settings and resolve only an allowed key reference.
+    *******************************************************************************/
+   public ProviderSettings settings(AssistantProvider row) throws ProviderSetupException
+   {
+      if(Boolean.TRUE.equals(config.getHipaaMode()) && !Boolean.TRUE.equals(row.getHipaaEligible()))
+      {
+         throw (new ProviderSetupException("HIPAA mode: only HIPAA-eligible providers can be used."));
+      }
+      List<String> errors = validate(row);
+      if(!errors.isEmpty())
+      {
+         throw (new ProviderSetupException(String.join(" ", errors)));
+      }
+      String key = resolveKey(row);
+      if(keyEnvName(row) != null && !StringUtils.hasContent(key))
+      {
+         throw (new ProviderSetupException("No API key: the environment variable " + keyEnvName(row) + " is not set on this server."));
+      }
+      return (new ProviderSettings().withKind(kind(row)).withApiKeyEnvName(row.getApiKeyEnvName()).withApiKey(key)
+         .withBaseUrl(StringUtils.hasContent(row.getBaseUrl()) ? row.getBaseUrl().trim() : null)
+         .withApiVersion(row.getApiVersion()).withRegion(row.getRegion()).withCloudProject(row.getCloudProject())
+         .withTlsCaBundle(row.getTlsCaBundle()).withSslContext(StringUtils.hasContent(row.getTlsCaBundle()) ? config.getTrustedCaBundles().get(row.getTlsCaBundle()) : null)
+         .withConnectTimeoutSeconds(row.getConnectTimeoutSeconds() == null ? 10 : row.getConnectTimeoutSeconds())
+         .withRequestTimeoutSeconds(row.getRequestTimeoutSeconds() == null ? 120 : row.getRequestTimeoutSeconds()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Cached models belonging to one provider.
+    *******************************************************************************/
+   public synchronized List<AssistantModel> models(Integer providerId) throws QException
+   {
+      refresh();
+      return (cachedModels.stream().filter(m -> java.util.Objects.equals(providerId, m.getProviderId())).toList());
+   }
+
+
+
+   /*******************************************************************************
+    ** Registry price, type price, then config price; unpriced local models cost zero.
+    *******************************************************************************/
+   public ModelPricing pricing(Active active, String model)
+   {
+      if(active != null && active.row() != null)
+      {
+         try
+         {
+            for(AssistantModel row : models(active.providerId()))
+            {
+               if(java.util.Objects.equals(model, row.getModelId()) && (row.getInputUsdPerMTok() != null || row.getOutputUsdPerMTok() != null))
+               {
+                  return (toPricing(new AssistantModelPrice().withInputUsdPerMTok(row.getInputUsdPerMTok()).withOutputUsdPerMTok(row.getOutputUsdPerMTok())));
+               }
+            }
+            ModelPricing price = prices().get(priceKey(active.providerType(), model));
+            if(price != null)
+            {
+               return (price);
+            }
+            if("LOCAL".equals(location(active.row())) && (config.getPricing() == null || !config.getPricing().containsKey(model)))
+            {
+               return (new ModelPricing().withInputUsdPerMTok(0.0).withOutputUsdPerMTok(0.0));
+            }
+         }
+         catch(QException e)
+         {
+            LOG.warn("Could not read model registry prices");
+         }
+      }
+      return (pricing(active == null ? null : active.providerType(), model));
+   }
+
+
+
+   /*******************************************************************************
+    ** P-e seam: no automatic alternative is selected in P-c. Never downgrade PHI eligibility.
+    *******************************************************************************/
+   public java.util.Optional<Active> eligibleAlternative(com.kingsrook.qqq.backend.core.actions.ai.DataClassification classification, AssistantProvider blockedProvider)
+   {
+      return (java.util.Optional.empty());
+   }
+
+
+
+   /*******************************************************************************
+    ** Resolve a specific enabled registry model and provider without changing
+    ** the default. Copy the row so the shared provider cache is never mutated.
+    *******************************************************************************/
+   public Active resolveModel(Integer modelId, boolean requiresHipaa) throws QException
+   {
+      return (resolveModel(modelId, requiresHipaa, true));
+   }
+
+
+
+   /*******************************************************************************
+    ** Classifiers may use models without tool support.
+    *******************************************************************************/
+   public Active resolveModel(Integer modelId, Boolean requiresHipaa, Boolean requireTools) throws QException
+   {
+      AssistantModel model = store.listModels().stream().filter(m -> modelId.equals(m.getId()) && Boolean.TRUE.equals(m.getEnabled())).findFirst().orElse(null);
+      if(model == null || !model.isChat())
+      {
+         return (null);
+      }
+      AssistantProvider row = store.getProvider(model.getProviderId());
+      if(row == null || !Boolean.TRUE.equals(row.getEnabled()) || ((requiresHipaa || Boolean.TRUE.equals(config.getHipaaMode())) && !Boolean.TRUE.equals(row.getHipaaEligible())))
+      {
+         return (null);
+      }
+      AssistantProvider selected = new AssistantProvider(row.toQRecord()).withModel(model.getModelId());
+      try
+      {
+         Active active = forRow(selected, model.getModelId());
+         return (requireTools && active.provider().getCapabilities(active.model()) != null && Boolean.FALSE.equals(active.provider().getCapabilities(active.model()).getTools()) ? null : active);
+      }
+      catch(ProviderSetupException e)
+      {
+         return (null);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Cheapest usable enabled registry model, with local providers first.
+    *******************************************************************************/
+   public Active budgetDowngrade(Integer explicitModelId, boolean requiresHipaa, Active original) throws QException
+   {
+      if(explicitModelId != null)
+      {
+         Active explicit = resolveModel(explicitModelId, requiresHipaa);
+         return (sameModel(explicit, original) ? null : explicit);
+      }
+      Active best = null;
+      double bestPrice = Double.MAX_VALUE;
+      for(AssistantModel model : store.listModels())
+      {
+         Active candidate = resolveModel(model.getId(), requiresHipaa);
+         if(candidate == null || sameModel(candidate, original))
+         {
+            continue;
+         }
+         ModelPricing price = pricing(candidate, candidate.model());
+         double total = (price.getInputUsdPerMTok() == null ? 0 : price.getInputUsdPerMTok()) + (price.getOutputUsdPerMTok() == null ? 0 : price.getOutputUsdPerMTok());
+         boolean local = "LOCAL".equals(location(candidate.row()));
+         boolean bestLocal = best != null && "LOCAL".equals(location(best.row()));
+         if(best == null || (local && !bestLocal) || (local == bestLocal && total < bestPrice))
+         {
+            best = candidate;
+            bestPrice = total;
+         }
+      }
+      return (best);
+   }
+
+
+
+   /*******************************************************************************
+    ** A downgrade must choose another provider/model pair.
+    *******************************************************************************/
+   private static boolean sameModel(Active left, Active right)
+   {
+      return (left != null && right != null && java.util.Objects.equals(left.providerId(), right.providerId()) && java.util.Objects.equals(left.model(), right.model()));
+   }
+
+
+   /*******************************************************************************
+    ** Embedding selection is explicit and checks fresh provider eligibility.
+    *******************************************************************************/
+   public Active resolveEmbedding(Integer modelId, Boolean requiresHipaa) throws QException
+   {
+      AssistantModel model = store.listModels().stream().filter(m -> java.util.Objects.equals(modelId, m.getId())).findFirst().orElse(null);
+      if(model == null || !"EMBEDDING".equals(model.getModelKind()) || !Boolean.TRUE.equals(model.getEnabled()))
+      {
+         throw (new ProviderSetupException("Select an enabled EMBEDDING model for this knowledge source."));
+      }
+      AssistantProvider row = store.getProvider(model.getProviderId());
+      if(row == null || !Boolean.TRUE.equals(row.getEnabled()))
+      {
+         throw (new ProviderSetupException("The embedding provider is disabled or unavailable."));
+      }
+      if((requiresHipaa || Boolean.TRUE.equals(config.getHipaaMode())) && !Boolean.TRUE.equals(row.getHipaaEligible()))
+      {
+         throw (new ProviderSetupException("PHI may only be embedded by a HIPAA-eligible provider. Nothing was sent."));
+      }
+      return (forRow(new AssistantProvider(row.toQRecord()).withModel(model.getModelId()), model.getModelId(), true));
    }
 
 }

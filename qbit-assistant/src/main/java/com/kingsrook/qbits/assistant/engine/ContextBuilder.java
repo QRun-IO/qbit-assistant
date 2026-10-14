@@ -34,9 +34,13 @@ import com.kingsrook.qbits.assistant.provider.ModelPart;
 import com.kingsrook.qbits.assistant.provider.ModelRequest;
 import com.kingsrook.qbits.assistant.provider.ModelToolDefinition;
 import com.kingsrook.qbits.assistant.provider.SystemBlock;
+import com.kingsrook.qbits.assistant.tools.KnowledgeTool;
+import com.kingsrook.qbits.assistant.tools.PresentResultsTool;
+import com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadTools;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolDefinition;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolKernel;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
@@ -63,11 +67,14 @@ public class ContextBuilder
 
    public static final int MAX_CONTEXT_CHARS = 512;
    public static final int MAX_SELECTED_IDS  = 100;
+   public static final int MAX_ATTACHMENTS   = 5;
 
    private final AssistantQBitConfig config;
    private final AiToolKernel        kernel;
    private final UiApiToolbox        toolbox;
    private volatile String           appDigest;
+   private KnowledgeTool knowledgeTool;
+   private BulkLoadTools bulkLoadTools;
 
 
 
@@ -100,6 +107,16 @@ public class ContextBuilder
     *******************************************************************************/
    public List<ModelToolDefinition> tools(PolicyService.ToolPolicy policy)
    {
+      return (tools(policy, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Attribute tool-discovery requests to the turn that needs them.
+    *******************************************************************************/
+   private List<ModelToolDefinition> tools(PolicyService.ToolPolicy policy, String turnId)
+   {
       Map<String, ModelToolDefinition> byName = new TreeMap<>();
       for(ModelToolDefinition definition : toolbox.definitions(policy, toolbox.anyWritableTable()))
       {
@@ -114,6 +131,18 @@ public class ContextBuilder
                .withDescription(definition.getDescription())
                .withInputSchema(definition.getInputSchema())
                .withStrict(isStrict(definition.getName(), !Boolean.FALSE.equals(definition.getStrict()))));
+         }
+      }
+      if(knowledgeTool != null && knowledgeTool.offered(policy, QContext.getQSession(), turnId))
+      {
+         byName.put(KnowledgeTool.NAME, knowledgeTool.definition());
+      }
+      byName.put(PresentResultsTool.NAME, PresentResultsTool.definition(isStrict(PresentResultsTool.NAME, true)));
+      if(bulkLoadTools != null && bulkLoadTools.offered())
+      {
+         for(ModelToolDefinition definition : bulkLoadTools.definitions(policy, toolbox.anyWritableTable()))
+         {
+            byName.put(definition.getName(), definition);
          }
       }
       return (new ArrayList<>(byName.values()));
@@ -198,11 +227,22 @@ public class ContextBuilder
    public ModelRequest build(QSession session, String model, String effort, List<AssistantMessage> history, String userText, Map<String, Object> pageContext, PolicyService.ToolPolicy toolPolicy,
       String profileInstructions)
    {
+      return (build(session, model, effort, history, userText, pageContext, toolPolicy, profileInstructions, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Include the turn in any UI API calls needed to discover available tools.
+    *******************************************************************************/
+   public ModelRequest build(QSession session, String model, String effort, List<AssistantMessage> history, String userText, Map<String, Object> pageContext, PolicyService.ToolPolicy toolPolicy,
+      String profileInstructions, String turnId)
+   {
       ModelRequest request = new ModelRequest()
          .withModel(model)
          .withEffort(effort)
          .withMaxTokens(config.getModels().getMainMaxOutputTokens())
-         .withTools(tools(toolPolicy));
+         .withTools(tools(toolPolicy, turnId));
 
       request.getSystem().add(new SystemBlock(SystemPrompt.staticBlock(appDigest()), CacheHint.LONG));
       request.getSystem().add(new SystemBlock(userBlock(session) + (StringUtils.hasContent(profileInstructions) ? "\n" + profileInstructions : ""), CacheHint.SHORT));
@@ -343,6 +383,32 @@ public class ContextBuilder
          }
       }
 
+      ////////////////////////////////////////////////////////////////////
+      // files the user attached in the panel (already uploaded through  //
+      // the UI API as the user): only their opaque refs and names       //
+      ////////////////////////////////////////////////////////////////////
+      if(raw.get("attachments") instanceof List<?> attachments)
+      {
+         List<Map<String, Object>> kept = new ArrayList<>();
+         for(Object attachment : attachments)
+         {
+            if(attachment instanceof Map<?, ?> a && scalar(a.get("uploadRef")) != null && kept.size() < MAX_ATTACHMENTS)
+            {
+               Map<String, Object> one = new LinkedHashMap<>();
+               one.put("uploadRef", scalar(a.get("uploadRef")));
+               if(scalar(a.get("fileName")) != null)
+               {
+                  one.put("fileName", scalar(a.get("fileName")));
+               }
+               kept.add(one);
+            }
+         }
+         if(!kept.isEmpty())
+         {
+            clean.put("attachments", kept);
+         }
+      }
+
       if(JsonUtils.toJson(clean).length() > 4000)
       {
          clean.remove("filter");
@@ -368,6 +434,28 @@ public class ContextBuilder
          return (trimmed.length() > MAX_CONTEXT_CHARS ? trimmed.substring(0, MAX_CONTEXT_CHARS) : trimmed);
       }
       return (null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Additive optional tool hook; UI API toolbox stays independently maintained.
+    *******************************************************************************/
+   public ContextBuilder withKnowledgeTool(KnowledgeTool knowledgeTool)
+   {
+      this.knowledgeTool = knowledgeTool;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for the bulk-load tools.
+    *******************************************************************************/
+   public ContextBuilder withBulkLoadTools(BulkLoadTools bulkLoadTools)
+   {
+      this.bulkLoadTools = bulkLoadTools;
+      return (this);
    }
 
 }

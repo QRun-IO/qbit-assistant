@@ -107,7 +107,17 @@ public class ProfileService
     *******************************************************************************/
    public Persona persona(QSession session, String appName)
    {
-      AssistantProfile profile = pick(session, appName);
+      return (persona(session, appName, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** An administrator-selected scheduled profile still respects role scope.
+    *******************************************************************************/
+   public Persona persona(QSession session, String appName, Integer profileId)
+   {
+      AssistantProfile profile = pick(session, appName, profileId);
       if(profile == null)
       {
          return (new Persona(null, DEFAULT_DISPLAY_NAME, DEFAULT_ICON, null, null, List.of()));
@@ -215,8 +225,24 @@ public class ProfileService
    /*******************************************************************************
     **
     *******************************************************************************/
-   private AssistantProfile pick(QSession session, String appName)
+   public AssistantProfile pick(QSession session, String appName)
    {
+      return (pick(session, appName, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Explicit profiles supply instructions and routing, never permissions.
+    *******************************************************************************/
+   public AssistantProfile pick(QSession session, String appName, Integer profileId)
+   {
+      if(profileId != null)
+      {
+         return (load().profiles().stream().filter(p -> profileId.equals(p.getId()) && !Boolean.FALSE.equals(p.getEnabled())
+            && (!StringUtils.hasContent(p.getPermissionName()) || session.hasPermission(p.getPermissionName()))).findFirst().orElse(null));
+      }
+
       List<AssistantProfile> enabled = load().profiles().stream().filter(p -> !Boolean.FALSE.equals(p.getEnabled())).toList();
       return (enabled.stream()
          .filter(p -> appliesTo(p, session, appName))

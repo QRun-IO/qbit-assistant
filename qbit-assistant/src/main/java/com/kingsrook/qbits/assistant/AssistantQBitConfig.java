@@ -17,6 +17,10 @@
 package com.kingsrook.qbits.assistant;
 
 
+import javax.net.ssl.SSLContext;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -26,11 +30,16 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.kingsrook.qbits.assistant.classification.ClassificationSource;
+import com.kingsrook.qbits.assistant.classification.ConfiguredClassificationSource;
 import com.kingsrook.qbits.assistant.engine.ModelPricing;
 import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
 import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
+import com.kingsrook.qbits.assistant.provider.TrustedCaBundle;
+import com.kingsrook.qbits.assistant.rag.VectorStore;
 import com.kingsrook.qbits.assistant.uiapi.UiApiGateway;
 import com.kingsrook.qqq.backend.core.actions.ai.AiExposure;
+import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.producers.MetaDataCustomizerInterface;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitConfig;
@@ -51,6 +60,8 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
  *******************************************************************************/
 public class AssistantQBitConfig implements QBitConfig
 {
+   private VectorStore vectorStore;
+
    public static final String ACCESS_PERMISSION        = "assistant.hasAccess";
    public static final String ADMIN_PERMISSION         = "assistant.admin";
    public static final String DEFAULT_OWNER_KEY_TYPE   = "assistant_user_id";
@@ -69,7 +80,17 @@ public class AssistantQBitConfig implements QBitConfig
    @Deprecated(since = "0.1.0-RC.3")
    public static final String LEGACY_DEFAULT_OWNER_KEY_TYPE = "assistantUserId";
 
+   @JsonIgnore
+   private final transient Map<String, SSLContext> trustedCaBundles = new LinkedHashMap<>();
+
+   private final ConfiguredClassificationSource configuredClassifications = new ConfiguredClassificationSource();
+   private transient ClassificationSource classificationSource;
+   private Boolean hipaaMode = false;
+   private Integer hipaaRetentionDays = 2190;
+   private String conversationEncryptionKeyEnvName;
+
    private Boolean               enabled                    = true;
+   private Boolean               recordHistory              = false;
    private String                backendName;
    private String                providerName               = DEFAULT_PROVIDER_NAME;
    private AssistantModelRouting models                     = new AssistantModelRouting();
@@ -90,6 +111,9 @@ public class AssistantQBitConfig implements QBitConfig
    private Integer               policyCacheSeconds         = 30;
    private String                ownerSecurityKeyType       = DEFAULT_OWNER_KEY_TYPE;
    private String                shortcut                   = DEFAULT_SHORTCUT;
+   private Set<String> allowedScheduledCredentialEnvNames = new LinkedHashSet<>();
+   private String scheduledTasksSchedulerName;
+
    private String                retentionSchedulerName;
    private Boolean               registerRoutes             = true;
    private Map<String, ModelPricing> pricing                = ModelPricing.defaults();
@@ -113,6 +137,7 @@ public class AssistantQBitConfig implements QBitConfig
    //////////////////////////////////////////////////////////////////////////
    private String                    uiApiBaseUrl;
    private UiApiGateway              uiApiGateway;
+   private com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadRunner bulkLoadRunner;
    private Integer                   pendingActionTtlSeconds  = 900;
    private List<String>              customRedactionPatterns  = new ArrayList<>();
    private Integer                   killSwitchPollMillis     = 2000;
@@ -121,11 +146,13 @@ public class AssistantQBitConfig implements QBitConfig
    private Integer                   providerTestTimeoutSeconds = 30;
    private Integer                   homeMaxRows              = 20000;
    private String                    tablePathPrefix          = "/app";
+   private Boolean                   emailExternalApproved    = false;
 
    private transient MetaDataCustomizerInterface<QTableMetaData> tableMetaDataCustomizer;
    private transient Map<String, AssistantModelProvider>        modelProviders = new LinkedHashMap<>();
    private transient Map<String, AssistantProviderType>         providerTypes  = new LinkedHashMap<>();
    private transient Function<String, String>                   secretResolver = System::getenv;
+   private transient Function<String, String>                   emailRecipientResolver;
    private transient AssistantRuntime                           runtime;
 
 
@@ -184,11 +211,22 @@ public class AssistantQBitConfig implements QBitConfig
       requirePositive(errors, "maxTurnsPerUserPerMinute", maxTurnsPerUserPerMinute);
       requirePositive(errors, "maxConcurrentTurnsPerUser", maxConcurrentTurnsPerUser);
       requirePositive(errors, "conversationRetentionDays", conversationRetentionDays);
+      if(hipaaRetentionDays != null)
+      {
+         requirePositive(errors, "hipaaRetentionDays", hipaaRetentionDays);
+      }
       requirePositive(errors, "toolResultRetentionDays", toolResultRetentionDays);
       requirePositive(errors, "approvalRetentionDays", approvalRetentionDays);
       requirePositive(errors, "killSwitchPollMillis", killSwitchPollMillis);
       requirePositive(errors, "providerTestTimeoutSeconds", providerTestTimeoutSeconds);
       requirePositive(errors, "homeMaxRows", homeMaxRows);
+      for(String name : allowedScheduledCredentialEnvNames == null ? Set.<String>of() : allowedScheduledCredentialEnvNames)
+      {
+         if(name == null || !ENV_NAME.matcher(name).matches())
+         {
+            errors.add("allowedScheduledCredentialEnvNames contains an invalid environment variable name.");
+         }
+      }
       for(String name : allowedApiKeyEnvNames == null ? Set.<String>of() : allowedApiKeyEnvNames)
       {
          if(name == null || !ENV_NAME.matcher(name).matches())
@@ -1179,6 +1217,38 @@ public class AssistantQBitConfig implements QBitConfig
 
 
    /*******************************************************************************
+    ** Getter for bulkLoadRunner (null: the durable jobs launch,
+    ** JobsLaunchBulkLoadRunner) - how bulk_load_run starts a load.
+    *******************************************************************************/
+   public com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadRunner getBulkLoadRunner()
+   {
+      return (this.bulkLoadRunner);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for bulkLoadRunner
+    *******************************************************************************/
+   public void setBulkLoadRunner(com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadRunner bulkLoadRunner)
+   {
+      this.bulkLoadRunner = bulkLoadRunner;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for bulkLoadRunner
+    *******************************************************************************/
+   public AssistantQBitConfig withBulkLoadRunner(com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadRunner bulkLoadRunner)
+   {
+      this.bulkLoadRunner = bulkLoadRunner;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
     ** Getter for uiApiGateway (null: the loopback stand-in)
     *******************************************************************************/
    public UiApiGateway getUiApiGateway()
@@ -1364,6 +1434,7 @@ public class AssistantQBitConfig implements QBitConfig
    }
 
 
+
    /*******************************************************************************
     ** Register a provider type for the provider settings table.
     *******************************************************************************/
@@ -1399,7 +1470,14 @@ public class AssistantQBitConfig implements QBitConfig
    public Set<String> getEffectiveAllowedApiKeyEnvNames()
    {
       Set<String> names = new LinkedHashSet<>(allowedApiKeyEnvNames == null ? Set.of() : allowedApiKeyEnvNames);
-      providerTypes.values().forEach(t -> names.add(t.getDefaultApiKeyEnvName()));
+      providerTypes.values().forEach(t -> t.getKinds().forEach(k ->
+      {
+         String name = t.getDefaultApiKeyEnvName(k);
+         if(name != null)
+         {
+            names.add(name);
+         }
+      }));
       return (names);
    }
 
@@ -1422,6 +1500,62 @@ public class AssistantQBitConfig implements QBitConfig
    public AssistantQBitConfig withSecretResolver(Function<String, String> secretResolver)
    {
       this.secretResolver = secretResolver;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the host's EXTERNAL approval rule allows a scheduled task's result
+    ** to leave the app by email. There is no approval rule in the qbit yet (the
+    ** scheduled runner is P-g), so this explicit flag stands in; default false.
+    *******************************************************************************/
+   public Boolean getEmailExternalApproved()
+   {
+      return (this.emailExternalApproved);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for emailExternalApproved
+    *******************************************************************************/
+   public void setEmailExternalApproved(Boolean emailExternalApproved)
+   {
+      this.emailExternalApproved = emailExternalApproved;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for emailExternalApproved
+    *******************************************************************************/
+   public AssistantQBitConfig withEmailExternalApproved(Boolean emailExternalApproved)
+   {
+      this.emailExternalApproved = emailExternalApproved;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** The hook that turns a task owner's user id into an email address; null
+    ** means the default (an owner id that already is an address).
+    *******************************************************************************/
+   @JsonIgnore
+   public Function<String, String> getEmailRecipientResolver()
+   {
+      return (emailRecipientResolver);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for emailRecipientResolver
+    *******************************************************************************/
+   public AssistantQBitConfig withEmailRecipientResolver(Function<String, String> emailRecipientResolver)
+   {
+      this.emailRecipientResolver = emailRecipientResolver;
       return (this);
    }
 
@@ -1580,4 +1714,298 @@ public class AssistantQBitConfig implements QBitConfig
       return (this);
    }
 
+
+
+   /*******************************************************************************
+    ** Register server-only trust material, parsed eagerly without retaining PEM.
+    *******************************************************************************/
+   public AssistantQBitConfig withTrustedCaBundle(String name, String pem)
+   {
+      if(name == null || name.isBlank() || name.length() > 100 || !name.equals(name.trim()))
+      {
+         throw (new IllegalArgumentException("CA bundle name must be 1 to 100 characters without surrounding whitespace."));
+      }
+      trustedCaBundles.put(name, TrustedCaBundle.parse(pem));
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Read the bundle at startup; no file content or path enters diagnostics.
+    *******************************************************************************/
+   public AssistantQBitConfig withTrustedCaBundleFile(String name, Path pemFile)
+   {
+      try
+      {
+         return (withTrustedCaBundle(name, Files.readString(pemFile)));
+      }
+      catch(IOException | SecurityException e)
+      {
+         throw (new IllegalArgumentException("Could not read the configured CA bundle file."));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Server-only contexts; never expose trust material in metadata or JSON.
+    *******************************************************************************/
+   @JsonIgnore
+   public Map<String, SSLContext> getTrustedCaBundles()
+   {
+      return (Map.copyOf(trustedCaBundles));
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the host opts into record history; false by default.
+    *******************************************************************************/
+   public Boolean getRecordHistory()
+   {
+      return (recordHistory);
+   }
+
+
+
+   /*******************************************************************************
+    ** Owner decision — hard wall: record history requires explicit host opt-in.
+    ** kof22 does not opt in. The user's own audit permissions still apply.
+    *******************************************************************************/
+   public AssistantQBitConfig withRecordHistory(boolean recordHistory)
+   {
+      this.recordHistory = recordHistory;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for hipaaMode
+    *******************************************************************************/
+   public Boolean getHipaaMode()
+   {
+      return (hipaaMode);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for hipaaMode
+    *******************************************************************************/
+   public void setHipaaMode(Boolean hipaaMode)
+   {
+      this.hipaaMode = hipaaMode;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for hipaaMode
+    *******************************************************************************/
+   public AssistantQBitConfig withHipaaMode(Boolean hipaaMode)
+   {
+      this.hipaaMode = hipaaMode;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for hipaaRetentionDays
+    *******************************************************************************/
+   public Integer getHipaaRetentionDays()
+   {
+      return (hipaaRetentionDays);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for hipaaRetentionDays
+    *******************************************************************************/
+   public void setHipaaRetentionDays(Integer hipaaRetentionDays)
+   {
+      this.hipaaRetentionDays = hipaaRetentionDays;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for hipaaRetentionDays
+    *******************************************************************************/
+   public AssistantQBitConfig withHipaaRetentionDays(Integer hipaaRetentionDays)
+   {
+      this.hipaaRetentionDays = hipaaRetentionDays;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for conversationEncryptionKeyEnvName
+    *******************************************************************************/
+   public String getConversationEncryptionKeyEnvName()
+   {
+      return (conversationEncryptionKeyEnvName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for conversationEncryptionKeyEnvName
+    *******************************************************************************/
+   public void setConversationEncryptionKeyEnvName(String conversationEncryptionKeyEnvName)
+   {
+      this.conversationEncryptionKeyEnvName = conversationEncryptionKeyEnvName;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for conversationEncryptionKeyEnvName
+    *******************************************************************************/
+   public AssistantQBitConfig withConversationEncryptionKeyEnvName(String conversationEncryptionKeyEnvName)
+   {
+      this.conversationEncryptionKeyEnvName = conversationEncryptionKeyEnvName;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Use host classifications when supplied, otherwise the configured stand-in.
+    *******************************************************************************/
+   @JsonIgnore
+   public ClassificationSource getClassificationSource()
+   {
+      return (classificationSource == null ? configuredClassifications : classificationSource);
+   }
+
+
+
+   /*******************************************************************************
+    ** Install a core-metadata adapter when the host supports it.
+    *******************************************************************************/
+   public AssistantQBitConfig withClassificationSource(ClassificationSource source)
+   {
+      classificationSource = source;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Classify a table until core classification metadata is available.
+    *******************************************************************************/
+   public AssistantQBitConfig withDataClassification(String tableName, DataClassification classification)
+   {
+      configuredClassifications.withClassification(tableName, classification);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Override the classification of one field.
+    *******************************************************************************/
+   public AssistantQBitConfig withDataClassification(String tableName, String fieldName, DataClassification classification)
+   {
+      configuredClassifications.withClassification(tableName, fieldName, classification);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for vectorStore
+    *******************************************************************************/
+   public VectorStore getVectorStore()
+   {
+      return (vectorStore);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for vectorStore
+    *******************************************************************************/
+   public void setVectorStore(VectorStore vectorStore)
+   {
+      this.vectorStore = vectorStore;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for vectorStore
+    *******************************************************************************/
+   public AssistantQBitConfig withVectorStore(VectorStore vectorStore)
+   {
+      this.vectorStore = vectorStore;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for allowedScheduledCredentialEnvNames
+    *******************************************************************************/
+   public Set<String> getAllowedScheduledCredentialEnvNames()
+   {
+      return (allowedScheduledCredentialEnvNames);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for allowedScheduledCredentialEnvNames
+    *******************************************************************************/
+   public void setAllowedScheduledCredentialEnvNames(Set<String> allowedScheduledCredentialEnvNames)
+   {
+      this.allowedScheduledCredentialEnvNames = allowedScheduledCredentialEnvNames;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for allowedScheduledCredentialEnvNames
+    *******************************************************************************/
+   public AssistantQBitConfig withAllowedScheduledCredentialEnvNames(Set<String> allowedScheduledCredentialEnvNames)
+   {
+      this.allowedScheduledCredentialEnvNames = allowedScheduledCredentialEnvNames;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for scheduledTasksSchedulerName
+    *******************************************************************************/
+   public String getScheduledTasksSchedulerName()
+   {
+      return (scheduledTasksSchedulerName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for scheduledTasksSchedulerName
+    *******************************************************************************/
+   public void setScheduledTasksSchedulerName(String scheduledTasksSchedulerName)
+   {
+      this.scheduledTasksSchedulerName = scheduledTasksSchedulerName;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for scheduledTasksSchedulerName
+    *******************************************************************************/
+   public AssistantQBitConfig withScheduledTasksSchedulerName(String scheduledTasksSchedulerName)
+   {
+      this.scheduledTasksSchedulerName = scheduledTasksSchedulerName;
+      return (this);
+   }
 }

@@ -25,20 +25,31 @@ import java.util.concurrent.Executors;
 import java.util.regex.Pattern;
 import com.kingsrook.qbits.assistant.access.AccessExplainer;
 import com.kingsrook.qbits.assistant.access.DataAccessService;
+import com.kingsrook.qbits.assistant.engine.BudgetService;
 import com.kingsrook.qbits.assistant.engine.ContextBuilder;
 import com.kingsrook.qbits.assistant.engine.PolicyService;
 import com.kingsrook.qbits.assistant.engine.ProfileService;
 import com.kingsrook.qbits.assistant.engine.ProviderService;
 import com.kingsrook.qbits.assistant.engine.RateLimiter;
 import com.kingsrook.qbits.assistant.engine.RunningTurn;
+import com.kingsrook.qbits.assistant.metadata.AssistantChannelWall;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
+import com.kingsrook.qbits.assistant.rag.InMemoryVectorStore;
+import com.kingsrook.qbits.assistant.rag.RagService;
+import com.kingsrook.qbits.assistant.rag.VectorStore;
+import com.kingsrook.qbits.assistant.scheduled.ScheduledTurn;
+import com.kingsrook.qbits.assistant.tools.KnowledgeTool;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
+import com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadTools;
 import com.kingsrook.qbits.assistant.uiapi.CoreUiApiGateway;
+import com.kingsrook.qbits.assistant.uiapi.UiApiCall;
 import com.kingsrook.qbits.assistant.uiapi.UiApiGateway;
+import com.kingsrook.qbits.assistant.uiapi.UiApiResult;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolKernel;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolKernelSettings;
 import com.kingsrook.qqq.backend.core.actions.ai.exposure.AiExposurePolicy;
 import com.kingsrook.qqq.backend.core.actions.ai.output.AiRedactor;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitMetaData;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
@@ -51,12 +62,19 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
  *******************************************************************************/
 public class AssistantRuntime
 {
+   private final ScheduledTurn scheduledTurn = new ScheduledTurn();
+
+   private final RagService ragService;
+   private final KnowledgeTool knowledgeTool;
+   private final BulkLoadTools bulkLoadTools;
+
    private final QInstance                        qInstance;
    private final AssistantQBitConfig              config;
    private final Clock                            clock;
    private final AssistantStore                   store;
    private final PolicyService                    policyService;
    private final ProviderService                  providerService;
+   private final BudgetService                    budgetService;
    private final RateLimiter                      rateLimiter;
    private final AiToolKernel                     kernel;
    private final ContextBuilder                   contextBuilder;
@@ -86,12 +104,15 @@ public class AssistantRuntime
     *******************************************************************************/
    public AssistantRuntime(QInstance qInstance, AssistantQBitConfig config, Clock clock)
    {
+      AssistantChannelWall.validate(qInstance);
       this.qInstance = qInstance;
       this.config = config;
       this.clock = clock;
-      this.store = new AssistantStore();
+      this.store = new AssistantStore(config);
       this.policyService = new PolicyService(config, store, clock);
       this.providerService = new ProviderService(config, store, clock);
+      this.budgetService = new BudgetService(store, providerService, clock);
+      this.policyService.withBudgetService(budgetService, providerService);
       this.rateLimiter = new RateLimiter(clock);
       AiToolKernelSettings settings = kernelSettings(config);
       this.kernel = new AiToolKernel(qInstance, settings);
@@ -101,8 +122,41 @@ public class AssistantRuntime
       this.accessExplainer = new AccessExplainer(qInstance, dataAccessService);
       this.toolbox = new UiApiToolbox(qInstance, dataAccessService, exposurePolicy, new AiRedactor(settings.getCustomRedactionPatterns()),
          config.getMaxCellChars() == null ? AiToolKernelSettings.DEFAULT_MAX_CELL_CHARS : config.getMaxCellChars());
-      this.uiApiGateway = config.getUiApiGateway() != null ? config.getUiApiGateway() : new CoreUiApiGateway(this::uiApiBaseUrl, qInstance);
-      this.contextBuilder = new ContextBuilder(config, kernel, toolbox);
+      UiApiGateway delegate = config.getUiApiGateway() != null ? config.getUiApiGateway() : new CoreUiApiGateway(this::uiApiBaseUrl, qInstance);
+      this.uiApiGateway = new UiApiGateway()
+      {
+         /*******************************************************************************
+          ** Delegate using this instance's configured collaborator.
+          *******************************************************************************/
+         @Override
+         public boolean isInvocable(String method, String pathTemplate)
+         {
+            return (delegate.isInvocable(method, pathTemplate));
+         }
+
+         /*******************************************************************************
+          ** Delegate using this instance's configured collaborator.
+          *******************************************************************************/
+         @Override
+         public UiApiResult invoke(UiApiCall call) throws QException
+         {
+            String channel = scheduledTurn.channel(call.getSessionUUID());
+            if(channel != null)
+            {
+               if(!(delegate instanceof CoreUiApiGateway))
+               {
+                  throw (new QException("Scheduled tasks require the core UI API gateway for client attribution."));
+               }
+               call.withClientDetail(channel.substring(CoreUiApiGateway.CLIENT_CHANNEL.length() + 1));
+            }
+            return (delegate.invoke(call));
+         }
+      };
+      VectorStore vectors = config.getVectorStore() == null ? new InMemoryVectorStore() : config.getVectorStore();
+      this.ragService = new RagService(this, vectors);
+      this.knowledgeTool = new KnowledgeTool(this, ragService, vectors);
+      this.bulkLoadTools = new BulkLoadTools(qInstance, dataAccessService, config.getBulkLoadRunner());
+      this.contextBuilder = new ContextBuilder(config, kernel, toolbox).withKnowledgeTool(knowledgeTool).withBulkLoadTools(bulkLoadTools);
    }
 
 
@@ -403,6 +457,51 @@ public class AssistantRuntime
    public ProviderService getProviderService()
    {
       return (providerService);
+   }
+
+
+   /*******************************************************************************
+    ** Data-driven budget enforcement.
+    *******************************************************************************/
+   public BudgetService getBudgetService()
+   {
+      return (budgetService);
+   }
+
+
+   /*******************************************************************************
+    ** Manual indexing service, always using the current caller's session.
+    *******************************************************************************/
+   public RagService getRagService()
+   {
+      return (ragService);
+   }
+
+
+
+   /*******************************************************************************
+    ** Permission-filtered retrieval tool.
+    *******************************************************************************/
+   public KnowledgeTool getKnowledgeTool()
+   {
+      return (knowledgeTool);
+   }
+
+   /*******************************************************************************
+    ** Server-owned scheduled execution context.
+    *******************************************************************************/
+   public ScheduledTurn getScheduledTurn()
+   {
+      return (scheduledTurn);
+   }
+
+
+   /*******************************************************************************
+    ** The bulk-load tools (saved profiles, attached files, dry runs, loads).
+    *******************************************************************************/
+   public BulkLoadTools getBulkLoadTools()
+   {
+      return (bulkLoadTools);
    }
 
 }

@@ -41,9 +41,13 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.audits.AuditsMetaDataProvider;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.ClientChannelsMetaData;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -58,6 +62,65 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *******************************************************************************/
 class UiApiToolsSecurityTest extends BaseAssistantTest
 {
+   /*******************************************************************************
+    ** The default channel wall hides history, even when the user can read audits.
+    *******************************************************************************/
+   @Test
+   void historyHiddenByDefault() throws Exception
+   {
+      assertThat(config.getRecordHistory()).isFalse();
+      UiApiTestServer.serve(qInstance, config);
+      for(String table : List.of("auditTable", "audit", "auditDetail"))
+      {
+         UiApiResult result = config.getRuntime().getUiApiGateway().invoke(new UiApiCall("POST", "/table/{tableName}/query")
+            .withPathParam("tableName", table).withJsonBody(Map.of()).withSessionUUID(AssistantTestFixture.EDITOR));
+         assertThat(result.status()).isEqualTo(403);
+      }
+      assertThat(config.getRuntime().getToolbox().definitions()).extracting(definition -> definition.getName()).doesNotContain(UiApiToolbox.RECORD_HISTORY);
+      assertThat(tool(AssistantTestFixture.EDITOR, null, UiApiToolbox.RECORD_HISTORY, input("table", "page", "id", "12")).getHttpStatus()).isEqualTo(403);
+   }
+
+
+
+   /*******************************************************************************
+    ** A host opt-in offers history and reads it through the real UI API.
+    *******************************************************************************/
+   @Test
+   void historyOfferedAndReadableAfterHostOptIn() throws Exception
+   {
+      config.getRuntime().close();
+      qInstance = AssistantTestFixture.build(config.withRecordHistory(true));
+      assertThat(config.getRuntime().getToolbox().definitions()).extracting(definition -> definition.getName()).contains(UiApiToolbox.RECORD_HISTORY);
+      UiApiToolbox.Outcome outcome = tool(AssistantTestFixture.EDITOR, null, UiApiToolbox.RECORD_HISTORY, input("table", "page", "id", "12", "since", "THIS_WEEK"));
+      assertThat(outcome.getResult().getOutcome()).isEqualTo(AiToolOutcome.OK);
+      assertThat(outcome.getHttpStatus()).isEqualTo(200);
+      assertThat(outcome.getResult().getModelContent()).contains("title", "metaDescription", "/app/page/12");
+   }
+
+
+
+   /*******************************************************************************
+    ** Each audit table's explicit or inherited channel denial still hides history.
+    *******************************************************************************/
+   @ParameterizedTest
+   @ValueSource(strings = { AuditsMetaDataProvider.TABLE_NAME_AUDIT_TABLE, AuditsMetaDataProvider.TABLE_NAME_AUDIT, AuditsMetaDataProvider.TABLE_NAME_AUDIT_DETAIL })
+   void historyRespectsEachAuditTableDenial(String name) throws Exception
+   {
+      config.getRuntime().close();
+      qInstance = AssistantTestFixture.build(config.withRecordHistory(true));
+      ClientChannelsMetaData channels = ClientChannelsMetaData.ofOrWithNew(qInstance);
+      channels.withDeniedObject("assistant", name);
+      assertThat(config.getRuntime().getToolbox().definitions()).extracting(definition -> definition.getName()).doesNotContain(UiApiToolbox.RECORD_HISTORY);
+      channels.getDeniedObjects().get("assistant").remove(name);
+      qInstance.getTable(name).getPermissionRules().withDeniedClients(Set.of("assistant"));
+      assertThat(config.getRuntime().getToolbox().definitions()).extracting(definition -> definition.getName()).doesNotContain(UiApiToolbox.RECORD_HISTORY);
+      qInstance.setDefaultPermissionRules(qInstance.getTable(name).getPermissionRules());
+      qInstance.getTable(name).setPermissionRules(null);
+      assertThat(config.getRuntime().getToolbox().definitions()).extracting(definition -> definition.getName()).doesNotContain(UiApiToolbox.RECORD_HISTORY);
+   }
+
+
+
    private final HttpClient client = HttpClient.newHttpClient();
 
 
@@ -268,7 +331,7 @@ class UiApiToolsSecurityTest extends BaseAssistantTest
       assertThat(log).hasSize(1);
       assertThat(log.get(0).getUiApiOperation()).isEqualTo("POST /table/{tableName}");
       assertThat(log.get(0).getHttpStatus()).isBetween(200, 299);
-      assertThat(log.get(0).getAuditHref()).startsWith("/app/blog_post/");
+      assertThat(log.get(0).getAuditHref()).startsWith("/app/audit?filter=");
       QContext.clear();
    }
 

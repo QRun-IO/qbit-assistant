@@ -29,6 +29,7 @@ import com.kingsrook.qbits.assistant.provider.ModelRequest;
 import com.kingsrook.qbits.assistant.testing.AssistantTestFixture;
 import com.kingsrook.qbits.assistant.testing.BaseAssistantTest;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
+import com.kingsrook.qqq.backend.core.actions.preferences.UserPreferencesAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
@@ -181,15 +182,15 @@ class WriteModeTest extends BaseAssistantTest
       save(AssistantDataAccess.TABLE_NAME, Map.of("objectType", "TABLE", "objectName", "page", "mode", "READ_WRITE", "autoConfirmOk", true));
 
       AssistantApi admin = api(AssistantTestFixture.ADMIN);
-      admin.patchPreferences(Map.of("defaultWriteMode", true));
+      new UserPreferencesAction().patchSection("assistant", Map.of("values", Map.of("defaultWriteMode", true)));
       assertThat(admin.createConversation(new LinkedHashMap<>()).get("writeMode")).isEqualTo(true);
-      assertThatThrownBy(() -> admin.patchPreferences(Map.of("autoConfirmLowRisk", true))).hasMessageContaining("not allowed");
+      assertThatThrownBy(() -> new UserPreferencesAction().patchSection("assistant", Map.of("values", Map.of("autoConfirmLowRisk", true)))).hasMessageContaining("can't be changed");
       QContext.clear();
 
       save(AssistantPolicy.TABLE_NAME, Map.of("name", "default", "autoConfirmAllowed", true));
       config.getRuntime().getPolicyService().invalidate();
       AssistantApi allowed = api(AssistantTestFixture.ADMIN);
-      assertThat(allowed.patchPreferences(Map.of("autoConfirmLowRisk", true)).get("autoConfirmLowRisk")).isEqualTo(true);
+      assertThat(new UserPreferencesAction().patchSection("assistant", Map.of("values", Map.of("autoConfirmLowRisk", true))).getValues().getValues().get("autoConfirmLowRisk")).isEqualTo(true);
       QContext.clear();
 
       provider.thenToolUses("Saving.", List.of(

@@ -180,6 +180,7 @@ public class GoldenTasks
          },
          o -> live(o, "search_records", "/app/blog_post/1")));
 
+      tasks.add(PresentationGoldenTask.task());
       return (tasks);
    }
 

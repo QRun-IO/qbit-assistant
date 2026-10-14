@@ -21,16 +21,29 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import com.kingsrook.qbits.assistant.api.AssistantRoutes;
+import com.kingsrook.qbits.assistant.developer.AssistantDeveloperPanels;
 import com.kingsrook.qbits.assistant.home.AssistantAccessWidget;
 import com.kingsrook.qbits.assistant.home.AssistantHome;
+import com.kingsrook.qbits.assistant.metadata.AssistantChannelWall;
+import com.kingsrook.qbits.assistant.metadata.AssistantInstanceMetaData;
 import com.kingsrook.qbits.assistant.metadata.AssistantMetaDataBuilder;
 import com.kingsrook.qbits.assistant.metadata.AssistantRecordScreens;
+import com.kingsrook.qbits.assistant.metadata.AssistantPreferencesProvider;
+import com.kingsrook.qbits.assistant.model.AssistantBudget;
+import com.kingsrook.qbits.assistant.processes.DiscoverModelsProcess;
+import com.kingsrook.qbits.assistant.processes.KnowledgeIndexProcess;
+import com.kingsrook.qbits.assistant.processes.ScheduledTaskProcess;
 import com.kingsrook.qbits.assistant.processes.TestConnectionProcess;
+import com.kingsrook.qbits.assistant.processes.TestModelConnectionProcess;
+import com.kingsrook.qqq.backend.core.alerts.AlertSeverity;
+import com.kingsrook.qqq.backend.core.alerts.QAlertTypeMetaData;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducerMultiOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.ClientChannelsMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitMetaDataProducer;
@@ -153,6 +166,9 @@ public class AssistantQBitProducer implements QBitMetaDataProducer<AssistantQBit
          qInstance.addTable(customized);
          tables.add(customized);
       }
+      qInstance.add(budgetAlertType("warning", "Assistant budget warning", "Assistant usage has reached the budget warning threshold.", AlertSeverity.WARNING));
+      qInstance.add(budgetAlertType("downgraded", "Assistant budget downgraded", "Assistant usage has reached the budget limit and switched to a cheaper model.", AlertSeverity.WARNING));
+      qInstance.add(budgetAlertType("stopped", "Assistant budget stopped", "Assistant dispatch has stopped because a budget limit was reached.", AlertSeverity.ERROR));
       qInstance.addPossibleValueSource(builder.buildConversationPossibleValueSource());
       AssistantRecordScreens.buildPossibleValueSources().forEach(qInstance::addPossibleValueSource);
       AssistantRecordScreens.buildSettingsPossibleValueSources(qBitConfig).forEach(qInstance::addPossibleValueSource);
@@ -165,15 +181,78 @@ public class AssistantQBitProducer implements QBitMetaDataProducer<AssistantQBit
       QProcessMetaData testConnection = TestConnectionProcess.process();
       testConnection.setSourceQBitName(qBitMetaData.getName());
       qInstance.addProcess(testConnection);
+      for(QProcessMetaData process : List.of(DiscoverModelsProcess.process(), TestModelConnectionProcess.process()))
+      {
+         process.setSourceQBitName(qBitMetaData.getName());
+         qInstance.addProcess(process);
+      }
 
+      for(QProcessMetaData process : KnowledgeIndexProcess.processes())
+      {
+         process.setSourceQBitName(qBitMetaData.getName());
+         qInstance.addProcess(process);
+      }
+
+      for(QProcessMetaData process : ScheduledTaskProcess.processes(qBitConfig))
+      {
+         process.setSourceQBitName(qBitMetaData.getName());
+         qInstance.addProcess(process);
+      }
       qInstance.addWidget(AssistantHome.widget());
       qInstance.addWidget(AssistantAccessWidget.widget());
 
       QAppMetaData app = builder.buildAdminApp(tables);
       qInstance.addApp(app);
 
+      AssistantPreferencesProvider.register(qInstance);
+      AssistantChannelWall.register(qInstance);
+      if(Boolean.TRUE.equals(qBitConfig.getRecordHistory()))
+      {
+         enableRecordHistory(ClientChannelsMetaData.ofOrWithNew(qInstance));
+      }
+      else
+      {
+         ClientChannelsMetaData.ofOrWithNew(qInstance).withDeniedPattern("assistant", "audit*");
+      }
       postProduceActions(new MetaDataProducerMultiOutput(), qInstance);
       return (new MetaDataProducerMultiOutput());
+   }
+
+
+
+   /*******************************************************************************
+    ** STAND-IN(core=QRun-IO/qqq#1193, removeBy=RC.8): call withAssistantAuditReads() directly once the qbit builds on a QQQ RC that has it
+    *******************************************************************************/
+   private void enableRecordHistory(ClientChannelsMetaData channels)
+   {
+      try
+      {
+         channels.getClass().getMethod("withAssistantAuditReads").invoke(channels);
+      }
+      catch(NoSuchMethodException e)
+      {
+         List<String> denied = channels.getDeniedPatterns().get("assistant");
+         if(denied != null)
+         {
+            denied.removeIf("audit*"::equals);
+         }
+      }
+      catch(ReflectiveOperationException e)
+      {
+         throw (new IllegalStateException("Could not enable assistant audit reads.", e));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Declare budget alerts as top-level core metadata for admin visibility.
+    *******************************************************************************/
+   private QAlertTypeMetaData budgetAlertType(String state, String label, String description, AlertSeverity severity)
+   {
+      return (new QAlertTypeMetaData().withName("assistant.budget." + state).withLabel(label).withDescription(description)
+         .withDefaultSeverity(severity).withHowToFix("Raise the budget or grant an override in Assistant → Budgets")
+         .withSourceQBitName(ARTIFACT_ID).withVisibilityPermission("assistant.admin").withSubjectTableName(AssistantBudget.TABLE_NAME));
    }
 
 
@@ -194,19 +273,19 @@ public class AssistantQBitProducer implements QBitMetaDataProducer<AssistantQBit
       boolean routes = false;
       if(Boolean.TRUE.equals(qBitConfig.getRegisterRoutes()) && isJavalinAvailable())
       {
-         com.kingsrook.qbits.assistant.api.AssistantRoutes.register(qInstance);
+         AssistantRoutes.register(qInstance);
          routes = true;
       }
 
       if(qBitConfig.isEffectivelyEnabled())
       {
-         com.kingsrook.qbits.assistant.metadata.AssistantInstanceMetaData.register(qInstance);
+         AssistantInstanceMetaData.register(qInstance);
       }
 
       boolean developerPanel = false;
-      if(com.kingsrook.qbits.assistant.developer.AssistantDeveloperPanels.isContractAvailable())
+      if(AssistantDeveloperPanels.isContractAvailable())
       {
-         com.kingsrook.qbits.assistant.developer.AssistantDeveloperPanels.register(qInstance);
+         AssistantDeveloperPanels.register(qInstance);
          developerPanel = true;
       }
 

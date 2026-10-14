@@ -51,7 +51,7 @@ public class AssistantUsage extends QRecordEntity
    @QField(isEditable = false, maxLength = 50)
    private String providerType;
 
-   @QField(isEditable = false, maxLength = 100)
+   @QField(isEditable = false, maxLength = 200)
    private String model;
 
    @QField(isEditable = false, maxLength = 16)

@@ -47,6 +47,7 @@ import com.kingsrook.qbits.assistant.model.AssistantTurnEvent;
 import com.kingsrook.qbits.assistant.model.AssistantUserPreference;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
+import com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadTools;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolOutcome;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolResult;
 import com.kingsrook.qqq.backend.core.actions.ai.output.AiRedactor;
@@ -634,8 +635,10 @@ public class AssistantApi
          throw (new QException("The stored values of action " + id + " are not valid JSON", e));
       }
       PolicyService.EffectivePolicy policy = runtime.getPolicyService().current(true);
-      UiApiToolbox.Context context = new UiApiToolbox.Context(session.getUuid(), session.getValue(QSession.VALUE_KEY_USER_TIMEZONE), runtime.getUiApiGateway(), policy.tools(), null, credentials);
-      UiApiToolbox.Outcome outcome = runtime.getToolbox().executeConfirmedWrite(context, action.getToolCallId(), action.getToolName(), action.getTableName(), action.getRecordId(), values);
+      UiApiToolbox.Context context = new UiApiToolbox.Context(session.getUuid(), session.getValue(QSession.VALUE_KEY_USER_TIMEZONE), runtime.getUiApiGateway(), policy.tools(), null, credentials, action.getTurnId() == null ? null : String.valueOf(action.getTurnId()));
+      UiApiToolbox.Outcome outcome = BulkLoadTools.WRITE_TOOLS.contains(action.getToolName())
+         ? runtime.getBulkLoadTools().executeConfirmed(context, action.getToolCallId(), action.getToolName(), action.getTableName(), values)
+         : runtime.getToolbox().executeConfirmedWrite(context, action.getToolCallId(), action.getToolName(), action.getTableName(), action.getRecordId(), values);
       AiToolResult result = outcome.getResult();
       boolean ok = result.getOutcome() == AiToolOutcome.OK;
 
@@ -647,6 +650,7 @@ public class AssistantApi
 
       store.insert(new AssistantToolCall()
          .withTurnId(action.getTurnId())
+         .withClientChannel("assistant" + (action.getTurnId() == null ? "" : "/" + action.getTurnId()))
          .withConversationId(action.getConversationId())
          .withUserId(userId)
          .withToolCallId(action.getToolCallId())
@@ -754,9 +758,23 @@ public class AssistantApi
     *******************************************************************************/
    public Map<String, Object> access(String table, String prompt) throws QException, AssistantApiException
    {
+      return (access(table, prompt, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** A supplied turn must belong to this user before using it for attribution.
+    *******************************************************************************/
+   public Map<String, Object> access(String table, String prompt, Integer turnId) throws QException, AssistantApiException
+   {
       requireAccess();
+      if(turnId != null)
+      {
+         requireTurn(turnId);
+      }
       List<Map<String, Object>> tables = new ArrayList<>();
-      for(AccessExplainer.TableAccess access : runtime.getAccessExplainer().explain(runtime.getUiApiGateway(), session.getUuid(), credentials, runtime.getPolicyService().current(false).tools(), table, prompt))
+      for(AccessExplainer.TableAccess access : runtime.getAccessExplainer().explain(runtime.getUiApiGateway(), session.getUuid(), credentials, runtime.getPolicyService().current(false).tools(), table, prompt, turnId == null ? null : String.valueOf(turnId)))
       {
          if(!access.uiVisible() && access.mode() == DataAccessMode.NONE)
          {
@@ -805,54 +823,15 @@ public class AssistantApi
 
 
    /*******************************************************************************
-    ** GET /preferences: the user's own preferences.
+    ** Effective defaults for the panel config, narrowed by current policy.
     *******************************************************************************/
-   public Map<String, Object> preferences() throws QException
+   private Map<String, Object> preferences() throws QException
    {
       AssistantUserPreference preference = userId == null ? null : store.getPreference(userId);
       Map<String, Object>     map        = new LinkedHashMap<>();
-      map.put("defaultWriteMode", preference != null && Boolean.TRUE.equals(preference.getDefaultWriteMode()));
-      map.put("autoConfirmLowRisk", preference != null && Boolean.TRUE.equals(preference.getAutoConfirmLowRisk()));
+      map.put("defaultWriteMode", writeModeAvailable() && preference != null && Boolean.TRUE.equals(preference.getDefaultWriteMode()));
+      map.put("autoConfirmLowRisk", runtime.getPolicyService().current(false).tools().autoConfirmAllowed() && preference != null && Boolean.TRUE.equals(preference.getAutoConfirmLowRisk()));
       return (map);
-   }
-
-
-
-   /*******************************************************************************
-    ** PATCH /preferences: change the user's own preferences. Auto-confirm can
-    ** be turned on only when the policy allows it.
-    *******************************************************************************/
-   public Map<String, Object> patchPreferences(Map<String, Object> body) throws QException, AssistantApiException
-   {
-      requireAccess();
-      AssistantUserPreference preference = store.getPreference(userId);
-      if(preference == null)
-      {
-         preference = store.insert(new AssistantUserPreference().withUserId(userId).withDefaultWriteMode(false).withAutoConfirmLowRisk(false));
-      }
-      QRecord update = new QRecord().withValue("id", preference.getId());
-      if(body.containsKey("defaultWriteMode"))
-      {
-         if(!(body.get("defaultWriteMode") instanceof Boolean value))
-         {
-            throw (new AssistantApiException(400, "defaultWriteMode must be true or false."));
-         }
-         update.setValue("defaultWriteMode", value);
-      }
-      if(body.containsKey("autoConfirmLowRisk"))
-      {
-         if(!(body.get("autoConfirmLowRisk") instanceof Boolean value))
-         {
-            throw (new AssistantApiException(400, "autoConfirmLowRisk must be true or false."));
-         }
-         if(value && !runtime.getPolicyService().current(false).tools().autoConfirmAllowed())
-         {
-            throw (new AssistantApiException(403, "AUTO_CONFIRM_UNAVAILABLE", "Auto-confirm is not allowed by the assistant policy."));
-         }
-         update.setValue("autoConfirmLowRisk", value);
-      }
-      store.updateFields(AssistantUserPreference.TABLE_NAME, update);
-      return (preferences());
    }
 
 

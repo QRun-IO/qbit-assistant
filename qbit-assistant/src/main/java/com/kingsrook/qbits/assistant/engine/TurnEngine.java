@@ -27,16 +27,20 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
 import com.kingsrook.qbits.assistant.model.AssistantPendingAction;
+import com.kingsrook.qbits.assistant.model.AssistantScheduledTask;
 import com.kingsrook.qbits.assistant.model.AssistantToolCall;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
 import com.kingsrook.qbits.assistant.model.AssistantUserPreference;
@@ -52,7 +56,11 @@ import com.kingsrook.qbits.assistant.provider.ModelRequest;
 import com.kingsrook.qbits.assistant.provider.ModelResponse;
 import com.kingsrook.qbits.assistant.provider.ModelUsage;
 import com.kingsrook.qbits.assistant.provider.StreamHandle;
+import com.kingsrook.qbits.assistant.scheduled.ScheduledTurn;
+import com.kingsrook.qbits.assistant.tools.KnowledgeTool;
+import com.kingsrook.qbits.assistant.tools.PresentResultsTool;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
+import com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadTools;
 import com.kingsrook.qqq.backend.core.actions.ai.AiRecordRef;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolCall;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolOutcome;
@@ -103,6 +111,7 @@ public class TurnEngine implements Runnable
 
    private static final Set<AiToolOutcome> ERROR_OUTCOMES = Set.of(AiToolOutcome.DENIED, AiToolOutcome.NOT_FOUND, AiToolOutcome.INVALID_INPUT, AiToolOutcome.ERROR);
 
+   private final PresentResultsTool         presenter;
    private final AssistantRuntime           runtime;
    private final AssistantQBitConfig        config;
    private final AssistantStore             store;
@@ -125,16 +134,20 @@ public class TurnEngine implements Runnable
    private final StringBuilder              textBuffer    = new StringBuilder();
    private long                             lastTextFlush = System.currentTimeMillis();
 
+   private AssistantScheduledTask scheduledTask;
+
+
    private Instant startedAt;
    private Instant deadline;
    private int     toolCallCount  = 0;
    private int     modelCallCount = 0;
    private long    costMicros     = 0;
 
+   private TurnClassification classification;
+   private FallbackChain fallback;
    private ProviderService.Active active;
    private String                 model;
-   private Long                   capMicros;
-   private long                   monthCostAtStart = 0;
+   private ProviderService.Active budgetOrigin;
 
    private volatile boolean finished = false;
    private UiApiCredentials credentials;
@@ -149,6 +162,7 @@ public class TurnEngine implements Runnable
       AssistantTurn turn, String userText, Map<String, Object> pageContext, PolicyService.EffectivePolicy policy, RunningTurn running, String softBudgetNotice)
    {
       this.runtime = runtime;
+      this.presenter = new PresentResultsTool(runtime.getQInstance());
       this.config = runtime.getConfig();
       this.store = runtime.getStore();
       this.session = session;
@@ -196,6 +210,15 @@ public class TurnEngine implements Runnable
       try
       {
          QContext.init(runtime.getQInstance(), session);
+         scheduledTask = runtime.getScheduledTurn().task(conversation.getId());
+         if(conversation.getScheduledTaskId() != null && scheduledTask == null)
+         {
+            throw (new QException("Scheduled execution context is no longer available; start a new conversation."));
+         }
+         toolPolicy = scheduledTask == null ? toolPolicy() : ScheduledTurn.tools(runtime, scheduledTask, policy.tools());
+         ScheduledTurn.checkCost(runtime, conversation.getId(), turn.getId());
+         classification = new TurnClassification(config.getClassificationSource(), conversation, pageContext);
+         store.saveClassification(userId, conversation.getId(), turn.getId(), classification);
          startKillSwitchWatcher();
 
          emit(TurnEvent.MESSAGE_START, map("turnId", turn.getId(), "conversationId", conversation.getId(), "userMessageId", userMessage.getId(), "messageId", assistantMessage.getId()));
@@ -206,17 +229,26 @@ public class TurnEngine implements Runnable
          persistPendingEvents();
 
          model = policy.mainModel();
-         active = runtime.getProviderService().resolve(policy.mainModel());
+         ModelRouter router = new ModelRouter(runtime);
+         ModelRouter.Route route;
+         try
+         {
+            route = router.route(session, conversation, turn, userText, pageContext, policy, classification, running, deadline, text -> notice("warning", text));
+         }
+         finally
+         {
+            usage.add(router.accounting().usage());
+            costMicros += router.accounting().costMicros();
+            modelCallCount += router.accounting().calls();
+         }
+         active = route.active();
+         fallback = new FallbackChain(runtime, classification, turn, text -> notice("warning", text));
          if(active == null)
          {
             throw (new ModelProviderException(ModelProviderException.Kind.AUTHENTICATION, null, "No usable assistant provider is configured."));
          }
          model = active.model();
-         capMicros = ProviderService.capMicros(active.row());
-         if(capMicros != null)
-         {
-            monthCostAtStart = runtime.getProviderService().monthToDateCostMicros(active.providerId());
-         }
+         budgetOrigin = active;
          AssistantModelProvider provider = active.provider();
          ModelCapabilities      caps     = provider.getCapabilities(model);
 
@@ -230,9 +262,9 @@ public class TurnEngine implements Runnable
          }
 
          String                  appName = runtime.appNameFor(pageContext);
-         ProfileService.Persona  persona = runtime.getProfileService().persona(session, appName);
+         ProfileService.Persona  persona = runtime.getProfileService().persona(session, appName, scheduledTask == null ? null : scheduledTask.getProfileId());
          String                  profileText = ProfileService.instructions(persona, runtime.getProfileService().relevantSkills(persona.profileId(), userText, appName));
-         ModelRequest request = runtime.getContextBuilder().build(session, model, policy.mainEffort(), history, userText, pageContext, toolPolicy(), profileText);
+         ModelRequest request = runtime.getContextBuilder().build(session, model, route.effort(), history, userText, pageContext, toolPolicy, profileText, turn.getId() == null ? null : String.valueOf(turn.getId()));
          Integer maxPerRequest = active.row() == null ? null : active.row().getMaxOutputTokensPerRequest();
          if(maxPerRequest != null && (request.getMaxTokens() == null || request.getMaxTokens() > maxPerRequest))
          {
@@ -242,7 +274,7 @@ public class TurnEngine implements Runnable
          {
             request.setParallelToolCalls(false);
          }
-         Set<String> allowedTools = runtime.getContextBuilder().toolNames(toolPolicy());
+         Set<String> allowedTools = runtime.getContextBuilder().toolNames(toolPolicy);
 
          boolean toolLimitReached = false;
          while(true)
@@ -257,16 +289,9 @@ public class TurnEngine implements Runnable
                break;
             }
 
-            if(capMicros != null && monthCostAtStart + costMicros >= capMicros)
-            {
-               status = "ERROR";
-               errorCode = "BUDGET";
-               errorText = "The assistant has reached this provider's monthly cost cap. Ask an administrator.";
-               break;
-            }
-
-            ModelResponse response = callModelWithStrictFallback(provider, request);
+            ModelResponse response = fallback.call(request, () -> active, selected -> callModelWithStrictFallback(selected, request));
             stopReason = response.getStopReason();
+            ScheduledTurn.checkCost(runtime, conversation.getId(), turn.getId());
 
             if(ModelResponse.STOP_CANCELLED.equals(stopReason))
             {
@@ -277,7 +302,7 @@ public class TurnEngine implements Runnable
                break;
             }
 
-            PolicyService.BudgetStatus budget = runtime.getPolicyService().checkBudget(policy, userId, usage.billableTokens(), costMicros);
+            PolicyService.BudgetStatus budget = runtime.getPolicyService().checkConfiguredBudget(policy, userId, usage.billableTokens(), costMicros);
             if(budget.hardExceeded())
             {
                status = "ERROR";
@@ -348,19 +373,26 @@ public class TurnEngine implements Runnable
             }
          }
       }
+      catch(BudgetService.Blocked e)
+      {
+         status = "ERROR";
+         errorCode = "BUDGET";
+         errorText = e.getMessage();
+      }
+      catch(TurnDataRouting.Blocked e)
+      {
+         status = "ERROR";
+         errorCode = e.getBlock().errorCode();
+         errorText = e.getBlock().reason();
+      }
       catch(ModelProviderException e)
       {
-         if(e.getPartialUsage() != null)
-         {
-            usage.add(e.getPartialUsage());
-            costMicros += pricing().costMicros(e.getPartialUsage());
-         }
          status = "ERROR";
          errorCode = e.getKind() == ModelProviderException.Kind.TIMEOUT ? "TIMEOUT" : "PROVIDER";
          errorText = e.getKind() == ModelProviderException.Kind.TIMEOUT
             ? "The assistant took too long to answer."
             : (e.isRetryable() ? "The AI service is busy or unavailable right now. Try again in a moment." : "The AI service could not answer this request.");
-         if(!e.isRetryable() && e.getProviderMessage() != null && session.hasPermission(AssistantQBitConfig.ADMIN_PERMISSION))
+         if(!isHipaaMode() && !e.isRetryable() && e.getProviderMessage() != null && session.hasPermission(AssistantQBitConfig.ADMIN_PERMISSION))
          {
             //////////////////////////////////////////////////////////////
             // administrators see the provider's own (sanitized) reason //
@@ -368,7 +400,7 @@ public class TurnEngine implements Runnable
             errorText += " The provider said: " + UsageRecorder.errorText(e);
          }
          LOG.warn("Assistant model call failed", logPair("turnId", turn.getId()), logPair("kind", e.getKind()), logPair("httpStatus", e.getHttpStatus()),
-            logPair("errorType", e.getProviderErrorType()), logPair("errorMessage", e.getProviderMessage()), logPair("requestId", e.getRequestId()));
+            logPair("errorType", hipaaSafe(e.getProviderErrorType())), logPair("errorMessage", hipaaSafe(e.getProviderMessage())), logPair("requestId", hipaaSafe(e.getRequestId())));
       }
       catch(InterruptedException e)
       {
@@ -385,7 +417,7 @@ public class TurnEngine implements Runnable
          status = "ERROR";
          errorCode = "INTERNAL";
          errorText = "Something went wrong while answering. Try again.";
-         LOG.warn("Assistant turn failed", e, logPair("turnId", turn.getId()));
+         LOG.warn("Assistant turn failed", hipaaSafe(e), logPair("turnId", turn.getId()));
       }
       finally
       {
@@ -486,7 +518,7 @@ public class TurnEngine implements Runnable
       }
       catch(QException e)
       {
-         LOG.debug("Could not re-read turn status", e);
+         LOG.debug("Could not re-read turn status", hipaaSafe(e));
       }
       return (null);
    }
@@ -513,23 +545,23 @@ public class TurnEngine implements Runnable
     ** tool schemas, retry once (and for the rest of the turn) with no strict
     ** tools. The kernel validates every tool input either way.
     *******************************************************************************/
-   private ModelResponse callModelWithStrictFallback(AssistantModelProvider provider, ModelRequest request) throws ModelProviderException, InterruptedException
+   private ModelResponse callModelWithStrictFallback(ProviderService.Active candidate, ModelRequest request) throws QException, ModelProviderException, InterruptedException
    {
       try
       {
-         return (callModel(provider, request));
+         return (callModel(candidate, request));
       }
       catch(ModelProviderException e)
       {
          boolean anyStrict = request.getTools().stream().anyMatch(tool -> Boolean.TRUE.equals(tool.getStrict()));
-         if(!e.isStrictSchemaRejected() || !anyStrict)
+         if(!e.isStrictSchemaRejected() || !anyStrict || fallback.hasOutput())
          {
             throw (e);
          }
          LOG.warn("Assistant provider refused the strict tool schemas; retrying without strict tools", logPair("turnId", turn.getId()), logPair("model", model),
-            logPair("errorMessage", e.getProviderMessage()), logPair("requestId", e.getRequestId()));
+            logPair("errorMessage", hipaaSafe(e.getProviderMessage())), logPair("requestId", hipaaSafe(e.getRequestId())));
          request.getTools().forEach(tool -> tool.setStrict(false));
-         return (callModel(provider, request));
+         return (callModel(candidate, request));
       }
    }
 
@@ -538,9 +570,50 @@ public class TurnEngine implements Runnable
    /*******************************************************************************
     ** One streamed model call.
     *******************************************************************************/
-   private ModelResponse callModel(AssistantModelProvider provider, ModelRequest request) throws ModelProviderException, InterruptedException
+   private ModelResponse callModel(ProviderService.Active candidate, ModelRequest request) throws QException, ModelProviderException, InterruptedException
    {
-      modelCallCount++;
+      if(checkStop() != null)
+      {
+         return (new ModelResponse().withStopReason(ModelResponse.STOP_CANCELLED));
+      }
+      ScheduledTurn.checkCost(runtime, conversation.getId(), turn.getId());
+      PolicyService.BudgetStatus configuredBudget = runtime.getPolicyService().checkConfiguredBudget(policy, userId, usage.billableTokens(), costMicros);
+      if(configuredBudget.hardExceeded())
+      {
+         throw (new BudgetService.Blocked(configuredBudget.message()));
+      }
+      classification.inherit(store.getConversation(userId, conversation.getId()));
+      BudgetService.Decision budgetDecision = fallback.budget(budgetOrigin, candidate);
+      budgetDecision.notices().forEach(text -> notice("warning", text));
+      if(budgetDecision.stopped())
+      {
+         throw (new BudgetService.Blocked(budgetDecision.reason()));
+      }
+      ProviderService.Active selected = budgetDecision.active();
+      if(!Objects.equals(active.providerId(), selected.providerId()) || !Objects.equals(active.model(), selected.model()))
+      {
+         active = selected;
+         model = active.model();
+         request.setModel(model);
+         FallbackChain.neutralHistory(request);
+         request.getTools().forEach(tool -> tool.setStrict(false));
+         ModelCapabilities capabilities = active.provider().getCapabilities(model);
+         if(capabilities != null && Boolean.FALSE.equals(capabilities.getParallelToolCalls()))
+         {
+            request.setParallelToolCalls(false);
+         }
+         Integer maxTokens = active.row() == null ? null : active.row().getMaxOutputTokensPerRequest();
+         if(maxTokens != null && (request.getMaxTokens() == null || request.getMaxTokens() > maxTokens))
+         {
+            request.setMaxTokens(maxTokens);
+         }
+      }
+      AssistantModelProvider provider = active.provider();
+      Long selectedCap = ProviderService.capMicros(active.row());
+      if(selectedCap != null && runtime.getProviderService().monthToDateCostMicros(active.providerId()) >= selectedCap)
+      {
+         throw (new BudgetService.Blocked("The assistant has reached this provider's monthly cost cap. Ask an administrator."));
+      }
       ModelEventListener listener = new ModelEventListener()
       {
          @Override
@@ -564,7 +637,10 @@ public class TurnEngine implements Runnable
       ModelResponse response = null;
       try
       {
-         StreamHandle handle = provider.stream(request.copy(), listener);
+         TurnDataRouting.beforeModelCall(runtime, classification, turn, active);
+         fallback.beforeCall(active);
+         modelCallCount++;
+         StreamHandle handle = provider.stream(request.copy(), fallback.listener(listener));
          running.setCurrentHandle(handle);
          try
          {
@@ -580,6 +656,11 @@ public class TurnEngine implements Runnable
       catch(ModelProviderException e)
       {
          recordUsage(null, e, started);
+         if(e.getPartialUsage() != null)
+         {
+            usage.add(e.getPartialUsage());
+            costMicros += pricing().costMicros(e.getPartialUsage());
+         }
          throw (e);
       }
       finally
@@ -609,7 +690,7 @@ public class TurnEngine implements Runnable
    /*******************************************************************************
     ** Run a batch of tool calls through the kernel.
     *******************************************************************************/
-   private ToolBatch executeTools(List<ModelPart> toolUses, Set<String> allowedTools) throws InterruptedException
+   private ToolBatch executeTools(List<ModelPart> toolUses, Set<String> allowedTools) throws QException, InterruptedException
    {
       int              allowed      = Math.max(0, config.getMaxToolCallsPerTurn() - toolCallCount);
       boolean          limitReached = false;
@@ -647,7 +728,11 @@ public class TurnEngine implements Runnable
                {
                   if(!running.isCancelled())
                   {
-                     if(ContextBuilder.KERNEL_TOOLS.contains(call.getName()))
+                     if(PresentResultsTool.NAME.equals(call.getName()))
+                     {
+                        results[index] = presenter.execute(toolContext(), call.getId(), call.getInput());
+                     }
+                     else if(ContextBuilder.KERNEL_TOOLS.contains(call.getName()))
                      {
                         ///////////////////////////////////////////////////
                         // navigate / search_help: no records are read  //
@@ -662,8 +747,20 @@ public class TurnEngine implements Runnable
                         QContext.init(runtime.getQInstance(), session);
                         try
                         {
-                           outcomes[index] = runtime.getToolbox().execute(toolContext(), call.getId(), call.getName(), call.getInput());
-                           results[index] = outcomes[index].getResult();
+                           if(KnowledgeTool.NAME.equals(call.getName()))
+                           {
+                              results[index] = runtime.getKnowledgeTool().execute(toolContext(), call.getId(), call.getInput(), classification.getClassification(), conversation.getId(), turn.getId());
+                           }
+                           else if(BulkLoadTools.NAMES.contains(call.getName()))
+                           {
+                              outcomes[index] = runtime.getBulkLoadTools().execute(toolContext(), call.getId(), call.getName(), call.getInput(), hipaaRoute());
+                              results[index] = outcomes[index].getResult();
+                           }
+                           else
+                           {
+                              outcomes[index] = runtime.getToolbox().execute(toolContext(), call.getId(), call.getName(), call.getInput());
+                              results[index] = outcomes[index].getResult();
+                           }
                         }
                         finally
                         {
@@ -683,7 +780,7 @@ public class TurnEngine implements Runnable
             }
             catch(RuntimeException e)
             {
-               LOG.warn("Tool kernel threw", e, logPair("tool", call.getName()));
+               LOG.warn("Tool kernel threw", hipaaSafe(e), logPair("tool", call.getName()));
                results[index] = new AiToolResult().withToolCallId(call.getId()).withToolName(call.getName()).withOutcome(AiToolOutcome.ERROR)
                   .withSummary("Failed").withModelContent("The tool failed unexpectedly.");
             }
@@ -698,13 +795,13 @@ public class TurnEngine implements Runnable
          {
             future.get(waitMillis, TimeUnit.MILLISECONDS);
          }
-         catch(java.util.concurrent.TimeoutException e)
+         catch(TimeoutException e)
          {
             future.cancel(true);
          }
-         catch(java.util.concurrent.ExecutionException e)
+         catch(ExecutionException e)
          {
-            LOG.debug("tool future failed", e);
+            LOG.debug("tool future failed", hipaaSafe(e));
          }
       }
 
@@ -725,11 +822,13 @@ public class TurnEngine implements Runnable
                .withSummary(running.isCancelled() ? "Not run (stopped)" : "Timed out")
                .withModelContent(running.isCancelled() ? "Not run: the user stopped the answer." : "The tool did not finish in time.");
          }
+         classification.observe(use, result);
          recordToolResult(use, result, outcomes[i]);
 
          String content = result.getModelContent() == null ? "" : result.getModelContent();
          modelResults.add(ModelPart.toolResult(use.getToolUseId(), content, result.getOutcome() != null && ERROR_OUTCOMES.contains(result.getOutcome())));
       }
+      persistClassification();
       persistPendingEvents();
       return (new ToolBatch(modelResults, limitReached, running.isCancelled()));
    }
@@ -754,7 +853,8 @@ public class TurnEngine implements Runnable
       }
 
       Map<String, Object> data = map("messageId", assistantMessage.getId(), "toolCallId", use.getToolUseId(), "name", use.getToolName(), "outcome", outcome, "summary", summary);
-      if(result.getRender() != null)
+      Boolean presentation = PresentResultsTool.NAME.equals(use.getToolName()) && AiToolOutcome.OK.equals(result.getOutcome()) && result.getRender() != null;
+      if(result.getRender() != null && !presentation)
       {
          data.put("render", result.getRender());
       }
@@ -764,7 +864,12 @@ public class TurnEngine implements Runnable
       }
       emit(TurnEvent.TOOL_RESULT, data);
 
-      parts.addTool(use.getToolUseId(), use.getToolName(), summary, outcome, result.getRender());
+      parts.addTool(use.getToolUseId(), use.getToolName(), summary, outcome, presentation ? null : result.getRender());
+      if(presentation)
+      {
+         parts.addPresentation(result.getRender());
+         emit(TurnEvent.PRESENTATION, map("messageId", assistantMessage.getId(), "part", result.getRender()));
+      }
       parts.addRecordRefs(refs);
 
       String href = result.getNavigateHref();
@@ -782,7 +887,8 @@ public class TurnEngine implements Runnable
             .withUserId(userId)
             .withToolCallId(use.getToolUseId())
             .withToolName(use.getToolName())
-            .withInputJson(truncate(redactInput(use.getInput()), MAX_INPUT_JSON_CHARS))
+            .withClientChannel(scheduledTask == null ? "assistant/" + turn.getId() : "assistant/scheduled/" + scheduledTask.getId())
+            .withInputJson(truncate(redactInput(PresentResultsTool.NAME.equals(use.getToolName()) ? (presentation ? result.getRender() : Map.of()) : use.getInput()), MAX_INPUT_JSON_CHARS))
             .withOutcome(outcome)
             .withPermissionCheck(result.getPermissionCheck())
             .withTableName(result.getTableName())
@@ -791,16 +897,16 @@ public class TurnEngine implements Runnable
             .withRowCount(result.getRowCount())
             .withDurationMs(result.getDurationMs())
             .withResultSummary(summary)
-            .withResultJson(truncate(result.getModelContent(), MAX_RESULT_JSON_CHARS))
+            .withResultJson(truncate(BulkLoadTools.NAMES.contains(use.getToolName()) ? BulkLoadTools.forLog(result.getModelContent()) : result.getModelContent(), MAX_RESULT_JSON_CHARS))
             .withRedactionsJson(result.getRedactions() == null || result.getRedactions().isEmpty() ? null : JsonUtils.toJson(result.getRedactions()))
-            .withUiApiOperation(extras == null ? null : extras.getOperation())
+            .withUiApiOperation(extras == null ? ("search_knowledge".equals(use.getToolName()) ? "GET /table/{tableName}/{primaryKey}" : null) : extras.getOperation())
             .withHttpStatus(extras == null ? null : extras.getHttpStatus())
             .withAuditHref(extras == null ? null : extras.getAuditHref())
             .withPendingActionId(extras == null ? null : extras.getPendingActionId()));
       }
       catch(QException e)
       {
-         LOG.warn("Could not record assistant tool call", e, logPair("turnId", turn.getId()), logPair("tool", use.getToolName()));
+         LOG.warn("Could not record assistant tool call", hipaaSafe(e), logPair("turnId", turn.getId()), logPair("tool", use.getToolName()));
       }
    }
 
@@ -839,9 +945,24 @@ public class TurnEngine implements Runnable
     ** API), the gateway, the policy's tool settings, and the pending-action
     ** store for writes that need confirmation.
     *******************************************************************************/
+   private boolean hipaaRoute()
+   {
+      ///////////////////////////////////////////////////////////////////////
+      // the X-QQQ-AI-Route the bulk-load tools send: the turn's provider's //
+      // HIPAA eligibility, never anything the model says                  //
+      ///////////////////////////////////////////////////////////////////////
+      return (active != null && active.row() != null && Boolean.TRUE.equals(active.row().getHipaaEligible()));
+   }
+
+
+
+   /*******************************************************************************
+    ** The UI API tool context: the user's session, the gateway, the policy's
+    ** tools and the pending-action hook.
+    *******************************************************************************/
    private UiApiToolbox.Context toolContext()
    {
-      return (new UiApiToolbox.Context(session.getUuid(), userTimezone(), runtime.getUiApiGateway(), toolPolicy(), this::proposeWrite, credentials));
+      return (new UiApiToolbox.Context(session.getUuid(), userTimezone(), runtime.getUiApiGateway(), toolPolicy, this::proposeWrite, credentials, turn.getId() == null ? null : String.valueOf(turn.getId())));
    }
 
 
@@ -894,7 +1015,7 @@ public class TurnEngine implements Runnable
    /*******************************************************************************
     ** Only same-origin application links are passed on.
     *******************************************************************************/
-   static boolean isAppHref(String href)
+   public static boolean isAppHref(String href)
    {
       return (href != null && (href.equals("/app") || href.startsWith("/app/")) && !href.contains("//") && !href.contains("\\"));
    }
@@ -908,6 +1029,7 @@ public class TurnEngine implements Runnable
    {
       try
       {
+         persistClassification();
          flushText(true);
          Instant now = runtime.getClock().instant();
 
@@ -941,7 +1063,7 @@ public class TurnEngine implements Runnable
          }
          catch(QException e)
          {
-            LOG.warn("Could not persist the end of an assistant turn", e, logPair("turnId", turn.getId()));
+            LOG.warn("Could not persist the end of an assistant turn", hipaaSafe(e), logPair("turnId", turn.getId()));
          }
 
          /////////////////////////////////////////////////////////////////////
@@ -971,6 +1093,10 @@ public class TurnEngine implements Runnable
                .withValue("errorCode", errorCode)
                .withValue("cancelReason", running.getCancelReason())
                .withValue("model", model)
+               .withValue("providerId", active == null ? null : active.providerId())
+               .withValue("routeDecision", turn.getRouteDecision())
+               .withValue("routeSource", turn.getRouteSource())
+               .withValue("fallbackCount", turn.getFallbackCount())
                .withValue("endedAt", now)
                .withValue("toolCallCount", toolCallCount)
                .withValue("modelCallCount", modelCallCount)
@@ -983,7 +1109,7 @@ public class TurnEngine implements Runnable
          }
          catch(QException e)
          {
-            LOG.warn("Could not persist the end of an assistant turn", e, logPair("turnId", turn.getId()));
+            LOG.warn("Could not persist the end of an assistant turn", hipaaSafe(e), logPair("turnId", turn.getId()));
          }
 
          LOG.info("Assistant turn finished",
@@ -1003,13 +1129,17 @@ public class TurnEngine implements Runnable
             logPair("costMicros", costMicros),
             logPair("durationMs", Duration.between(startedAt, now).toMillis()));
       }
-      catch(RuntimeException e)
+      catch(QException | RuntimeException e)
       {
-         LOG.warn("Assistant turn finish failed", e, logPair("turnId", turn.getId()));
+         LOG.warn("Assistant turn finish failed", hipaaSafe(e), logPair("turnId", turn.getId()));
       }
       finally
       {
          running.getLog().close();
+         if(scheduledTask != null)
+         {
+            runtime.getScheduledTurn().detach(conversation.getId(), session.getUuid());
+         }
          runtime.unregister(turn.getId());
          runtime.getRateLimiter().release(userId);
       }
@@ -1090,7 +1220,7 @@ public class TurnEngine implements Runnable
          }
          catch(QException e)
          {
-            LOG.warn("Could not persist assistant turn event", e, logPair("turnId", turn.getId()), logPair("seq", event.getSeq()));
+            LOG.warn("Could not persist assistant turn event", hipaaSafe(e), logPair("turnId", turn.getId()), logPair("seq", event.getSeq()));
          }
       }
    }
@@ -1102,7 +1232,7 @@ public class TurnEngine implements Runnable
     *******************************************************************************/
    private ModelPricing pricing()
    {
-      return (runtime.getProviderService().pricing(active == null ? null : active.providerType(), model));
+      return (runtime.getProviderService().pricing(active, model));
    }
 
 
@@ -1155,4 +1285,37 @@ public class TurnEngine implements Runnable
       return (value == null ? 0 : value);
    }
 
+
+
+   /*******************************************************************************
+    ** Persist the monotonically increasing level independently of message/accounting writes.
+    *******************************************************************************/
+   private void persistClassification() throws QException
+   {
+      if(classification != null)
+      {
+         store.saveClassification(userId, conversation.getId(), turn.getId(), classification);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** In HIPAA mode, exceptions and provider details are never logged (they may
+    ** echo prompt text or record values); otherwise the value itself.
+    *******************************************************************************/
+   private <T> T hipaaSafe(T value)
+   {
+      return (isHipaaMode() ? null : value);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether this instance runs in HIPAA mode.
+    *******************************************************************************/
+   private boolean isHipaaMode()
+   {
+      return (Boolean.TRUE.equals(config.getHipaaMode()));
+   }
 }

@@ -22,16 +22,25 @@ import java.util.List;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.home.AssistantAccessWidget;
 import com.kingsrook.qbits.assistant.home.AssistantHome;
+import com.kingsrook.qbits.assistant.model.AssistantBudget;
+import com.kingsrook.qbits.assistant.model.AssistantBudgetEvent;
+import com.kingsrook.qbits.assistant.model.AssistantBudgetOverride;
+import com.kingsrook.qbits.assistant.model.AssistantBudgetUsage;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantDataAccess;
+import com.kingsrook.qbits.assistant.model.AssistantDataAudit;
 import com.kingsrook.qbits.assistant.model.AssistantFeedback;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
+import com.kingsrook.qbits.assistant.model.AssistantModel;
 import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
 import com.kingsrook.qbits.assistant.model.AssistantPendingAction;
 import com.kingsrook.qbits.assistant.model.AssistantPolicy;
 import com.kingsrook.qbits.assistant.model.AssistantProfile;
 import com.kingsrook.qbits.assistant.model.AssistantProfileSkill;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
+import com.kingsrook.qbits.assistant.model.AssistantRagSource;
+import com.kingsrook.qbits.assistant.model.AssistantScheduledRun;
+import com.kingsrook.qbits.assistant.model.AssistantScheduledTask;
 import com.kingsrook.qbits.assistant.model.AssistantSkill;
 import com.kingsrook.qbits.assistant.model.AssistantToolCall;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
@@ -48,6 +57,7 @@ import com.kingsrook.qqq.backend.core.model.data.QRecordEntity;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueTooLongBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.DenyBehavior;
@@ -104,7 +114,7 @@ public class AssistantMetaDataBuilder
     ** calls on a conversation; model calls on a provider) or reached from the
     ** home. Processes are table and record actions, never nav entries.
     *******************************************************************************/
-   public static final List<String> NAV_TABLES = List.of(AssistantProvider.TABLE_NAME, AssistantProfile.TABLE_NAME, AssistantSkill.TABLE_NAME, AssistantDataAccess.TABLE_NAME, AssistantConversation.TABLE_NAME, AssistantModelPrice.TABLE_NAME, AssistantPolicy.TABLE_NAME);
+   public static final List<String> NAV_TABLES = List.of(AssistantScheduledTask.TABLE_NAME, AssistantRagSource.TABLE_NAME, AssistantBudget.TABLE_NAME, AssistantProvider.TABLE_NAME, AssistantProfile.TABLE_NAME, AssistantSkill.TABLE_NAME, AssistantDataAccess.TABLE_NAME, AssistantConversation.TABLE_NAME, AssistantModelPrice.TABLE_NAME, AssistantPolicy.TABLE_NAME);
 
    private final AssistantQBitConfig config;
 
@@ -180,6 +190,28 @@ public class AssistantMetaDataBuilder
          .withUniqueKey(new UniqueKey("name"))
          .withRecordLabelFormat("%s").withRecordLabelFields("name"));
 
+      QCodeReference scheduledCustomizer = new QCodeReference(AssistantScheduledTaskCustomizer.class);
+      tables.add(text(base(AssistantScheduledTask.TABLE_NAME, "Scheduled tasks", "schedule", AssistantScheduledTask.class), "prompt")
+         .withRecordLabelFormat("%s").withRecordLabelFields("name")
+         .withCustomizer(TableCustomizers.PRE_INSERT_RECORD, scheduledCustomizer).withCustomizer(TableCustomizers.PRE_UPDATE_RECORD, scheduledCustomizer)
+         .withCustomizer(TableCustomizers.POST_QUERY_RECORD, scheduledCustomizer));
+      tables.add(readOnly(owned(base(AssistantScheduledRun.TABLE_NAME, "Scheduled runs", "history", AssistantScheduledRun.class), false))
+         .withoutCapabilities(Capability.TABLE_DELETE)
+         .withPermissionRules(new QPermissionRules().withLevel(PermissionLevel.NOT_PROTECTED))
+         .withUniqueKey(new UniqueKey("taskId", "scheduledFor"))
+         .withRecordLabelFormat("Run #%s").withRecordLabelFields("id"));
+
+      QCodeReference ragCustomizer = new QCodeReference(AssistantRagSourceCustomizer.class);
+      tables.add(text(base(AssistantRagSource.TABLE_NAME, "Knowledge sources", "manage_search", AssistantRagSource.class), "filterJson")
+         .withRecordLabelFormat("%s").withRecordLabelFields("name")
+         .withCustomizer(TableCustomizers.PRE_INSERT_RECORD, ragCustomizer).withCustomizer(TableCustomizers.PRE_UPDATE_RECORD, ragCustomizer)
+         .withCustomizer(TableCustomizers.POST_INSERT_RECORD, ragCustomizer).withCustomizer(TableCustomizers.POST_UPDATE_RECORD, ragCustomizer)
+         .withCustomizer(TableCustomizers.POST_DELETE_RECORD, ragCustomizer));
+
+      tables.add(settings(base(AssistantModel.TABLE_NAME, "Assistant Model", "memory", AssistantModel.class))
+         .withUniqueKey(new UniqueKey("providerId", "modelId"))
+         .withRecordLabelFormat("%s").withRecordLabelFields("modelId"));
+
       tables.add(settings(base(AssistantModelPrice.TABLE_NAME, "Assistant Model Price", "sell", AssistantModelPrice.class))
          .withUniqueKey(new UniqueKey("providerType", "model"))
          .withRecordLabelFormat("%s").withRecordLabelFields("model"));
@@ -213,6 +245,45 @@ public class AssistantMetaDataBuilder
          .withRecordLabelFormat("%s #%s").withRecordLabelFields("toolName", "id"));
       text(tables.get(tables.size() - 1), "paramsJson");
 
+      tables.add(readOnly(owned(base(AssistantDataAudit.TABLE_NAME, "Assistant Data Audit", "shield", AssistantDataAudit.class), false))
+         .withoutCapabilities(Capability.TABLE_DELETE)
+         .withRecordLabelFormat("%s #%s").withRecordLabelFields("decision", "id"));
+      for(QTableMetaData table : tables)
+      {
+         if(table.getName().equals(AssistantConversation.TABLE_NAME))
+         {
+            text(table, "title");
+            table.getField("title").setMaxLength(null);
+            table.getField("title").withBehavior(ValueTooLongBehavior.PASS_THROUGH);
+         }
+         if(table.getName().equals(AssistantToolCall.TABLE_NAME))
+         {
+            text(table, "resultSummary");
+            table.getField("resultSummary").setMaxLength(null);
+            table.getField("resultSummary").withBehavior(ValueTooLongBehavior.PASS_THROUGH);
+         }
+         if(table.getName().equals(AssistantPendingAction.TABLE_NAME))
+         {
+            text(table, "summary", "resultSummary");
+            table.getField("summary").setMaxLength(null);
+            table.getField("resultSummary").setMaxLength(null);
+            table.getField("summary").withBehavior(ValueTooLongBehavior.PASS_THROUGH);
+            table.getField("resultSummary").withBehavior(ValueTooLongBehavior.PASS_THROUGH);
+         }
+      }
+      tables.add(readOnly(base(AssistantBudgetUsage.TABLE_NAME, "Budget Accounting", "receipt_long", AssistantBudgetUsage.class))
+         .withoutCapabilities(Capability.TABLE_DELETE).withUniqueKey(new UniqueKey("usageId")));
+      QCodeReference budgetCustomizer = new QCodeReference(AssistantBudgetCustomizer.class);
+      tables.add(base(AssistantBudget.TABLE_NAME, "Budgets", "savings", AssistantBudget.class)
+         .withRecordLabelFormat("%s").withRecordLabelFields("name")
+         .withCustomizer(TableCustomizers.PRE_INSERT_RECORD, budgetCustomizer)
+         .withCustomizer(TableCustomizers.PRE_UPDATE_RECORD, budgetCustomizer));
+      tables.add(base(AssistantBudgetOverride.TABLE_NAME, "Budget Override", "approval", AssistantBudgetOverride.class)
+         .withCustomizer(TableCustomizers.PRE_INSERT_RECORD, budgetCustomizer)
+         .withCustomizer(TableCustomizers.PRE_UPDATE_RECORD, budgetCustomizer));
+      tables.add(readOnly(base(AssistantBudgetEvent.TABLE_NAME, "Budget Event", "notifications", AssistantBudgetEvent.class))
+         .withoutCapabilities(Capability.TABLE_DELETE)
+         .withUniqueKey(new UniqueKey("budgetId", "scopeKey", "periodStart", "state")));
       tables.forEach(AssistantRecordScreens::apply);
       return (tables);
    }

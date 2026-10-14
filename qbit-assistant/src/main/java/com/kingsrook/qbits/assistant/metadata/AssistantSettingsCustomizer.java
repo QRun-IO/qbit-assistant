@@ -17,6 +17,8 @@
 package com.kingsrook.qbits.assistant.metadata;
 
 
+import com.kingsrook.qbits.assistant.model.AssistantModel;
+import com.kingsrook.qbits.assistant.engine.FallbackChain;
 import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
@@ -25,10 +27,10 @@ import com.kingsrook.qbits.assistant.AssistantRuntime;
 import com.kingsrook.qbits.assistant.engine.ProviderService;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
-import com.kingsrook.qqq.backend.core.model.actions.tables.QueryOrGetInputInterface;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QueryOrGetInputInterface;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.statusmessages.BadInputStatusMessage;
@@ -77,6 +79,37 @@ public class AssistantSettingsCustomizer implements TableCustomizerInterface
    public List<QRecord> preInsertOrUpdate(AbstractActionInput input, List<QRecord> records, boolean isPreview, Optional<List<QRecord>> oldRecordList) throws QException
    {
       ProviderService service = service();
+      if(AssistantModel.TABLE_NAME.equals(tableName(input)))
+      {
+         for(QRecord record : records)
+         {
+            if(record.getValue("id") == null && record.getValue("modelKind") == null)
+            {
+               record.setValue("modelKind", "CHAT");
+            }
+            if(record.getValue("modelKind") != null && !List.of("CHAT", "EMBEDDING").contains(record.getValueString("modelKind")))
+            {
+               record.addError(new BadInputStatusMessage("Model kind must be CHAT or EMBEDDING."));
+            }
+            if(record.getValue("embeddingDimensions") != null && record.getValueInteger("embeddingDimensions") < 1)
+            {
+               record.addError(new BadInputStatusMessage("Embedding dimensions must be positive."));
+            }
+            if(record.getValue("id") == null)
+            {
+               if(record.getValue("source") == null)
+               {
+                  record.setValue("source", "MANUAL");
+               }
+               if(record.getValue("enabled") == null)
+               {
+                  record.setValue("enabled", true);
+               }
+            }
+         }
+         validateFallbacks(records, oldRecordList);
+         return (records);
+      }
       if(service == null || !AssistantProvider.TABLE_NAME.equals(tableName(input)))
       {
          return (records);
@@ -95,7 +128,23 @@ public class AssistantSettingsCustomizer implements TableCustomizerInterface
          old.map(m -> m.get(record.getValue("id"))).ifPresent(o -> merged.setValues(new java.util.LinkedHashMap<>(o.getValues())));
          record.getValues().forEach(merged::setValue);
 
-         for(String error : service.validate(new AssistantProvider(merged)))
+         AssistantProvider provider = new AssistantProvider(merged);
+         if(merged.getValue("kind") == null)
+         {
+            record.setValue("kind", service.kind(provider));
+         }
+         if(merged.getValue("location") == null)
+         {
+            record.setValue("location", service.location(provider));
+         }
+         for(String field : List.of("hipaaEligible", "connectTimeoutSeconds", "requestTimeoutSeconds"))
+         {
+            if(merged.getValue(field) == null)
+            {
+               record.setValue(field, field.equals("hipaaEligible") ? Boolean.FALSE : (field.equals("connectTimeoutSeconds") ? 10 : 120));
+            }
+         }
+         for(String error : service.validate(provider))
          {
             record.addError(new BadInputStatusMessage(error));
          }
@@ -134,6 +183,25 @@ public class AssistantSettingsCustomizer implements TableCustomizerInterface
             }
          }
       }
+      if(AssistantModel.TABLE_NAME.equals(tableName(input)) && oldRecordList.isPresent())
+      {
+         Map<Serializable, QRecord> previous = oldRecordListToMap("id", oldRecordList).orElse(Map.of());
+         for(QRecord record : records)
+         {
+            QRecord before = previous.get(record.getValue("id"));
+            if(before != null && List.of("providerId", "modelId", "modelKind", "embeddingDimensions").stream()
+               .anyMatch(name -> record.getValues().containsKey(name) && !java.util.Objects.equals(before.getValue(name), record.getValue(name))))
+            {
+               for(var source : runtime.getRagService().sources())
+               {
+                  if(java.util.Objects.equals(source.getEmbeddingModelId(), record.getValueInteger("id")))
+                  {
+                     runtime.getRagService().clear(source);
+                  }
+               }
+            }
+         }
+      }
       runtime.getProviderService().invalidate();
       return (records);
    }
@@ -169,7 +237,8 @@ public class AssistantSettingsCustomizer implements TableCustomizerInterface
       for(Map.Entry<String, Serializable> entry : record.getValues().entrySet())
       {
          String name = entry.getKey();
-         boolean system = name.equals("id") || name.equals("modifyDate") || name.startsWith("lastTest")
+         boolean system = name.equals("id") || name.equals("modifyDate") || name.startsWith("lastTest") || name.startsWith("lastDiscovery")
+            || List.of("healthState", "healthCheckedAt", "downUntil").contains(name)
             || (name.equals("isDefault") && Boolean.FALSE.equals(entry.getValue()));
          if(!system)
          {
@@ -206,6 +275,56 @@ public class AssistantSettingsCustomizer implements TableCustomizerInterface
    {
       AssistantRuntime runtime = AssistantRuntime.of(QContext.getQInstance());
       return (runtime == null ? null : runtime.getProviderService());
+   }
+
+
+
+   /*******************************************************************************
+    ** Validate the resulting graph, including all changes in this save batch.
+    *******************************************************************************/
+   private void validateFallbacks(List<QRecord> records, Optional<List<QRecord>> oldRecords) throws QException
+   {
+      AssistantRuntime runtime = AssistantRuntime.of(QContext.getQInstance());
+      if(runtime == null)
+      {
+         return;
+      }
+      Map<Integer, AssistantModel> models = new java.util.LinkedHashMap<>();
+      for(AssistantModel model : runtime.getStore().listModels())
+      {
+         models.put(model.getId(), model);
+      }
+      Optional<Map<Serializable, QRecord>> old = oldRecordListToMap("id", oldRecords);
+      List<AssistantModel> proposed = new java.util.ArrayList<>();
+      for(QRecord record : records)
+      {
+         QRecord merged = new QRecord();
+         old.map(m -> m.get(record.getValue("id"))).ifPresent(o -> merged.setValues(new java.util.LinkedHashMap<>(o.getValues())));
+         record.getValues().forEach(merged::setValue);
+         AssistantModel model = new AssistantModel(merged);
+         proposed.add(model);
+         if(model.getId() != null)
+         {
+            models.put(model.getId(), model);
+         }
+      }
+      for(Integer i = 0; i < records.size(); i++)
+      {
+         String error = FallbackChain.validate(proposed.get(i), models);
+         if(error != null)
+         {
+            records.get(i).addError(new BadInputStatusMessage(error));
+         }
+      }
+      for(AssistantModel model : models.values())
+      {
+         String error = FallbackChain.validate(model, models, false);
+         if(error != null)
+         {
+            records.forEach(record -> record.addError(new BadInputStatusMessage(error)));
+            break;
+         }
+      }
    }
 
 }

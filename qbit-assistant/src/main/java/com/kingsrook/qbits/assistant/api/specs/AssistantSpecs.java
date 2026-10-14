@@ -61,7 +61,7 @@ import io.javalin.http.HttpStatus;
 public final class AssistantSpecs
 {
    public static final String EXTENSION_NAME    = "assistant";
-   public static final String EXTENSION_VERSION = "1.0.0";
+   public static final String EXTENSION_VERSION = "1.1.0";
    public static final String PREFIX            = "/assistant";
 
 
@@ -98,9 +98,7 @@ public final class AssistantSpecs
          .withSpec(GetActionSpec.class)
          .withSpec(ConfirmActionSpec.class)
          .withSpec(RejectActionSpec.class)
-         .withSpec(AccessSpec.class)
-         .withSpec(GetPreferencesSpec.class)
-         .withSpec(UpdatePreferencesSpec.class));
+         .withSpec(AccessSpec.class));
    }
 
 
@@ -201,6 +199,7 @@ public final class AssistantSpecs
          "model", string("The model that answers."),
          "limits", freeObject("maxTurnSeconds and maxToolCallsPerTurn."),
          "features", freeObject("writes: some table allows writes; pendingActions: writes wait for confirmation."),
+         "preferences", ref("AssistantPreferencesV1"),
          "profile", ref("AssistantProfileV1")));
       rs.put("AssistantConversationV1", object("One of the user's own conversations.",
          "id", integer(null), "title", string(null).withNullable(true), "status", string("ACTIVE or ARCHIVED."), "pinned", bool(null), "writeMode", bool("Write mode (default Read-only): the write tools exist only in Write mode."),
@@ -1319,7 +1318,7 @@ public final class AssistantSpecs
       @Override
       public List<Parameter> defineRequestParameters()
       {
-         return (List.of(queryParam("table", Type.STRING, "Only this table."), queryParam("prompt", Type.STRING, "Only the tables this text mentions.")));
+         return (List.of(queryParam("table", Type.STRING, "Only this table."), queryParam("prompt", Type.STRING, "Only the tables this text mentions."), queryParam("turnId", Type.INTEGER, "Attribute this request to an owned turn.")));
       }
 
 
@@ -1336,108 +1335,10 @@ public final class AssistantSpecs
       protected Object handle(AssistantApi api, JsonInput input) throws Exception
       {
          String table = input.getQueryParam("table");
-         return (api.access(StringUtils.hasContent(table) ? table : null, input.getQueryParam("prompt")));
+         return (api.access(StringUtils.hasContent(table) ? table : null, input.getQueryParam("prompt"), input.getQueryParamInteger("turnId")));
       }
    }
 
 
-
-   /*******************************************************************************
-    ** GET /assistant/preferences
-    *******************************************************************************/
-   public static class GetPreferencesSpec extends AssistantJsonSpec
-   {
-      @Override
-      protected HttpMethod method()
-      {
-         return (HttpMethod.GET);
-      }
-
-
-
-      @Override
-      protected String path()
-      {
-         return (PREFIX + "/preferences");
-      }
-
-
-
-      @Override
-      protected String summary()
-      {
-         return ("The user's own assistant preferences");
-      }
-
-
-
-      @Override
-      protected String getResponseSchemaName()
-      {
-         return ("AssistantPreferencesV1");
-      }
-
-
-
-      @Override
-      protected Object handle(AssistantApi api, JsonInput input) throws Exception
-      {
-         return (api.preferences());
-      }
-   }
-
-
-
-   /*******************************************************************************
-    ** PATCH /assistant/preferences
-    *******************************************************************************/
-   public static class UpdatePreferencesSpec extends AssistantJsonSpec
-   {
-      @Override
-      protected HttpMethod method()
-      {
-         return (HttpMethod.PATCH);
-      }
-
-
-
-      @Override
-      protected String path()
-      {
-         return (PREFIX + "/preferences");
-      }
-
-
-
-      @Override
-      protected String summary()
-      {
-         return ("Change the user's own assistant preferences");
-      }
-
-
-
-      @Override
-      protected Schema defineRequestBodySchema()
-      {
-         return (object("The changed preferences.", "defaultWriteMode", bool(null), "autoConfirmLowRisk", bool(null)));
-      }
-
-
-
-      @Override
-      protected String getResponseSchemaName()
-      {
-         return ("AssistantPreferencesV1");
-      }
-
-
-
-      @Override
-      protected Object handle(AssistantApi api, JsonInput input) throws Exception
-      {
-         return (api.patchPreferences(input.getBody()));
-      }
-   }
 
 }

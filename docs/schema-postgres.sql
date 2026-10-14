@@ -6,7 +6,8 @@ CREATE TABLE assistant_conversation
 (
    id SERIAL PRIMARY KEY,
    user_id VARCHAR(255),
-   title VARCHAR(255),
+   title TEXT,
+   max_classification VARCHAR(16),
    status VARCHAR(16),
    pinned BOOLEAN,
    last_message_at TIMESTAMP WITH TIME ZONE,
@@ -30,7 +31,7 @@ CREATE TABLE assistant_message
    status VARCHAR(16),
    turn_id INTEGER,
    seq INTEGER,
-   model VARCHAR(64),
+   model VARCHAR(200),
    parts_json TEXT,
    create_date TIMESTAMP WITH TIME ZONE,
    modify_date TIMESTAMP WITH TIME ZONE
@@ -46,10 +47,12 @@ CREATE TABLE assistant_turn
    user_message_id INTEGER,
    assistant_message_id INTEGER,
    status VARCHAR(16),
+   classification VARCHAR(16),
+   classification_tables VARCHAR(500),
    stop_reason VARCHAR(64),
    error_code VARCHAR(32),
    cancel_reason VARCHAR(64),
-   model VARCHAR(64),
+   model VARCHAR(200),
    started_at TIMESTAMP WITH TIME ZONE,
    ended_at TIMESTAMP WITH TIME ZONE,
    tool_call_count INTEGER,
@@ -95,12 +98,12 @@ CREATE TABLE assistant_tool_call
    widget_name VARCHAR(128),
    row_count INTEGER,
    duration_ms BIGINT,
-   result_summary VARCHAR(500),
+   result_summary TEXT,
    result_json TEXT,
    redactions_json TEXT,
    ui_api_operation VARCHAR(255),
    http_status INTEGER,
-   audit_href VARCHAR(500),
+   audit_href TEXT,
    pending_action_id INTEGER,
    create_date TIMESTAMP WITH TIME ZONE
 );
@@ -173,10 +176,22 @@ CREATE TABLE assistant_provider
    id SERIAL PRIMARY KEY,
    name VARCHAR(100) NOT NULL UNIQUE,
    provider_type VARCHAR(50) NOT NULL,
-   model VARCHAR(100),
+   kind VARCHAR(30),
+   location VARCHAR(10),
+   hipaa_eligible BOOLEAN DEFAULT FALSE,
+   region VARCHAR(50),
+   cloud_project VARCHAR(100),
+   api_version VARCHAR(30),
+   connect_timeout_seconds INTEGER DEFAULT 10 CHECK (connect_timeout_seconds BETWEEN 1 AND 600),
+   request_timeout_seconds INTEGER DEFAULT 120 CHECK (request_timeout_seconds BETWEEN 1 AND 600),
+   last_discovery_at TIMESTAMP WITH TIME ZONE,
+   last_discovery_status VARCHAR(16),
+   last_discovery_error VARCHAR(500),
+   model VARCHAR(200),
    enabled BOOLEAN,
    is_default BOOLEAN,
    base_url VARCHAR(255),
+   tls_ca_bundle VARCHAR(100),
    api_key_env_name VARCHAR(100),
    api_key_status VARCHAR(200),
    monthly_cost_cap_usd NUMERIC(12, 2),
@@ -185,10 +200,36 @@ CREATE TABLE assistant_provider
    last_test_at TIMESTAMP WITH TIME ZONE,
    last_test_status VARCHAR(16),
    last_test_latency_ms INTEGER,
-   last_test_model VARCHAR(100),
+   last_test_model VARCHAR(200),
    last_test_error VARCHAR(500),
    create_date TIMESTAMP WITH TIME ZONE,
    modify_date TIMESTAMP WITH TIME ZONE
+);
+
+CREATE TABLE assistant_model
+(
+   id SERIAL PRIMARY KEY,
+   provider_id INTEGER NOT NULL REFERENCES assistant_provider(id),
+   model_id VARCHAR(200) NOT NULL,
+   display_name VARCHAR(200),
+   enabled BOOLEAN,
+   supports_tools BOOLEAN,
+   supports_vision BOOLEAN,
+   supports_streaming BOOLEAN,
+   supports_reasoning_effort BOOLEAN,
+   context_window_tokens INTEGER,
+   max_output_tokens INTEGER,
+   input_usd_per_m_tok NUMERIC(12, 4),
+   output_usd_per_m_tok NUMERIC(12, 4),
+   source VARCHAR(16),
+   discovered_at TIMESTAMP WITH TIME ZONE,
+   last_test_at TIMESTAMP WITH TIME ZONE,
+   last_test_status VARCHAR(16),
+   last_test_latency_ms INTEGER,
+   last_test_error VARCHAR(500),
+   create_date TIMESTAMP WITH TIME ZONE,
+   modify_date TIMESTAMP WITH TIME ZONE,
+   UNIQUE (provider_id, model_id)
 );
 
 CREATE TABLE assistant_model_price
@@ -215,7 +256,7 @@ CREATE TABLE assistant_usage
    turn_id INTEGER,
    provider_id INTEGER,
    provider_type VARCHAR(50),
-   model VARCHAR(100),
+   model VARCHAR(200),
    purpose VARCHAR(16),
    status VARCHAR(16),
    error_kind VARCHAR(32),
@@ -275,10 +316,10 @@ CREATE TABLE assistant_pending_action
    table_name VARCHAR(128),
    record_id VARCHAR(128),
    params_json TEXT,
-   summary VARCHAR(500),
+   summary TEXT,
    status VARCHAR(16),
    http_status INTEGER,
-   result_summary VARCHAR(500),
+   result_summary TEXT,
    expires_at TIMESTAMP WITH TIME ZONE,
    decided_at TIMESTAMP WITH TIME ZONE,
    create_date TIMESTAMP WITH TIME ZONE,
@@ -343,3 +384,212 @@ CREATE TABLE assistant_user_preference
    create_date TIMESTAMP WITH TIME ZONE,
    modify_date TIMESTAMP WITH TIME ZONE
 );
+
+CREATE TABLE assistant_data_audit
+(
+   id SERIAL PRIMARY KEY,
+   user_id VARCHAR(255),
+   conversation_id INTEGER,
+   turn_id INTEGER,
+   provider_id INTEGER,
+   provider_name VARCHAR(200),
+   model VARCHAR(200),
+   hipaa_eligible BOOLEAN,
+   classification VARCHAR(16),
+   tables VARCHAR(500),
+   decision VARCHAR(16),
+   reason VARCHAR(1000),
+   create_date TIMESTAMP WITH TIME ZONE
+);
+CREATE INDEX assistant_data_audit_user_id ON assistant_data_audit (user_id);
+CREATE INDEX assistant_data_audit_conversation_id ON assistant_data_audit (conversation_id);
+CREATE INDEX assistant_data_audit_turn_id ON assistant_data_audit (turn_id);
+
+-- P-d: data-driven budgets (UTC periods, USD or whole-token allowances).
+CREATE TABLE assistant_budget
+(
+   id SERIAL PRIMARY KEY,
+   name VARCHAR(200) NOT NULL,
+   enabled BOOLEAN DEFAULT TRUE,
+   scope_type VARCHAR(16) NOT NULL,
+   scope_value VARCHAR(200),
+   period VARCHAR(16) NOT NULL,
+   metric VARCHAR(16) NOT NULL,
+   limit_value NUMERIC NOT NULL CHECK (limit_value > 0),
+   warn_percent INTEGER DEFAULT 80 CHECK (warn_percent >= 0 AND warn_percent < 100),
+   at_limit_action VARCHAR(16) DEFAULT 'DOWNGRADE',
+   downgrade_model_id INTEGER REFERENCES assistant_model(id),
+   hard_ceiling_percent INTEGER DEFAULT 120 CHECK (hard_ceiling_percent >= 100),
+   notes VARCHAR(2000),
+   create_date TIMESTAMP WITH TIME ZONE,
+   modify_date TIMESTAMP WITH TIME ZONE
+);
+CREATE TABLE assistant_budget_override
+(
+   id SERIAL PRIMARY KEY,
+   budget_id INTEGER NOT NULL REFERENCES assistant_budget(id),
+   scope_value VARCHAR(200),
+   extra_value NUMERIC,
+   unlimited_until TIMESTAMP WITH TIME ZONE,
+   reason VARCHAR(1000) NOT NULL,
+   granted_by VARCHAR(200),
+   expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+   create_date TIMESTAMP WITH TIME ZONE,
+   modify_date TIMESTAMP WITH TIME ZONE,
+   CHECK ((extra_value > 0 AND unlimited_until IS NULL) OR (extra_value IS NULL AND unlimited_until IS NOT NULL))
+);
+CREATE INDEX assistant_budget_override_budget_id ON assistant_budget_override(budget_id);
+CREATE TABLE assistant_budget_event
+(
+   id SERIAL PRIMARY KEY,
+   budget_id INTEGER NOT NULL REFERENCES assistant_budget(id),
+   scope_key VARCHAR(400) NOT NULL,
+   period_start TIMESTAMP WITH TIME ZONE NOT NULL,
+   state VARCHAR(16) NOT NULL,
+   used_value NUMERIC,
+   limit_value NUMERIC,
+   user_id VARCHAR(200),
+   create_date TIMESTAMP WITH TIME ZONE,
+   UNIQUE (budget_id, scope_key, period_start, state)
+);
+CREATE INDEX assistant_usage_budget_period ON assistant_usage(create_date, user_id, provider_id, model);
+
+-- Private projection: standard admin permissions, AI NONE, no owner lock.
+-- No conversation identifiers, text, request ids or credentials are copied.
+CREATE TABLE assistant_budget_usage
+(
+   id SERIAL PRIMARY KEY,
+   usage_id INTEGER NOT NULL UNIQUE,
+   user_id VARCHAR(255),
+   provider_id INTEGER,
+   model VARCHAR(200),
+   occurred_at TIMESTAMP WITH TIME ZONE NOT NULL,
+   cost_micros BIGINT,
+   input_tokens BIGINT,
+   output_tokens BIGINT,
+   cache_read_tokens BIGINT,
+   cache_write_tokens BIGINT
+);
+CREATE INDEX assistant_budget_usage_period ON assistant_budget_usage(occurred_at, provider_id, model);
+-- Run once before enabling P-d, with writes paused, to include existing usage.
+INSERT INTO assistant_budget_usage
+   (usage_id, user_id, provider_id, model, occurred_at, cost_micros, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens)
+SELECT id, user_id, provider_id, model, create_date, cost_micros, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens
+FROM assistant_usage
+ON CONFLICT (usage_id) DO NOTHING;
+
+
+-- P-e: profile routing, bounded fallback chains, provider health and turn outcome.
+ALTER TABLE assistant_profile ADD COLUMN routing_mode VARCHAR(16) DEFAULT 'OFF'
+   CHECK (routing_mode IN ('OFF', 'HEURISTIC', 'CLASSIFIER'));
+ALTER TABLE assistant_profile ADD COLUMN simple_model_id INTEGER REFERENCES assistant_model(id);
+ALTER TABLE assistant_profile ADD COLUMN complex_model_id INTEGER REFERENCES assistant_model(id);
+ALTER TABLE assistant_profile ADD COLUMN classifier_model_id INTEGER REFERENCES assistant_model(id);
+ALTER TABLE assistant_model ADD COLUMN fallback_model_id INTEGER REFERENCES assistant_model(id);
+ALTER TABLE assistant_provider ADD COLUMN health_state VARCHAR(8) CHECK (health_state IN ('UP', 'DOWN'));
+ALTER TABLE assistant_provider ADD COLUMN health_checked_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE assistant_provider ADD COLUMN down_until TIMESTAMP WITH TIME ZONE;
+ALTER TABLE assistant_turn ADD COLUMN route_decision VARCHAR(16);
+ALTER TABLE assistant_turn ADD COLUMN route_source VARCHAR(16);
+ALTER TABLE assistant_turn ADD COLUMN fallback_count INTEGER DEFAULT 0;
+ALTER TABLE assistant_turn ADD COLUMN provider_id INTEGER REFERENCES assistant_provider(id);
+
+
+-- P-f: embedding registry and admin-only knowledge-source configuration.
+ALTER TABLE assistant_model ADD COLUMN model_kind VARCHAR(16) DEFAULT 'CHAT'
+   CHECK (model_kind IN ('CHAT', 'EMBEDDING'));
+ALTER TABLE assistant_model ADD COLUMN embedding_dimensions INTEGER
+   CHECK (embedding_dimensions > 0);
+
+CREATE TABLE assistant_rag_source (
+   id SERIAL PRIMARY KEY,
+   name VARCHAR(200) NOT NULL,
+   enabled BOOLEAN DEFAULT TRUE,
+   table_name VARCHAR(200) NOT NULL,
+   field_names VARCHAR(500) NOT NULL,
+   title_field_name VARCHAR(200),
+   filter_json TEXT,
+   embedding_model_id INTEGER NOT NULL REFERENCES assistant_model(id),
+   chunk_chars INTEGER DEFAULT 1500 CHECK (chunk_chars BETWEEN 100 AND 16000),
+   chunk_overlap_chars INTEGER DEFAULT 200 CHECK (chunk_overlap_chars >= 0 AND chunk_overlap_chars < chunk_chars),
+   last_indexed_at TIMESTAMPTZ,
+   last_index_status VARCHAR(200),
+   last_index_error VARCHAR(500),
+   indexed_record_count INTEGER,
+   indexed_chunk_count INTEGER,
+   create_date TIMESTAMPTZ,
+   modify_date TIMESTAMPTZ
+);
+
+-- Optional pgvector part: reference only. Run the extension step as a DBA.
+-- PgVectorStore.ensureSchema() performs the remainder for the host's schema/N.
+-- Use a distinct schema per QQQ instance; match N to the embedding model.
+-- CREATE EXTENSION IF NOT EXISTS vector;
+-- CREATE SCHEMA IF NOT EXISTS assistant_rag;
+-- CREATE TABLE IF NOT EXISTS assistant_rag.assistant_rag_chunk (
+--    id BIGSERIAL PRIMARY KEY,
+--    source_id INT NOT NULL,
+--    table_name TEXT NOT NULL,
+--    record_pk TEXT NOT NULL,
+--    field_name TEXT NOT NULL,
+--    chunk_index INT NOT NULL,
+--    content_hash CHAR(64) NOT NULL,
+--    embedding vector(1024) NOT NULL,
+--    indexed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+--    UNIQUE(source_id, table_name, record_pk, field_name, chunk_index)
+-- );
+-- CREATE INDEX IF NOT EXISTS assistant_rag_chunk_cosine
+--    ON assistant_rag.assistant_rag_chunk USING hnsw (embedding vector_cosine_ops);
+
+-- P-g: designated-user scheduled assistant tasks. Install before enabling jobs.
+CREATE TABLE assistant_scheduled_task (
+   id SERIAL PRIMARY KEY,
+   name VARCHAR(200) NOT NULL,
+   enabled BOOLEAN NOT NULL DEFAULT FALSE,
+   prompt TEXT NOT NULL CHECK (char_length(prompt) BETWEEN 1 AND 4000),
+   run_as_user_id VARCHAR(200) NOT NULL,
+   credential_env_name VARCHAR(200) NOT NULL,
+   credential_status VARCHAR(200), -- computed; always NULL in stored rows
+   profile_id INTEGER REFERENCES assistant_profile(id),
+   cron_expression VARCHAR(200) NOT NULL,
+   timezone VARCHAR(100) NOT NULL DEFAULT 'UTC',
+   next_run_at TIMESTAMPTZ,
+   output_mode VARCHAR(20) NOT NULL DEFAULT 'RECORD' CHECK (output_mode IN ('RECORD', 'NOTIFICATION', 'BOTH')),
+   write_mode_requested BOOLEAN NOT NULL DEFAULT FALSE,
+   write_mode_approved_by VARCHAR(200),
+   write_mode_approved_at TIMESTAMPTZ,
+   write_mode_approval_hash VARCHAR(64),
+   max_cost_usd_per_run NUMERIC(18,6) CHECK (max_cost_usd_per_run >= 0),
+   last_run_at TIMESTAMPTZ,
+   last_run_status VARCHAR(20),
+   last_run_error VARCHAR(500),
+   create_date TIMESTAMPTZ,
+   modify_date TIMESTAMPTZ
+);
+CREATE INDEX assistant_scheduled_task_due ON assistant_scheduled_task(next_run_at) WHERE enabled;
+
+ALTER TABLE assistant_conversation ADD COLUMN scheduled_task_id INTEGER REFERENCES assistant_scheduled_task(id);
+ALTER TABLE assistant_conversation ADD COLUMN channel VARCHAR(64) NOT NULL DEFAULT 'panel';
+ALTER TABLE assistant_tool_call ADD COLUMN client_channel VARCHAR(64);
+
+CREATE TABLE assistant_scheduled_run (
+   id SERIAL PRIMARY KEY,
+   task_id INTEGER NOT NULL REFERENCES assistant_scheduled_task(id),
+   user_id VARCHAR(200) NOT NULL,
+   scheduled_for TIMESTAMPTZ NOT NULL,
+   started_at TIMESTAMPTZ,
+   ended_at TIMESTAMPTZ,
+   status VARCHAR(20) NOT NULL CHECK (status IN ('RUNNING', 'OK', 'FAILED', 'SKIPPED', 'BLOCKED')),
+   conversation_id INTEGER REFERENCES assistant_conversation(id) ON DELETE SET NULL,
+   turn_id INTEGER REFERENCES assistant_turn(id) ON DELETE SET NULL,
+   summary VARCHAR(2000),
+   cost_micros BIGINT,
+   error VARCHAR(500),
+   create_date TIMESTAMPTZ,
+   modify_date TIMESTAMPTZ,
+   UNIQUE (task_id, scheduled_for)
+);
+CREATE INDEX assistant_scheduled_run_owner ON assistant_scheduled_run(user_id, started_at);
+
+-- X1/Y1: encoded audit filters can exceed the old 500-character record links.
+ALTER TABLE assistant_tool_call ALTER COLUMN audit_href TYPE TEXT;

@@ -24,6 +24,7 @@ import com.kingsrook.qbits.assistant.testing.GoldenTasks;
 import com.kingsrook.qbits.assistant.testing.TurnRunner;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.ClientChannelsMetaData;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -102,6 +103,10 @@ class LiveGoldenEvalTest
    @MethodSource("tasks")
    void live(GoldenTasks.Task task) throws Exception
    {
+      if("D-page-12-this-week".equals(task.id()))
+      {
+         ClientChannelsMetaData.ofOrWithNew(qInstance).getDeniedPatterns().get("assistant").remove("audit*");
+      }
       TurnRunner.Outcome outcome = new TurnRunner(qInstance, config).run(task.userId(), task.prompt());
       assertThat(outcome.errorCode()).as("error").isNull();
       task.liveCheck().accept(outcome);

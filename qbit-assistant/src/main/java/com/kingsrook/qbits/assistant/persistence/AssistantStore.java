@@ -22,16 +22,30 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import com.kingsrook.qbits.assistant.AssistantQBitConfig;
+import com.kingsrook.qbits.assistant.AssistantRuntime;
+import com.kingsrook.qbits.assistant.classification.Classifications;
+import com.kingsrook.qbits.assistant.engine.TurnClassification;
+import com.kingsrook.qbits.assistant.model.AssistantBudget;
+import com.kingsrook.qbits.assistant.model.AssistantBudgetEvent;
+import com.kingsrook.qbits.assistant.model.AssistantBudgetOverride;
+import com.kingsrook.qbits.assistant.model.AssistantBudgetUsage;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
+import com.kingsrook.qbits.assistant.model.AssistantDataAudit;
 import com.kingsrook.qbits.assistant.model.AssistantFeedback;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
+import com.kingsrook.qbits.assistant.model.AssistantModel;
 import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
 import com.kingsrook.qbits.assistant.model.AssistantPendingAction;
 import com.kingsrook.qbits.assistant.model.AssistantPolicy;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
+import com.kingsrook.qbits.assistant.model.AssistantScheduledRun;
+import com.kingsrook.qbits.assistant.model.AssistantScheduledTask;
 import com.kingsrook.qbits.assistant.model.AssistantToolCall;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
 import com.kingsrook.qbits.assistant.model.AssistantTurnEvent;
@@ -39,11 +53,14 @@ import com.kingsrook.qbits.assistant.model.AssistantUsage;
 import com.kingsrook.qbits.assistant.model.AssistantUsageDaily;
 import com.kingsrook.qbits.assistant.model.AssistantUserPreference;
 import com.kingsrook.qbits.assistant.provider.ModelUsage;
+import com.kingsrook.qbits.assistant.scheduled.ScheduledTasks;
 import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.actions.tables.ActionFlag;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
@@ -81,6 +98,14 @@ public class AssistantStore
    public static final int MAX_PRICES        = 500;
    public static final int MAX_SUM_ROWS      = 100_000;
 
+   private final ConversationEncryption encryption;
+   private static final Map<String, List<String>> ENCRYPTED_FIELDS = Map.of(
+      AssistantMessage.TABLE_NAME, List.of("partsJson"),
+      AssistantConversation.TABLE_NAME, List.of("title", "contextJson"),
+      AssistantToolCall.TABLE_NAME, List.of("inputJson", "resultJson", "redactionsJson", "resultSummary"),
+      AssistantTurnEvent.TABLE_NAME, List.of("dataJson"),
+      AssistantPendingAction.TABLE_NAME, List.of("paramsJson", "summary", "resultSummary"));
+
    private static final Map<String, Object> USAGE_LOCKS = new ConcurrentHashMap<>();
 
 
@@ -113,7 +138,7 @@ public class AssistantStore
       List<T>       result  = new ArrayList<>();
       for(QRecord record : CollectionUtils.nonNullList(records))
       {
-         result.add(QRecordEntity.fromQRecord(entityClass, record));
+         result.add(QRecordEntity.fromQRecord(entityClass, cryptRecord(tableName, record, false)));
       }
       return (result);
    }
@@ -127,13 +152,17 @@ public class AssistantStore
    public <T extends QRecordEntity> T insert(T entity) throws QException
    {
       requireOwnTable(entity.tableName());
-      InsertOutput output = new InsertAction().execute(new InsertInput(entity.tableName()).withRecordEntity(entity));
+      InsertOutput output = new InsertAction().execute(new InsertInput(entity.tableName()).withRecord(cryptRecord(entity.tableName(), entity.toQRecord(), true)));
       QRecord      record = output.getRecords().get(0);
       if(CollectionUtils.nullSafeHasContents(record.getErrors()))
       {
          throw (new QException("Could not save to " + entity.tableName() + ": " + record.getErrors().get(0).getMessage()));
       }
-      return ((T) QRecordEntity.fromQRecord(entity.getClass(), record));
+      if(entity instanceof AssistantUsage)
+      {
+         projectBudgetUsage(record);
+      }
+      return ((T) QRecordEntity.fromQRecord(entity.getClass(), cryptRecord(entity.tableName(), record, false)));
    }
 
 
@@ -144,7 +173,7 @@ public class AssistantStore
    public void update(QRecordEntity entity) throws QException
    {
       requireOwnTable(entity.tableName());
-      UpdateOutput output = new UpdateAction().execute(new UpdateInput(entity.tableName()).withRecordEntity(entity));
+      UpdateOutput output = new UpdateAction().execute(new UpdateInput(entity.tableName()).withRecord(cryptRecord(entity.tableName(), entity.toQRecord(), true)));
       QRecord      record = output.getRecords().get(0);
       if(CollectionUtils.nullSafeHasContents(record.getErrors()))
       {
@@ -160,11 +189,16 @@ public class AssistantStore
    public void updateFields(String tableName, QRecord record) throws QException
    {
       requireOwnTable(tableName);
-      UpdateOutput output = new UpdateAction().execute(new UpdateInput(tableName).withRecord(record));
+      UpdateOutput output = new UpdateAction().execute(new UpdateInput(tableName).withRecord(cryptRecord(tableName, record, true)));
       QRecord      result = output.getRecords().get(0);
       if(CollectionUtils.nullSafeHasContents(result.getErrors()))
       {
          throw (new QException("Could not update " + tableName + ": " + result.getErrors().get(0).getMessage()));
+      }
+      if(AssistantUsage.TABLE_NAME.equals(tableName))
+      {
+         AssistantUsage usage = first(query(tableName, new QQueryFilter().withCriteria("id", QCriteriaOperator.EQUALS, record.getValue("id")), AssistantUsage.class));
+         projectBudgetUsage(usage.toQRecord());
       }
    }
 
@@ -282,6 +316,8 @@ public class AssistantStore
       {
          delete(table, owned(userId).withCriteria("conversationId", QCriteriaOperator.EQUALS, conversationId));
       }
+      delete(AssistantDataAudit.TABLE_NAME, owned(userId).withCriteria("conversationId", QCriteriaOperator.EQUALS, conversationId));
+      delete(AssistantPendingAction.TABLE_NAME, owned(userId).withCriteria("conversationId", QCriteriaOperator.EQUALS, conversationId));
       delete(AssistantConversation.TABLE_NAME, owned(userId).withCriteria("id", QCriteriaOperator.EQUALS, conversationId));
    }
 
@@ -736,7 +772,278 @@ public class AssistantStore
    {
       requireOwnTable(tableName);
       List<QRecord> records = new QueryAction().execute(new QueryInput(tableName).withFilter(filter.withLimit(limit))).getRecords();
-      return (records == null ? List.of() : records);
+      return (records == null ? List.of() : records.stream().map(record -> cryptRecord(tableName, record, false)).toList());
+   }
+
+
+
+
+   /*******************************************************************************
+    ** All registry models in stable id order.
+    *******************************************************************************/
+   public List<AssistantModel> listModels() throws QException
+   {
+      return (query(AssistantModel.TABLE_NAME, new QQueryFilter().withOrderBy(new QFilterOrderBy("id", true)), AssistantModel.class));
+   }
+
+
+
+   /*******************************************************************************
+    ** Save the turn level and never lower persisted conversation history.
+    *******************************************************************************/
+   public synchronized void saveClassification(String userId, Integer conversationId, Integer turnId, TurnClassification classification) throws QException
+   {
+      AssistantConversation current = getConversation(userId, conversationId);
+      classification.inherit(current);
+      updateFields(AssistantTurn.TABLE_NAME, new QRecord().withValue("id", turnId)
+         .withValue("classification", classification.getClassification().name()).withValue("classificationTables", classification.getTables()));
+      if(current != null)
+      {
+         var maximum = Classifications.max(
+            Classifications.stored(current.getMaxClassification()), classification.getClassification());
+         if(!maximum.name().equals(current.getMaxClassification()))
+         {
+            updateFields(AssistantConversation.TABLE_NAME, new QRecord().withValue("id", conversationId).withValue("maxClassification", maximum.name()));
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Compatibility store: use the current instance runtime for encryption.
+    *******************************************************************************/
+   public AssistantStore()
+   {
+      encryption = null;
+   }
+
+
+
+   /*******************************************************************************
+    ** Runtime-owned store validates its configured key before serving any requests.
+    *******************************************************************************/
+   public AssistantStore(AssistantQBitConfig config)
+   {
+      encryption = new ConversationEncryption(config);
+   }
+
+
+
+   /*******************************************************************************
+    ** Copy records at the storage boundary so memory-backend records and callers are never mutated.
+    *******************************************************************************/
+   private QRecord cryptRecord(String tableName, QRecord record, Boolean encrypt)
+   {
+      ConversationEncryption codec = encryption;
+      if(codec == null)
+      {
+         AssistantRuntime runtime = AssistantRuntime.of(QContext.getQInstance());
+         codec = runtime == null ? new ConversationEncryption(new AssistantQBitConfig()) : runtime.getStore().encryption;
+      }
+      QRecord copy = new QRecord();
+      copy.setValues(new LinkedHashMap<>(record.getValues()));
+      for(String field : ENCRYPTED_FIELDS.getOrDefault(tableName, List.of()))
+      {
+         if(copy.getValue(field) instanceof String text)
+         {
+            copy.setValue(field, encrypt ? codec.encrypt(text) : codec.decrypt(text));
+         }
+      }
+      return (copy);
+   }
+
+
+
+   /*******************************************************************************
+    ** Retention candidates are paged independently of deletion, so retained PHI cannot starve other rows.
+    *******************************************************************************/
+   public List<AssistantConversation> listConversationsInactiveSince(Instant cutoff, Integer afterId, Integer limit) throws QException
+   {
+      return (query(AssistantConversation.TABLE_NAME, new QQueryFilter()
+         .withCriteria("modifyDate", QCriteriaOperator.LESS_THAN, cutoff)
+         .withCriteria("id", QCriteriaOperator.GREATER_THAN, afterId)
+         .withOrderBy(new QFilterOrderBy("id", true)).withLimit(limit), AssistantConversation.class));
+   }
+
+
+
+   /*******************************************************************************
+    ** Enabled data-driven budgets, read once per evaluation (never per token).
+    *******************************************************************************/
+   public List<AssistantBudget> budgets() throws QException
+   {
+      return (query(AssistantBudget.TABLE_NAME, new QQueryFilter().withCriteria("enabled", QCriteriaOperator.EQUALS, true)
+         .withOrderBy(new QFilterOrderBy("id", true)), AssistantBudget.class));
+   }
+
+
+
+   /*******************************************************************************
+    ** One budget, including disabled rows for override validation.
+    *******************************************************************************/
+   public AssistantBudget budget(Integer id) throws QException
+   {
+      return (first(query(AssistantBudget.TABLE_NAME, new QQueryFilter().withCriteria("id", QCriteriaOperator.EQUALS, id), AssistantBudget.class)));
+   }
+
+
+
+   /*******************************************************************************
+    ** Overrides of one budget; expiry and narrower scope are evaluated together.
+    *******************************************************************************/
+   public List<AssistantBudgetOverride> budgetOverrides(Integer id) throws QException
+   {
+      return (query(AssistantBudgetOverride.TABLE_NAME, new QQueryFilter().withCriteria("budgetId", QCriteriaOperator.EQUALS, id), AssistantBudgetOverride.class));
+   }
+
+
+
+   /*******************************************************************************
+    ** Persist a transition once. The unique key arbitrates concurrent replicas;
+    ** an insert failure is ignored only when the winning row can be read.
+    *******************************************************************************/
+   public synchronized boolean budgetEvent(AssistantBudgetEvent event) throws QException
+   {
+      QQueryFilter filter = new QQueryFilter().withCriteria("budgetId", QCriteriaOperator.EQUALS, event.getBudgetId())
+         .withCriteria("scopeKey", QCriteriaOperator.EQUALS, event.getScopeKey())
+         .withCriteria("periodStart", QCriteriaOperator.EQUALS, event.getPeriodStart())
+         .withCriteria("state", QCriteriaOperator.EQUALS, event.getState());
+      if(!query(AssistantBudgetEvent.TABLE_NAME, filter, AssistantBudgetEvent.class).isEmpty())
+      {
+         return (false);
+      }
+      try
+      {
+         insert(event);
+         return (true);
+      }
+      catch(QException e)
+      {
+         if(query(AssistantBudgetEvent.TABLE_NAME, filter, AssistantBudgetEvent.class).isEmpty())
+         {
+            throw (e);
+         }
+         return (false);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Accounting derives only from persisted usage. No conversation or request
+    ** data is copied, and no session or security key is changed.
+    *******************************************************************************/
+   private void projectBudgetUsage(QRecord usage) throws QException
+   {
+      List<AssistantBudgetUsage> existing = query(AssistantBudgetUsage.TABLE_NAME,
+         new QQueryFilter().withCriteria("usageId", QCriteriaOperator.EQUALS, usage.getValueInteger("id")), AssistantBudgetUsage.class);
+      QRecord projection = new QRecord().withValue("usageId", usage.getValueInteger("id")).withValue("occurredAt", usage.getValueInstant("createDate"));
+      for(String field : List.of("userId", "providerId", "model", "costMicros", "inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens"))
+      {
+         projection.setValue(field, usage.getValue(field));
+      }
+      if(existing.isEmpty())
+      {
+         insert(new AssistantBudgetUsage(projection));
+      }
+      else
+      {
+         updateFields(AssistantBudgetUsage.TABLE_NAME, projection.withValue("id", existing.get(0).getId()));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Internal bookkeeping flag; never accepted from a UI request body.
+    *******************************************************************************/
+   public enum ScheduledWrite implements ActionFlag
+   {
+      INTERNAL
+   }
+
+
+
+   /*******************************************************************************
+    ** Update computed task fields through QQQ under the caller's session.
+    *******************************************************************************/
+   public void scheduledUpdate(QRecord record) throws QException
+   {
+      UpdateOutput output = new UpdateAction().execute(new UpdateInput(AssistantScheduledTask.TABLE_NAME)
+         .withRecord(record).withFlag(ScheduledWrite.INTERNAL));
+      if(CollectionUtils.nullSafeHasContents(output.getRecords().get(0).getErrors()))
+      {
+         throw (new QException("Could not update scheduled task bookkeeping."));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Read a task definition, never application data.
+    *******************************************************************************/
+   public AssistantScheduledTask scheduledTask(Integer id) throws QException
+   {
+      return (first(query(AssistantScheduledTask.TABLE_NAME,
+         new QQueryFilter().withCriteria("id", QCriteriaOperator.EQUALS, id), AssistantScheduledTask.class)));
+   }
+
+
+
+   /*******************************************************************************
+    ** Optimistic slot claim. The database unique(taskId, scheduledFor) is the
+    ** cross-replica arbiter; the monitor also covers the fixture memory backend.
+    ** Advance before dispatch. A crash can skip a slot, never run it twice.
+    *******************************************************************************/
+   public ScheduledClaim claimScheduled(
+      AssistantScheduledTask candidate, Instant now, Boolean manual) throws QException
+   {
+      synchronized(QContext.getQInstance())
+      {
+         var task = scheduledTask(candidate.getId());
+         if(task == null || (!manual && (!Boolean.TRUE.equals(task.getEnabled()) || task.getNextRunAt() == null
+            || task.getNextRunAt().isAfter(now) || !Objects.equals(task.getNextRunAt(), candidate.getNextRunAt()))))
+         {
+            return (null);
+         }
+         Instant slot = manual ? now : task.getNextRunAt();
+         Instant next = Boolean.TRUE.equals(task.getEnabled()) ? ScheduledTasks.next(task, now) : null;
+         var filter = new QQueryFilter().withCriteria("taskId", QCriteriaOperator.EQUALS, task.getId()).withCriteria("scheduledFor", QCriteriaOperator.EQUALS, slot);
+         if(!query(AssistantScheduledRun.TABLE_NAME, filter, AssistantScheduledRun.class).isEmpty())
+         {
+            if(!manual)
+            {
+               scheduledUpdate(new QRecord().withValue("id", task.getId()).withValue("nextRunAt", next));
+            }
+            return (null);
+         }
+         AssistantScheduledRun run;
+         try
+         {
+            run = insert(new AssistantScheduledRun().withTaskId(task.getId()).withUserId(task.getRunAsUserId())
+               .withScheduledFor(slot).withStartedAt(now).withStatus("RUNNING").withCostMicros(0L));
+         }
+         catch(QException e)
+         {
+            if(!query(AssistantScheduledRun.TABLE_NAME, filter, AssistantScheduledRun.class).isEmpty())
+            {
+               return (null);
+            }
+            throw (e);
+         }
+         scheduledUpdate(new QRecord().withValue("id", task.getId()).withValue("nextRunAt", next));
+         return (new ScheduledClaim(task, run));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** The claimed task snapshot and its run owner must remain consistent.
+    *******************************************************************************/
+   public record ScheduledClaim(AssistantScheduledTask task, AssistantScheduledRun run)
+   {
    }
 
 }

@@ -21,12 +21,18 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
+import com.kingsrook.qbits.assistant.model.AssistantModel;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
+import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
+import com.kingsrook.qbits.assistant.provider.HealthResult;
 import com.kingsrook.qbits.assistant.provider.ModelMessage;
 import com.kingsrook.qbits.assistant.provider.ModelProviderException;
 import com.kingsrook.qbits.assistant.provider.ModelRequest;
 import com.kingsrook.qbits.assistant.provider.ModelResponse;
+import com.kingsrook.qbits.assistant.provider.RegistryModelProvider;
 import com.kingsrook.qbits.assistant.provider.StreamHandle;
+import com.kingsrook.qbits.assistant.rag.EmbeddingService;
+import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 
@@ -108,6 +114,16 @@ public final class ConnectionTest
          return (new Result(STATUS_ERROR, null, null, e.getMessage()));
       }
 
+      return (call(runtime, active, userId));
+   }
+
+
+
+   /*******************************************************************************
+    ** Probe health, then make and account for a minimal completion.
+    *******************************************************************************/
+   private static Result call(AssistantRuntime runtime, ProviderService.Active active, String userId)
+   {
       List<ModelMessage> messages = new ArrayList<>();
       messages.add(ModelMessage.user(PING_PROMPT));
       ModelRequest request = new ModelRequest()
@@ -117,10 +133,16 @@ public final class ConnectionTest
          .withMessages(messages);
 
       UsageRecorder.Call usageCall = new UsageRecorder.Call(userId, null, null, active, UsageRecorder.PURPOSE_TEST);
-      ModelPricing       pricing   = runtime.getProviderService().pricing(active.providerType(), active.model());
+      ModelPricing       pricing   = runtime.getProviderService().pricing(active, active.model());
       long               started   = System.nanoTime();
       try
       {
+         AssistantProviderType type = runtime.getConfig().getProviderTypes().get(active.providerType());
+         HealthResult health = type.checkHealth(runtime.getProviderService().settings(active.row()));
+         if(Boolean.FALSE.equals(health.healthy()))
+         {
+            throw (new ModelProviderException(ModelProviderException.Kind.NETWORK, null, health.message()));
+         }
          StreamHandle  handle   = active.provider().stream(request, text ->
          {
             // the reply text is not used
@@ -138,7 +160,11 @@ public final class ConnectionTest
       {
          long latency = (System.nanoTime() - started) / 1_000_000;
          UsageRecorder.save(runtime.getStore(), UsageRecorder.row(usageCall, null, e, latency, pricing));
-         return (new Result(STATUS_ERROR, (int) latency, null, describe(e)));
+         return (new Result(STATUS_ERROR, (int) latency, null, Boolean.TRUE.equals(runtime.getConfig().getHipaaMode()) ? String.valueOf(e.getKind()) : describe(e)));
+      }
+      catch(ProviderService.ProviderSetupException e)
+      {
+         return (new Result(STATUS_ERROR, null, null, e.getMessage()));
       }
       catch(InterruptedException e)
       {
@@ -155,17 +181,7 @@ public final class ConnectionTest
     *******************************************************************************/
    static String describe(ModelProviderException e)
    {
-      String hint = switch(e.getKind())
-      {
-         case AUTHENTICATION -> "The API key was refused. Check the key in the secret store.";
-         case RATE_LIMITED -> "Rate limited by the provider. Try again shortly.";
-         case OVERLOADED -> "The provider is overloaded. Try again shortly.";
-         case INVALID_REQUEST -> "The provider refused the request. Check the model id.";
-         case TIMEOUT -> "No answer in time.";
-         case NETWORK -> "Could not reach the provider. Check the base URL and the network.";
-         case SERVER -> "The provider had a server error.";
-         default -> "The call failed.";
-      };
+      String hint = hint(e.getKind());
       return (hint + " (" + e.getKind() + (e.getHttpStatus() == null ? "" : ", HTTP " + e.getHttpStatus()) + (e.getMessage() == null ? "" : ": " + e.getMessage()) + ")");
    }
 
@@ -177,6 +193,86 @@ public final class ConnectionTest
    private static String truncate(String value, int max)
    {
       return (value == null || value.length() <= max ? value : value.substring(0, max));
+   }
+
+
+
+
+   /*******************************************************************************
+    ** Test even a disabled registry model before an admin enables it.
+    *******************************************************************************/
+   public static Result runModel(AssistantRuntime runtime, AssistantModel model, String userId) throws QException
+   {
+      AssistantProvider row = runtime.getStore().getProvider(model.getProviderId());
+      Result result;
+      try
+      {
+         if(row == null)
+         {
+            throw (new ProviderService.ProviderSetupException("The model's provider no longer exists."));
+         }
+         if(!model.isChat())
+         {
+            result = testEmbedding(runtime, model);
+         }
+         else
+         {
+            AssistantProviderType type = runtime.getConfig().getProviderTypes().get(row.getProviderType());
+            var settings = runtime.getProviderService().settings(row);
+            var provider = new RegistryModelProvider(type.create(settings), model);
+            result = call(runtime, new ProviderService.Active(row, row.getProviderType(), model.getModelId(), provider), userId);
+         }
+      }
+      catch(ProviderService.ProviderSetupException e)
+      {
+         result = new Result(STATUS_ERROR, null, model.getModelId(), e.getMessage());
+      }
+      runtime.getStore().updateFields(AssistantModel.TABLE_NAME, new QRecord().withValue("id", model.getId())
+         .withValue("lastTestAt", runtime.getClock().instant()).withValue("lastTestStatus", result.status())
+         .withValue("lastTestLatencyMs", result.latencyMs()).withValue("lastTestError", truncate(result.error(), 500)));
+      return (result);
+   }
+
+
+
+   /*******************************************************************************
+    ** An embedding model is tested with embeddings, never a chat completion.
+    ** The normal embedding budget, eligibility and usage rules still apply.
+    *******************************************************************************/
+   private static Result testEmbedding(AssistantRuntime runtime, AssistantModel model)
+   {
+      Long started = System.nanoTime();
+      try
+      {
+         new EmbeddingService(runtime).embed(model.getId(), List.of("Connection test."),
+            DataClassification.PUBLIC, "", null, null);
+         return (new Result(STATUS_OK, (int) ((System.nanoTime() - started) / 1_000_000), model.getModelId(), null));
+      }
+      catch(QException e)
+      {
+         return (new Result(STATUS_ERROR, null, model.getModelId(), e.getMessage()));
+      }
+   }
+
+
+
+
+   /*******************************************************************************
+    ** Map the provider error category.
+    *******************************************************************************/
+   private static String hint(ModelProviderException.Kind kind)
+   {
+      return (switch(kind)
+      {
+         case AUTHENTICATION -> "The API key was refused. Check the key in the secret store.";
+         case RATE_LIMITED -> "Rate limited by the provider. Try again shortly.";
+         case OVERLOADED -> "The provider is overloaded. Try again shortly.";
+         case INVALID_REQUEST -> "The provider refused the request. Check the model id.";
+         case TIMEOUT -> "No answer in time.";
+         case NETWORK -> "Could not reach the provider. Check the base URL and the network.";
+         case SERVER -> "The provider had a server error.";
+         default -> "The call failed.";
+      });
    }
 
 }

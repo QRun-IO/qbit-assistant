@@ -27,6 +27,7 @@ import java.util.Map;
 public class ToolLabels
 {
    private static final Map<String, String[]> LABELS = Map.ofEntries(
+      Map.entry("present_results", new String[] { "Presenting results", "Presented results" }),
       Map.entry("list_tables", new String[] { "Listing tables", "Listed tables" }),
       Map.entry("describe_table", new String[] { "Reading table details", "Read table details" }),
       Map.entry("query_records", new String[] { "Querying records", "Queried records" }),
@@ -36,7 +37,14 @@ public class ToolLabels
       Map.entry("get_record_history", new String[] { "Reading the change history", "Read the change history" }),
       Map.entry("render_widget", new String[] { "Rendering a widget", "Rendered a widget" }),
       Map.entry("search_help", new String[] { "Searching help", "Searched help" }),
-      Map.entry("navigate", new String[] { "Opening a screen", "Opened a screen" })
+      Map.entry("navigate", new String[] { "Opening a screen", "Opened a screen" }),
+      Map.entry("bulk_profiles_list", new String[] { "Listing saved bulk load profiles", "Listed saved bulk load profiles" }),
+      Map.entry("bulk_profile_describe", new String[] { "Reading a bulk load profile", "Read a bulk load profile" }),
+      Map.entry("bulk_file_attach", new String[] { "Reading the attached file", "Read the attached file" }),
+      Map.entry("bulk_mapping_suggest", new String[] { "Suggesting a column mapping", "Suggested a column mapping" }),
+      Map.entry("bulk_load_dry_run", new String[] { "Checking the mapping (dry run)", "Checked the mapping (dry run)" }),
+      Map.entry("bulk_profile_save", new String[] { "Preparing to save the profile", "Prepared to save the profile" }),
+      Map.entry("bulk_load_run", new String[] { "Preparing the load", "Prepared the load" })
    );
 
 
