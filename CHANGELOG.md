@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased - P-f
+
+- Add OpenAI-compatible embeddings (including Azure), explicit CHAT/EMBEDDING
+  model kinds, editable discovery hints, and budgeted EMBED usage.
+- Add admin Knowledge sources with streamed Review/Result Index now and Clear
+  index actions. Indexing uses the clicking admin's UI API session, chunks text,
+  skips unchanged hashes and reconciles disappeared records.
+- Add content-free in-memory and optional JDBC pgvector stores, per-instance
+  schemas, HNSW cosine search and transactional record replacement.
+- Add permission-filtered `search_knowledge`, fresh UI API reads, existing
+  masking/redaction, PHI embedding guards, classification propagation and citations.
+- Add embedding HTTP contracts, real UI API RAG security/golden tests and
+  always-on JDBC contracts; the pgvector container test skips without Docker.
+## Unreleased - Answer presentation
+
+- Add `present_results`: server-formatted metrics, tables, computed percentages,
+  charts and validated in-app filter/record/action links.
+- Persist and stream presentation parts with a multi-line GFM fallback and
+  record-data retention; add a static default presentation skill.
+- Add the owner's 81 JPEG / 20 PNG golden example, shared live eval coverage,
+  permission/formatting/input tests and strict-schema budget coverage.
+
 ## Unreleased - P-e
 
 - Add per-profile heuristic/classifier model routing, with budgeted ROUTE usage.

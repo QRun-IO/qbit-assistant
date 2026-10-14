@@ -17,6 +17,21 @@
 package com.kingsrook.qbits.assistant.engine;
 
 
+import java.io.Serializable;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.Future;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
@@ -36,6 +51,8 @@ import com.kingsrook.qbits.assistant.provider.ModelRequest;
 import com.kingsrook.qbits.assistant.provider.ModelResponse;
 import com.kingsrook.qbits.assistant.provider.ModelUsage;
 import com.kingsrook.qbits.assistant.provider.StreamHandle;
+import com.kingsrook.qbits.assistant.tools.KnowledgeTool;
+import com.kingsrook.qbits.assistant.tools.PresentResultsTool;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
 import com.kingsrook.qqq.backend.core.actions.ai.AiRecordRef;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolCall;
@@ -49,21 +66,6 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
-import java.io.Serializable;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.ZoneOffset;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.Future;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
@@ -101,6 +103,7 @@ public class TurnEngine implements Runnable
 
    private static final Set<AiToolOutcome> ERROR_OUTCOMES = Set.of(AiToolOutcome.DENIED, AiToolOutcome.NOT_FOUND, AiToolOutcome.INVALID_INPUT, AiToolOutcome.ERROR);
 
+   private final PresentResultsTool         presenter;
    private final AssistantRuntime           runtime;
    private final AssistantQBitConfig        config;
    private final AssistantStore             store;
@@ -146,6 +149,7 @@ public class TurnEngine implements Runnable
       AssistantTurn turn, String userText, Map<String, Object> pageContext, PolicyService.EffectivePolicy policy, RunningTurn running, String softBudgetNotice)
    {
       this.runtime = runtime;
+      this.presenter = new PresentResultsTool(runtime.getQInstance());
       this.config = runtime.getConfig();
       this.store = runtime.getStore();
       this.session = session;
@@ -689,7 +693,11 @@ public class TurnEngine implements Runnable
                {
                   if(!running.isCancelled())
                   {
-                     if(ContextBuilder.KERNEL_TOOLS.contains(call.getName()))
+                     if(PresentResultsTool.NAME.equals(call.getName()))
+                     {
+                        results[index] = presenter.execute(toolContext(), call.getId(), call.getInput());
+                     }
+                     else if(ContextBuilder.KERNEL_TOOLS.contains(call.getName()))
                      {
                         ///////////////////////////////////////////////////
                         // navigate / search_help: no records are read  //
@@ -704,8 +712,15 @@ public class TurnEngine implements Runnable
                         QContext.init(runtime.getQInstance(), session);
                         try
                         {
-                           outcomes[index] = runtime.getToolbox().execute(toolContext(), call.getId(), call.getName(), call.getInput());
-                           results[index] = outcomes[index].getResult();
+                           if(KnowledgeTool.NAME.equals(call.getName()))
+                           {
+                              results[index] = runtime.getKnowledgeTool().execute(toolContext(), call.getId(), call.getInput(), classification.getClassification(), conversation.getId(), turn.getId());
+                           }
+                           else
+                           {
+                              outcomes[index] = runtime.getToolbox().execute(toolContext(), call.getId(), call.getName(), call.getInput());
+                              results[index] = outcomes[index].getResult();
+                           }
                         }
                         finally
                         {
@@ -798,7 +813,8 @@ public class TurnEngine implements Runnable
       }
 
       Map<String, Object> data = map("messageId", assistantMessage.getId(), "toolCallId", use.getToolUseId(), "name", use.getToolName(), "outcome", outcome, "summary", summary);
-      if(result.getRender() != null)
+      Boolean presentation = PresentResultsTool.NAME.equals(use.getToolName()) && AiToolOutcome.OK.equals(result.getOutcome()) && result.getRender() != null;
+      if(result.getRender() != null && !presentation)
       {
          data.put("render", result.getRender());
       }
@@ -808,7 +824,12 @@ public class TurnEngine implements Runnable
       }
       emit(TurnEvent.TOOL_RESULT, data);
 
-      parts.addTool(use.getToolUseId(), use.getToolName(), summary, outcome, result.getRender());
+      parts.addTool(use.getToolUseId(), use.getToolName(), summary, outcome, presentation ? null : result.getRender());
+      if(presentation)
+      {
+         parts.addPresentation(result.getRender());
+         emit(TurnEvent.PRESENTATION, map("messageId", assistantMessage.getId(), "part", result.getRender()));
+      }
       parts.addRecordRefs(refs);
 
       String href = result.getNavigateHref();
@@ -826,7 +847,7 @@ public class TurnEngine implements Runnable
             .withUserId(userId)
             .withToolCallId(use.getToolUseId())
             .withToolName(use.getToolName())
-            .withInputJson(truncate(redactInput(use.getInput()), MAX_INPUT_JSON_CHARS))
+            .withInputJson(truncate(redactInput(PresentResultsTool.NAME.equals(use.getToolName()) ? (presentation ? result.getRender() : Map.of()) : use.getInput()), MAX_INPUT_JSON_CHARS))
             .withOutcome(outcome)
             .withPermissionCheck(result.getPermissionCheck())
             .withTableName(result.getTableName())
@@ -837,7 +858,7 @@ public class TurnEngine implements Runnable
             .withResultSummary(summary)
             .withResultJson(truncate(result.getModelContent(), MAX_RESULT_JSON_CHARS))
             .withRedactionsJson(result.getRedactions() == null || result.getRedactions().isEmpty() ? null : JsonUtils.toJson(result.getRedactions()))
-            .withUiApiOperation(extras == null ? null : extras.getOperation())
+            .withUiApiOperation(extras == null ? ("search_knowledge".equals(use.getToolName()) ? "GET /table/{tableName}/{primaryKey}" : null) : extras.getOperation())
             .withHttpStatus(extras == null ? null : extras.getHttpStatus())
             .withAuditHref(extras == null ? null : extras.getAuditHref())
             .withPendingActionId(extras == null ? null : extras.getPendingActionId()));
@@ -910,7 +931,7 @@ public class TurnEngine implements Runnable
    /*******************************************************************************
     ** Only same-origin application links are passed on.
     *******************************************************************************/
-   static boolean isAppHref(String href)
+   public static boolean isAppHref(String href)
    {
       return (href != null && (href.equals("/app") || href.startsWith("/app/")) && !href.contains("//") && !href.contains("\\"));
    }

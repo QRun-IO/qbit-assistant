@@ -187,6 +187,16 @@ public class ProviderService
     *******************************************************************************/
    public Active forRow(AssistantProvider row, String fallbackModel) throws ProviderSetupException
    {
+      return (forRow(row, fallbackModel, false));
+   }
+
+
+
+   /*******************************************************************************
+    ** Resolve only the requested kind; embedding calls never select chat models.
+    *******************************************************************************/
+   private Active forRow(AssistantProvider row, String fallbackModel, Boolean embedding) throws ProviderSetupException
+   {
       if(Boolean.TRUE.equals(config.getHipaaMode()) && !Boolean.TRUE.equals(row.getHipaaEligible()))
       {
          throw (new ProviderSetupException("HIPAA mode: only HIPAA-eligible providers can be used."));
@@ -205,7 +215,7 @@ public class ProviderService
       String model = StringUtils.hasContent(row.getModel()) ? row.getModel() : null;
       if(model == null && !models.isEmpty())
       {
-         model = models.stream().filter(m -> Boolean.TRUE.equals(m.getEnabled())).map(AssistantModel::getModelId).findFirst().orElse(null);
+         model = models.stream().filter(m -> Boolean.TRUE.equals(m.getEnabled()) && !m.isChat().equals(embedding)).map(AssistantModel::getModelId).findFirst().orElse(null);
          if(model == null)
          {
             throw (new ProviderSetupException("All models of this provider are disabled. Enable a model first."));
@@ -217,7 +227,7 @@ public class ProviderService
       }
       String selected = model;
       AssistantModel registry = models.stream().filter(m -> java.util.Objects.equals(selected, m.getModelId())).findFirst().orElse(null);
-      if(registry != null && !Boolean.TRUE.equals(registry.getEnabled()))
+      if(registry != null && (!Boolean.TRUE.equals(registry.getEnabled()) || registry.isChat().equals(embedding)))
       {
          throw (new ProviderSetupException("The selected model is disabled in this provider's model registry."));
       }
@@ -752,7 +762,7 @@ public class ProviderService
    public Active resolveModel(Integer modelId, Boolean requiresHipaa, Boolean requireTools) throws QException
    {
       AssistantModel model = store.listModels().stream().filter(m -> modelId.equals(m.getId()) && Boolean.TRUE.equals(m.getEnabled())).findFirst().orElse(null);
-      if(model == null)
+      if(model == null || !model.isChat())
       {
          return (null);
       }
@@ -816,4 +826,28 @@ public class ProviderService
    {
       return (left != null && right != null && java.util.Objects.equals(left.providerId(), right.providerId()) && java.util.Objects.equals(left.model(), right.model()));
    }
+
+
+   /*******************************************************************************
+    ** Embedding selection is explicit and checks fresh provider eligibility.
+    *******************************************************************************/
+   public Active resolveEmbedding(Integer modelId, Boolean requiresHipaa) throws QException
+   {
+      AssistantModel model = store.listModels().stream().filter(m -> java.util.Objects.equals(modelId, m.getId())).findFirst().orElse(null);
+      if(model == null || !"EMBEDDING".equals(model.getModelKind()) || !Boolean.TRUE.equals(model.getEnabled()))
+      {
+         throw (new ProviderSetupException("Select an enabled EMBEDDING model for this knowledge source."));
+      }
+      AssistantProvider row = store.getProvider(model.getProviderId());
+      if(row == null || !Boolean.TRUE.equals(row.getEnabled()))
+      {
+         throw (new ProviderSetupException("The embedding provider is disabled or unavailable."));
+      }
+      if((requiresHipaa || Boolean.TRUE.equals(config.getHipaaMode())) && !Boolean.TRUE.equals(row.getHipaaEligible()))
+      {
+         throw (new ProviderSetupException("PHI may only be embedded by a HIPAA-eligible provider. Nothing was sent."));
+      }
+      return (forRow(new AssistantProvider(row.toQRecord()).withModel(model.getModelId()), model.getModelId(), true));
+   }
+
 }

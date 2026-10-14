@@ -34,9 +34,12 @@ import com.kingsrook.qbits.assistant.provider.ModelPart;
 import com.kingsrook.qbits.assistant.provider.ModelRequest;
 import com.kingsrook.qbits.assistant.provider.ModelToolDefinition;
 import com.kingsrook.qbits.assistant.provider.SystemBlock;
+import com.kingsrook.qbits.assistant.tools.KnowledgeTool;
+import com.kingsrook.qbits.assistant.tools.PresentResultsTool;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolDefinition;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolKernel;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
@@ -68,6 +71,7 @@ public class ContextBuilder
    private final AiToolKernel        kernel;
    private final UiApiToolbox        toolbox;
    private volatile String           appDigest;
+   private KnowledgeTool knowledgeTool;
 
 
 
@@ -116,6 +120,11 @@ public class ContextBuilder
                .withStrict(isStrict(definition.getName(), !Boolean.FALSE.equals(definition.getStrict()))));
          }
       }
+      if(knowledgeTool != null && knowledgeTool.offered(policy, QContext.getQSession()))
+      {
+         byName.put(KnowledgeTool.NAME, knowledgeTool.definition());
+      }
+      byName.put(PresentResultsTool.NAME, PresentResultsTool.definition(isStrict(PresentResultsTool.NAME, true)));
       return (new ArrayList<>(byName.values()));
    }
 
@@ -368,6 +377,17 @@ public class ContextBuilder
          return (trimmed.length() > MAX_CONTEXT_CHARS ? trimmed.substring(0, MAX_CONTEXT_CHARS) : trimmed);
       }
       return (null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Additive optional tool hook; UI API toolbox stays independently maintained.
+    *******************************************************************************/
+   public ContextBuilder withKnowledgeTool(KnowledgeTool knowledgeTool)
+   {
+      this.knowledgeTool = knowledgeTool;
+      return (this);
    }
 
 }

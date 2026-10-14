@@ -59,7 +59,8 @@ public class TurnRunner
        *******************************************************************************/
       public String text()
       {
-         return (events.stream().filter(e -> TurnEvent.TEXT_DELTA.equals(e.getType())).map(e -> String.valueOf(e.getData().get("text"))).collect(Collectors.joining()));
+         return (events.stream().filter(e -> TurnEvent.TEXT_DELTA.equals(e.getType()) || TurnEvent.PRESENTATION.equals(e.getType()))
+            .map(e -> TurnEvent.PRESENTATION.equals(e.getType()) ? String.valueOf(((Map<?, ?>) e.getData().get("part")).get("markdown")) : String.valueOf(e.getData().get("text"))).collect(Collectors.joining()));
       }
 
 

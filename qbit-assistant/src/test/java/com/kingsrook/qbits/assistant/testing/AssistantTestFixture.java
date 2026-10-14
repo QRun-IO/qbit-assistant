@@ -226,9 +226,13 @@ public class AssistantTestFixture
          update("page", new QRecord().withValue("id", 12).withValue("metaDescription", "Who I am and what I build."));
          update("page", new QRecord().withValue("id", 12).withValue("content", "Body of page 12, rewritten with a longer story about the home lab."));
 
-         insert("media", List.of(
-            new QRecord().withValue("fileName", "cover.heic").withValue("mimeType", "image/heic"),
-            new QRecord().withValue("fileName", "logo.png").withValue("mimeType", "image/png").withValue("width", 512)));
+         List<QRecord> media = new ArrayList<>();
+         for(Integer i = 0; i < 101; i++)
+         {
+            media.add(new QRecord().withValue("fileName", "image-" + i + (i < 81 ? ".jpg" : ".png"))
+               .withValue("mimeType", i < 81 ? "image/jpeg" : "image/png").withValue("width", 512));
+         }
+         insert("media", media);
 
          List<QRecord> stats = new ArrayList<>();
          for(int d = 1; d <= 5; d++)

@@ -46,6 +46,8 @@ Always use the wrapper: Maven 3.10 cannot read the parent POM. The committed def
 - `qbit-assistant-provider-bedrock`: Claude through the Anthropic Bedrock backend, AWS default credentials and SigV4; IRSA/web-identity hosts supply STS.
 - `qbit-assistant-provider-vertex`: Claude through the Anthropic Vertex backend and Gemini through OpenAI-compatible Chat Completions, with refreshed Google ADC tokens.
 
+- `qbit-assistant-rag-pgvector`: optional host-supplied JDBC vector store, isolated by instance schema; no QQQ RDBMS internals.
+
 ## Invariants (do not break)
 
 - **Sessions:**
@@ -53,6 +55,7 @@ Always use the wrapper: Maven 3.10 cannot read the parent POM. The committed def
   - Every route uses `ExecutorSessionUtils.setupSession` (the user's own session).
   - `AssistantSecurity` only ever adds the user's OWN id key, or the all-access key for `assistant.admin` holders.
 - **Data access:**
+  - The vector index stores no record content: only source/table/key/field/chunk, content hash and embedding. Retrieval re-reads every hit through the UI API as the asking user, then applies the existing get_record exposure/masking path.
   - Only `persistence/` calls QueryAction, InsertAction and the other data actions (ArchUnit).
   - Data tools run only through `UiApiToolbox` → `UiApiGateway` (spec'd `/qqq/v1` operations with the user's `sessionUUID`); never core data actions for user data. Only `navigate` and `search_help` use `AiToolKernel.execute`.
   - Data access (`DataAccessService`) and the policy only ever narrow what the UI API allows; a table whose AI exposure is NONE stays NONE.
@@ -99,4 +102,4 @@ QQQ style:
 - `develop` publishes SNAPSHOTs.
 - `release/*` publishes RCs; the orb bumps `<revision>` in the root POM.
 - `v*` tags publish releases.
-- All five modules and the parent POM publish. The flatten plugin resolves `${revision}`.
+- All six modules and the parent POM publish. The flatten plugin resolves `${revision}`.

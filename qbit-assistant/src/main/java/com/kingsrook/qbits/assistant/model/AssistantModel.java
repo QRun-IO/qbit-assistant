@@ -32,6 +32,12 @@ public class AssistantModel extends QRecordEntity
 {
    public static final String TABLE_NAME = "assistant_model";
 
+   @QField(maxLength = 16)
+   private String modelKind;
+
+   @QField()
+   private Integer embeddingDimensions;
+
    @QField()
    private Integer fallbackModelId;
 
@@ -798,4 +804,76 @@ public class AssistantModel extends QRecordEntity
       this.fallbackModelId = fallbackModelId;
       return (this);
    }
+
+
+
+   /*******************************************************************************
+    ** Getter for modelKind
+    *******************************************************************************/
+   public String getModelKind()
+   {
+      return (modelKind);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for modelKind
+    *******************************************************************************/
+   public void setModelKind(String modelKind)
+   {
+      this.modelKind = modelKind;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for modelKind
+    *******************************************************************************/
+   public AssistantModel withModelKind(String modelKind)
+   {
+      this.modelKind = modelKind;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for embeddingDimensions
+    *******************************************************************************/
+   public Integer getEmbeddingDimensions()
+   {
+      return (embeddingDimensions);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for embeddingDimensions
+    *******************************************************************************/
+   public void setEmbeddingDimensions(Integer embeddingDimensions)
+   {
+      this.embeddingDimensions = embeddingDimensions;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for embeddingDimensions
+    *******************************************************************************/
+   public AssistantModel withEmbeddingDimensions(Integer embeddingDimensions)
+   {
+      this.embeddingDimensions = embeddingDimensions;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Legacy registry rows remain chat models until explicitly classified.
+    *******************************************************************************/
+   public Boolean isChat()
+   {
+      return (modelKind == null || "CHAT".equals(modelKind));
+   }
+
 }

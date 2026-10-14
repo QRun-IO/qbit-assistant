@@ -94,4 +94,15 @@ public class RegistryModelProvider implements AssistantModelProvider
    {
       return (delegate.countTokens(request));
    }
+
+
+   /*******************************************************************************
+    ** Preserve the delegate's optional embedding capability.
+    *******************************************************************************/
+   @Override
+   public EmbeddingResponse embed(EmbeddingRequest request) throws ModelProviderException
+   {
+      return (delegate.embed(request));
+   }
+
 }

@@ -30,6 +30,7 @@ import com.kingsrook.qbits.assistant.model.AssistantDataAudit;
 import com.kingsrook.qbits.assistant.model.AssistantFeedback;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
 import com.kingsrook.qbits.assistant.model.AssistantModel;
+import com.kingsrook.qbits.assistant.model.AssistantRagSource;
 import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
 import com.kingsrook.qbits.assistant.model.AssistantPendingAction;
 import com.kingsrook.qbits.assistant.model.AssistantPolicy;
@@ -110,7 +111,7 @@ public class AssistantMetaDataBuilder
     ** calls on a conversation; model calls on a provider) or reached from the
     ** home. Processes are table and record actions, never nav entries.
     *******************************************************************************/
-   public static final List<String> NAV_TABLES = List.of(AssistantBudget.TABLE_NAME, AssistantProvider.TABLE_NAME, AssistantProfile.TABLE_NAME, AssistantSkill.TABLE_NAME, AssistantDataAccess.TABLE_NAME, AssistantConversation.TABLE_NAME, AssistantModelPrice.TABLE_NAME, AssistantPolicy.TABLE_NAME);
+   public static final List<String> NAV_TABLES = List.of(AssistantRagSource.TABLE_NAME, AssistantBudget.TABLE_NAME, AssistantProvider.TABLE_NAME, AssistantProfile.TABLE_NAME, AssistantSkill.TABLE_NAME, AssistantDataAccess.TABLE_NAME, AssistantConversation.TABLE_NAME, AssistantModelPrice.TABLE_NAME, AssistantPolicy.TABLE_NAME);
 
    private final AssistantQBitConfig config;
 
@@ -185,6 +186,13 @@ public class AssistantMetaDataBuilder
       tables.add(settings(base(AssistantProvider.TABLE_NAME, "Assistant Provider", "settings_input_component", AssistantProvider.class))
          .withUniqueKey(new UniqueKey("name"))
          .withRecordLabelFormat("%s").withRecordLabelFields("name"));
+
+      QCodeReference ragCustomizer = new QCodeReference(AssistantRagSourceCustomizer.class);
+      tables.add(text(base(AssistantRagSource.TABLE_NAME, "Knowledge sources", "manage_search", AssistantRagSource.class), "filterJson")
+         .withRecordLabelFormat("%s").withRecordLabelFields("name")
+         .withCustomizer(TableCustomizers.PRE_INSERT_RECORD, ragCustomizer).withCustomizer(TableCustomizers.PRE_UPDATE_RECORD, ragCustomizer)
+         .withCustomizer(TableCustomizers.POST_INSERT_RECORD, ragCustomizer).withCustomizer(TableCustomizers.POST_UPDATE_RECORD, ragCustomizer)
+         .withCustomizer(TableCustomizers.POST_DELETE_RECORD, ragCustomizer));
 
       tables.add(settings(base(AssistantModel.TABLE_NAME, "Assistant Model", "memory", AssistantModel.class))
          .withUniqueKey(new UniqueKey("providerId", "modelId"))

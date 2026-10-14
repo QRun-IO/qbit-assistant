@@ -66,6 +66,13 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend.StreamedETLWithFrontendProcess;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
+import com.kingsrook.qbits.assistant.model.AssistantModel;
+import com.kingsrook.qbits.assistant.persistence.AssistantStore;
+import com.kingsrook.qqq.backend.core.actions.values.SearchPossibleValueSourceAction;
+import com.kingsrook.qqq.backend.core.actions.values.QCustomPossibleValueProvider;
+import com.kingsrook.qqq.backend.core.model.actions.values.SearchPossibleValueSourceInput;
+import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValue;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.util.HashMap;
@@ -222,8 +229,9 @@ class AssistantSettingsTest extends BaseAssistantTest
     ** Tables, nav, actions, child lists and exposure.
     *******************************************************************************/
    @Test
-   void testMetaData()
+   void testMetaData() throws Exception
    {
+      asAdmin();
       for(String name : List.of(AssistantProvider.TABLE_NAME, AssistantModelPrice.TABLE_NAME, AssistantUsage.TABLE_NAME))
       {
          QTableMetaData table = qInstance.getTable(name);
@@ -237,7 +245,7 @@ class AssistantSettingsTest extends BaseAssistantTest
       assertThat(qInstance.getProcess(TestConnectionProcess.NAME).getLabel()).isEqualTo("Test connection");
       assertThat(qInstance.getWidget(AssistantHome.WIDGET_NAME)).isNotNull();
       assertThat(qInstance.getPossibleValueSource(AssistantRecordScreens.PROVIDER_TYPE_PVS_NAME).getEnumValues()).extracting(v -> String.valueOf(v.getId())).containsExactly(FAKE_TYPE);
-      assertThat(qInstance.getPossibleValueSource(AssistantRecordScreens.MODEL_PVS_NAME).getEnumValues()).extracting(v -> String.valueOf(v.getId())).contains("fake-model-1", "claude-sonnet-5-5");
+      assertThat(new SearchPossibleValueSourceAction().execute(new SearchPossibleValueSourceInput().withPossibleValueSourceName(AssistantRecordScreens.MODEL_PVS_NAME)).getResults()).extracting(v -> String.valueOf(v.getId())).contains("fake-model-1", "claude-sonnet-5-5");
       assertThat(qInstance.getTable(AssistantProvider.TABLE_NAME).getSections()).anyMatch(s -> s.getWidgetName() != null);
       assertThat(qInstance.getTable(AssistantProvider.TABLE_NAME).getSections()).anyMatch(s -> s.getFieldNames() != null && s.getFieldNames().contains("apiKeyStatus"));
    }
@@ -568,6 +576,114 @@ class AssistantSettingsTest extends BaseAssistantTest
       input.setWidgetMetaData(qInstance.getWidget(AssistantHome.WIDGET_NAME));
       RenderWidgetOutput output = new RenderWidgetAction().execute(input);
       return (((RawHTML) output.getWidgetData()).getHtml());
+   }
+
+
+
+   /*******************************************************************************
+    ** Provider models are scoped, with only this row's enabled chat models added.
+    *******************************************************************************/
+   @Test
+   void testContingentProviderModels() throws Exception
+   {
+      asAdmin();
+      Integer id = providerId();
+      AssistantStore store = new AssistantStore();
+      store.insert(new AssistantModel().withProviderId(id).withModelId("registered-chat").withEnabled(true).withModelKind("CHAT"));
+      store.insert(new AssistantModel().withProviderId(id).withModelId("disabled-chat").withEnabled(false).withModelKind("CHAT"));
+      store.insert(new AssistantModel().withProviderId(id).withModelId("embedding").withEnabled(true).withModelKind("EMBEDDING"));
+      Integer otherId = insertProvider(Map.of("name", "Other")).getRecords().get(0).getValueInteger("id");
+      store.insert(new AssistantModel().withProviderId(otherId).withModelId("other-chat").withEnabled(true).withModelKind("CHAT"));
+      assertThat(settingsValues(AssistantRecordScreens.MODEL_PVS_NAME, Map.of("providerType", FAKE_TYPE, "id", id.toString())))
+         .extracting(value -> String.valueOf(value.getId())).containsExactly("fake-model-1", "fake-model-2", "registered-chat");
+      assertThat(settingsValues(AssistantRecordScreens.MODEL_PVS_NAME, Map.of("providerType", FAKE_TYPE)))
+         .extracting(value -> String.valueOf(value.getId())).containsExactly("fake-model-1", "fake-model-2");
+      assertThat(new SearchPossibleValueSourceAction().execute(new SearchPossibleValueSourceInput()
+         .withPossibleValueSourceName(AssistantRecordScreens.MODEL_PVS_NAME).withOtherValues(Map.of("providerType", FAKE_TYPE)).withSearchTerm("fake-model-2")).getResults())
+         .extracting(value -> String.valueOf(value.getId())).containsExactly("fake-model-2");
+   }
+
+
+
+   /*******************************************************************************
+    ** Kinds use the selected type and keep their existing labels.
+    *******************************************************************************/
+   @Test
+   void testContingentProviderKinds() throws Exception
+   {
+      assertThat(settingsValues("assistant_provider_kind", Map.of("providerType", FAKE_TYPE)))
+         .extracting(value -> String.valueOf(value.getId())).containsExactly("FAKE");
+      assertThat(settingsValues("assistant_provider_kind", Map.of())).anySatisfy(value ->
+      {
+         assertThat(value.getId()).isEqualTo("AZURE_OPENAI");
+         assertThat(value.getLabel()).isEqualTo("Azure OpenAI");
+      });
+   }
+
+
+
+   /*******************************************************************************
+    ** A price id must not be interpreted as a provider id.
+    *******************************************************************************/
+   @Test
+   void testContingentPriceModels() throws Exception
+   {
+      asAdmin();
+      Integer id = providerId();
+      new AssistantStore().insert(new AssistantModel().withProviderId(id).withModelId("registered-chat").withEnabled(true).withModelKind("CHAT"));
+      String source = qInstance.getTable(AssistantModelPrice.TABLE_NAME).getField("model").getPossibleValueSourceName();
+      assertThat(settingsValues(source, Map.of("providerType", FAKE_TYPE, "id", id)))
+         .extracting(value -> String.valueOf(value.getId())).containsExactly("fake-model-1", "fake-model-2");
+   }
+
+
+
+   /*******************************************************************************
+    ** Missing and unknown types retain the original union, including pricing.
+    *******************************************************************************/
+   @Test
+   void testContingentUnionFallback() throws Exception
+   {
+      for(String source : List.of(AssistantRecordScreens.MODEL_PVS_NAME, "assistant_price_model", "assistant_provider_kind"))
+      {
+         List<QPossibleValue<?>> union = settingsValues(source, null);
+         assertThat(settingsValues(source, Map.of())).usingRecursiveComparison().isEqualTo(union);
+         assertThat(settingsValues(source, Map.of("providerType", "unknown"))).usingRecursiveComparison().isEqualTo(union);
+      }
+      assertThat(settingsValues(AssistantRecordScreens.MODEL_PVS_NAME, null)).extracting(value -> String.valueOf(value.getId()))
+         .contains("fake-model-1", "claude-sonnet-5-5");
+   }
+
+
+
+   /*******************************************************************************
+    ** Saved values resolve without a selected type, even disabled registry ids.
+    *******************************************************************************/
+   @Test
+   void testSavedPossibleValue() throws Exception
+   {
+      asAdmin();
+      Integer id = providerId();
+      new AssistantStore().insert(new AssistantModel().withProviderId(id).withModelId("saved-model").withEnabled(false).withModelKind("CHAT"));
+      for(String source : List.of(AssistantRecordScreens.MODEL_PVS_NAME, "assistant_price_model", "assistant_provider_kind"))
+      {
+         QCustomPossibleValueProvider<?> custom = QCodeLoader.getAdHoc(QCustomPossibleValueProvider.class, qInstance.getPossibleValueSource(source).getCustomCodeReference());
+         String saved = source.equals("assistant_provider_kind") ? "OPENAI" : "saved-model";
+         assertThat(custom.getPossibleValue(saved).getId()).isEqualTo(saved);
+         assertThat(custom.getPossibleValue("not-known")).isNull();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Exercise the registered source through QQQ's search action.
+    *******************************************************************************/
+   private List<QPossibleValue<?>> settingsValues(String source, Map<String, Serializable> otherValues) throws Exception
+   {
+      asAdmin();
+      return (new SearchPossibleValueSourceAction().execute(new SearchPossibleValueSourceInput()
+         .withPossibleValueSourceName(source).withOtherValues(otherValues)).getResults());
    }
 
 }

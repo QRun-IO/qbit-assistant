@@ -9,7 +9,69 @@ Design spec: `QRun-IO/qqq` `docs/specs/2026-10-11-qqq-assistant-qbit-design.md`.
 | `com.kingsrook.qbits:qbit-assistant` | The QBit: conversation tables, turn engine, `/qqq/v1/assistant` routes (JSON + Server-Sent Events), budgets, kill switch, the provider SPI, and a scripted provider for tests and demos. |
 | `com.kingsrook.qbits:qbit-assistant-provider-anthropic` | The Claude provider (`com.anthropic:anthropic-java`). Add it to use Claude. The core QBit has no LLM SDK dependency. |
 
-The data access itself is done by the AI tool kernel in QQQ core (`com.kingsrook.qqq.backend.core.actions.ai.AiToolKernel`). The kernel checks table permissions and exposure rules, applies record security, and caps and redacts what the model sees. Every tool result reaches the model wrapped as untrusted data.
+Data tools use the QQQ UI API (`/qqq/v1`) with the signed-in user's session. The UI API enforces permissions and record locks; assistant data-access policy and field exposure can only narrow access. Only record-free navigation and help use the core AI tool kernel. Every tool result reaches the model wrapped as untrusted data.
+
+## RAG setup
+
+Knowledge retrieval is optional. The vector index stores **no record content**:
+only source/table/key/field/chunk identifiers, SHA-256 hashes and embeddings.
+Indexing reads through the UI API as the clicking administrator. Retrieval
+re-reads each hit through that same API as the asking user, silently filters
+403/404 results, applies `get_record` field exposure/masking/redaction and returns
+fresh snippets with `/app/...` citations. `search_knowledge` follows `allowedTools`
+and is offered only with an enabled source the user may read in the UI.
+
+1. Register the OpenAI-compatible provider module and configure the embedding
+   endpoint through the existing provider settings/URL allowlist. Discover or add
+   a model, set **Model kind = EMBEDDING** and its dimensions. Known discovery
+   defaults are `bge-m3` (1024) and `nomic-embed-text` (768); these remain editable.
+   CHAT models cannot be selected for embedding, and EMBEDDING models cannot answer
+   chat turns. Each embedding batch contains at most 64 inputs.
+2. Use the default `InMemoryVectorStore` for tests/small hosts, or add
+   `com.kingsrook.qbits:qbit-assistant-rag-pgvector` at the QBit's version for
+   persistence. The host supplies its JDBC driver and DataSource; this module
+   does not depend on QQQ RDBMS internals.
+3. For pgvector, have the DBA install the extension once in the chosen database:
+   `CREATE EXTENSION IF NOT EXISTS vector`. Give the application a distinct schema
+   per QQQ instance. Configure the store before producing the QBit:
+
+   ```java
+   PgVectorStore vectors = new PgVectorStore(dataSource, 1024)
+      .withSchema("assistant_rag_my_instance");
+   vectors.ensureSchema();
+   config.withVectorStore(vectors);
+   config.withUiApiBaseUrl("http://127.0.0.1:8000");
+   ```
+
+   The UI API URL is this server's own listening address. Configure it explicitly
+   so Index now works before any chat request has taught the runtime its local
+   port. The store creates a content-free `assistant_rag_chunk` table and an HNSW
+   cosine index. Its fixed dimension must match every source using the store;
+   different models are searched separately. No credentials go in source rows.
+   See the [pgvector installation/index documentation](https://github.com/pgvector/pgvector)
+   and the reference DDL in [schema-postgres.sql](docs/schema-postgres.sql).
+4. Open **Assistant → Knowledge sources** as an `assistant.admin`. Add the table,
+   comma-separated text fields, optional title field and QQQ query-filter JSON,
+   embedding model, and chunk size/overlap (defaults 1500/200). Tables with AI data
+   access NONE, `assistant_*` tables, and fields with NONE/METADATA_ONLY exposure
+   are refused. MASKED fields are masked before embedding and in snippets.
+5. Select **Index now**. Review makes no embedding calls; Result reports records
+   seen, chunks embedded, unchanged, removed and errors. Re-running unchanged
+   content sends no embeddings. A complete successful scan removes disappeared
+   records; failed scans preserve unvisited entries. **Clear index** removes only
+   that source's vectors. Changes after indexing are read fresh, but semantic
+   ranking becomes current only after re-indexing.
+
+Embedding usage has purpose `EMBED`, counts toward budgets, and observes the kill
+switch and provider concurrency limits. PHI sources and queries in PHI
+conversations require an eligible embedding provider; the eligibility flag is an
+operator assertion, as for chat. Automatic budget downgrades cannot change an
+embedding model's vector space, so an incompatible downgrade stops the call.
+
+Scheduling is deferred to P-g. Its designated-user runner can call
+`RagService.index` within that user's authenticated context; P-f creates no system
+session, stored admin credentials, scheduler or background content crawler.
+Data tools call the QQQ UI API through `UiApiToolbox` and `UiApiGateway` with the signed-in user's session. The UI enforces permissions and record security; the assistant further narrows access and caps and redacts returned values. Data tool results reach the model wrapped as untrusted data. Only record-free navigation and help use the core AI tool kernel.
 
 ## Requirements
 
@@ -203,6 +265,7 @@ Base path `/qqq/v1/assistant`. Every request is authenticated through the app's 
 The stream sends these events, each with a `seq`:
 - `message.start`, `text.delta`
 - `tool.start`, `tool.result` (with `render` and `recordRefs`)
+- `presentation` (`messageId`, `part`: summary, blocks and server-built GFM markdown)
 - `ui.navigate`, `notice`
 - `usage`, `message.end`
 - `error`
@@ -487,3 +550,16 @@ NETWORK/TIMEOUT marks a provider DOWN for 60 seconds; success marks it UP. Local
 health is probed when unknown/stale with a two-second timeout. Provider cards show
 health and down-until, failures show fallback totals, and turn records show the
 route and final destination. See [UPGRADE.md](UPGRADE.md) for the additive schema.
+
+### Answer presentation
+
+The always-available `present_results` tool turns retrieved results into metrics,
+tables, charts and actionable in-app links. The server validates the user's UI API
+visibility, formats field values, computes shares and builds all links. It emits
+and stores a `presentation` part with a complete GFM Markdown fallback. Profile
+skills can extend the built-in presentation instructions. See the
+[part, stream and input contract](docs/answer-presentation.md).
+
+The image-breakdown golden task also runs in the existing opt-in live provider suite:
+`./mvnw verify -Dassistant.live=true -Dtest.excludedGroups= -Dgroups=live -Djacoco.skip=true -pl qbit-assistant-provider-anthropic -am`
+(with `ANTHROPIC_API_KEY` set). Live calls are excluded from normal verification.

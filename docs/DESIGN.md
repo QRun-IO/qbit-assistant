@@ -422,6 +422,53 @@ AI exposure NONE is not enough, because the assistant acts as the user and an ad
 - Admin record screens, additive Postgres DDL and the flow-layout home expose these
   settings and counters without granting AI access to assistant configuration.
 
+### P-f as built
+
+- `AssistantModelProvider.embed` is optional and unsupported by default. The
+  OpenAI-compatible implementation shares chat's JDK HTTP authentication, TLS,
+  Azure deployment paths, timeout and sanitized error mapping. A request accepts
+  1–64 inputs; `EmbeddingService` batches larger jobs and records each call as
+  EMBED, including daily rollups and provider/model budget accounting.
+- Registry rows have CHAT/EMBEDDING kinds and embedding dimensions. Legacy rows
+  remain CHAT. Discovery suggests EMBEDDING for ids containing embed, bge, e5,
+  gte or nomic; administrators can correct it. Chat routing/fallback/downgrades
+  cannot select an embedding model. Embedding resolution is explicit and checks
+  fresh provider enablement and HIPAA eligibility before dispatch.
+- `assistant_rag_source` is an admin-only navigation table. Its text fields must
+  exist and allow VALUES/MASKED exposure; application data access must allow READ.
+  Index now and Clear index are standard streamed ETL record actions with Review
+  and Result, never navigation entries. Indexing pages the UI API as the clicking
+  admin, reuses get_record's masking path, chunks deterministically and compares
+  hashes. Complete scans alone prune disappeared records; per-record replacement
+  also removes obsolete field chunks. Configuration/model identity changes clear
+  stale vectors. No source text is saved on a source or vector row.
+- `VectorStore` supplies upsert/delete/search/count plus content-free chunk
+  reconciliation and atomic record replacement. The in-memory implementation uses
+  exact cosine; the optional pgvector module uses host JDBC, a validated instance
+  schema, bound values and an HNSW cosine index. Sources from other embedding
+  models are excluded before ranking. The DBA installs pgvector; existing
+  installations do not require extension-installation privileges on startup.
+- `KnowledgeTool` is separate from the unchanged `UiApiToolbox`. A small
+  ContextBuilder hook adds it only for an enabled source, policy permission and
+  UI-readable source table. Search embeds the question, requests 4× the result
+  limit, then re-reads each hit through get_record with the asking user's session.
+  403/404 hits contribute only to the filtered count. Safe current values produce
+  snippets and `/app` citations; record refs propagate touched tables into P-c
+  classification and the normal tool-call log. The citation instruction is in
+  the static rules block. The result limit is capped at eight.
+- PHI source content and PHI conversation queries only reach eligible embedding
+  providers. Embedding budgets, kill switch and provider concurrency checks apply
+  to each batch. A budget downgrade into another vector space stops embedding.
+- Tests exercise real fixture UI API reads, denials, record locks, field masking,
+  PHI refusal, classification, reconciliation, embedding wire contracts and a
+  golden cited answer. JDBC shape/transaction tests always run; a pgvector:pg16
+  Testcontainers test skips on hosts without Docker.
+- P-g may invoke the manual service within a designated user's authenticated
+  context. P-f supplies no scheduled runner or stored/elevated session. Multiple
+  replicas should serialize manual re-indexing of a source at the host level;
+  per-record pgvector replacement is transactional, while scan reconciliation is
+  not a snapshot of concurrently changing application data.
+
 ### Phases (each a green PR)
 | | Scope | Depends on |
 |---|---|---|
@@ -446,3 +493,36 @@ AI exposure NONE is not enough, because the assistant acts as the user and an ad
   - an "Explain access" action (for a user, and a table or a prompt, which operations the assistant could call and which it would be denied, with the reason);
   - a recent-denials widget on the app home.
 - **(d) Spec'd assistant endpoints:** move `/qqq/v1/assistant/...` (conversations, turns, events, feedback, cancel, config, actions) onto `AbstractEndpointSpec`s through the qbit spec extension point (`MiddlewareSpecExtension`, established prefix `/assistant`, QRun-IO/qqq#1128). The SSE turn and events streams stay raw routes until the spec layer can describe a stream.
+
+## Answer presentation (owner priority 2026-10-13)
+
+`present_results` is always offered and reads no records. It takes a direct answer,
+metrics, a table, an optional table-derived chart, filtered list links, record links
+and next-step actions. The server validates metadata and the user's UI API table
+visibility once per turn, formats values using QQQ field types/display formats,
+computes percentages and builds every `/app` href. Unknown or denied items are
+dropped with an explanation. The assistant must still retrieve every fact through
+data tools before presenting it.
+
+The [presentation part and SSE contract](answer-presentation.md) defines `summary`,
+`blocks` and the complete server-built GFM `markdown` fallback. Each successful
+call emits `presentation` with `{messageId, part}` and persists that part; the tool
+response tells the model not to repeat its tables or links. Audit rows contain
+only accepted presentation data. Normal record-data retention removes these parts.
+
+The built-in Presentation skill is compact static prompt text in the cached rules
+block. It asks for a one-sentence answer first, metrics for single numbers, tables
+for breakdowns/comparisons, charts for useful shares/trends and actual filter links
+whenever offering a list. Administrator profile skills append after it as before
+and extend it; there is no replacement boolean or extra permission surface.
+
+The owner's one-line table was a frontend parsing defect: Next's `AssistantMarkdown`
+used react-markdown without `remark-gfm`, so table lines became a paragraph.
+The renderer fix belongs to `qqq-frontend-next`; this worktree preserves real
+newlines and provides structured blocks plus a proper multi-line GFM fallback.
+The frontend change is maintained separately and is not verified by this build.
+
+The shared golden task asks "How many images do I have by type?": five UI count
+calls establish 81 JPEG, 20 PNG and zero other configured types, then a presentation
+with two rows, 80.2%/19.8% shares, two pie points and working MIME filter links.
+The same task is included in the opt-in `live` Anthropic eval suite.
