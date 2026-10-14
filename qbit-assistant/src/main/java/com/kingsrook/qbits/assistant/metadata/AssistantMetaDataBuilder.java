@@ -17,6 +17,8 @@
 package com.kingsrook.qbits.assistant.metadata;
 
 
+import java.util.ArrayList;
+import java.util.List;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.home.AssistantAccessWidget;
 import com.kingsrook.qbits.assistant.home.AssistantHome;
@@ -30,13 +32,15 @@ import com.kingsrook.qbits.assistant.model.AssistantDataAudit;
 import com.kingsrook.qbits.assistant.model.AssistantFeedback;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
 import com.kingsrook.qbits.assistant.model.AssistantModel;
-import com.kingsrook.qbits.assistant.model.AssistantRagSource;
 import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
 import com.kingsrook.qbits.assistant.model.AssistantPendingAction;
 import com.kingsrook.qbits.assistant.model.AssistantPolicy;
 import com.kingsrook.qbits.assistant.model.AssistantProfile;
 import com.kingsrook.qbits.assistant.model.AssistantProfileSkill;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
+import com.kingsrook.qbits.assistant.model.AssistantRagSource;
+import com.kingsrook.qbits.assistant.model.AssistantScheduledRun;
+import com.kingsrook.qbits.assistant.model.AssistantScheduledTask;
 import com.kingsrook.qbits.assistant.model.AssistantSkill;
 import com.kingsrook.qbits.assistant.model.AssistantToolCall;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
@@ -68,8 +72,6 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
-import java.util.ArrayList;
-import java.util.List;
 
 
 /*******************************************************************************
@@ -111,7 +113,7 @@ public class AssistantMetaDataBuilder
     ** calls on a conversation; model calls on a provider) or reached from the
     ** home. Processes are table and record actions, never nav entries.
     *******************************************************************************/
-   public static final List<String> NAV_TABLES = List.of(AssistantRagSource.TABLE_NAME, AssistantBudget.TABLE_NAME, AssistantProvider.TABLE_NAME, AssistantProfile.TABLE_NAME, AssistantSkill.TABLE_NAME, AssistantDataAccess.TABLE_NAME, AssistantConversation.TABLE_NAME, AssistantModelPrice.TABLE_NAME, AssistantPolicy.TABLE_NAME);
+   public static final List<String> NAV_TABLES = List.of(AssistantScheduledTask.TABLE_NAME, AssistantRagSource.TABLE_NAME, AssistantBudget.TABLE_NAME, AssistantProvider.TABLE_NAME, AssistantProfile.TABLE_NAME, AssistantSkill.TABLE_NAME, AssistantDataAccess.TABLE_NAME, AssistantConversation.TABLE_NAME, AssistantModelPrice.TABLE_NAME, AssistantPolicy.TABLE_NAME);
 
    private final AssistantQBitConfig config;
 
@@ -186,6 +188,17 @@ public class AssistantMetaDataBuilder
       tables.add(settings(base(AssistantProvider.TABLE_NAME, "Assistant Provider", "settings_input_component", AssistantProvider.class))
          .withUniqueKey(new UniqueKey("name"))
          .withRecordLabelFormat("%s").withRecordLabelFields("name"));
+
+      QCodeReference scheduledCustomizer = new QCodeReference(AssistantScheduledTaskCustomizer.class);
+      tables.add(text(base(AssistantScheduledTask.TABLE_NAME, "Scheduled tasks", "schedule", AssistantScheduledTask.class), "prompt")
+         .withRecordLabelFormat("%s").withRecordLabelFields("name")
+         .withCustomizer(TableCustomizers.PRE_INSERT_RECORD, scheduledCustomizer).withCustomizer(TableCustomizers.PRE_UPDATE_RECORD, scheduledCustomizer)
+         .withCustomizer(TableCustomizers.POST_QUERY_RECORD, scheduledCustomizer));
+      tables.add(readOnly(owned(base(AssistantScheduledRun.TABLE_NAME, "Scheduled runs", "history", AssistantScheduledRun.class), false))
+         .withoutCapabilities(Capability.TABLE_DELETE)
+         .withPermissionRules(new QPermissionRules().withLevel(PermissionLevel.NOT_PROTECTED))
+         .withUniqueKey(new UniqueKey("taskId", "scheduledFor"))
+         .withRecordLabelFormat("Run #%s").withRecordLabelFields("id"));
 
       QCodeReference ragCustomizer = new QCodeReference(AssistantRagSourceCustomizer.class);
       tables.add(text(base(AssistantRagSource.TABLE_NAME, "Knowledge sources", "manage_search", AssistantRagSource.class), "filterJson")

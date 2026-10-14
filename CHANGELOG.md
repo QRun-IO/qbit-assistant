@@ -5,6 +5,19 @@
 - Extract provider SPI/value types and `engine.ModelPricing` into `qbit-assistant-provider-api`, preserving package names. Its only production dependency is Jackson annotations.
 - Move Anthropic, OpenAI, Bedrock and Vertex main dependencies to the API; retain runtime fixtures in test scope. Pgvector still needs runtime RAG interfaces.
 - Provider-specific validation now takes unresolved `ProviderSettings` instead of `AssistantProvider`; add an ArchUnit boundary and standalone coverage gates.
+## Unreleased - P-g
+
+- Add admin Scheduled tasks, owner-locked run history, Quartz cron/timezones,
+  and a 60-second QQQ scheduled process using the host's scheduler context.
+- Log in through the loopback UI API with a separately allow-listed credential
+  environment reference; verify the designated user before starting a normal turn.
+- Add Review/Result Approve write mode, Revoke write mode and Run now actions.
+  Approval binds the task definition; scheduled writes always await confirmation.
+- Attribute scheduled UI API requests and tool logs, apply per-run STOP caps,
+  and send optional Alerts notifications to the designated user. HIPAA summaries
+  contain only `see conversation`.
+- Add unique schedule-slot claims, fixed-clock fixture integration tests and
+  additive Postgres DDL. No API routes or provider modules change.
 
 ## Unreleased - P-f
 

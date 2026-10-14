@@ -53,6 +53,7 @@ Always use the wrapper: Maven 3.10 cannot read the parent POM. The committed def
 ## Invariants (do not break)
 
 - **Sessions:**
+  - Scheduled runs log in as the designated user through `POST /qqq/v1/manageSession`; resolve only its returned UUID, verify the user id, and never construct or elevate a session. The QQQ-supplied scheduler context touches only assistant bookkeeping.
   - Never use `QSystemUserSession` or construct a `QSession` in main code (ArchUnit).
   - Every route uses `ExecutorSessionUtils.setupSession` (the user's own session).
   - `AssistantSecurity` only ever adds the user's OWN id key, or the all-access key for `assistant.admin` holders.
@@ -69,6 +70,8 @@ Always use the wrapper: Maven 3.10 cannot read the parent POM. The committed def
   - Errors (DENIED, NOT_FOUND, INVALID_INPUT, ERROR) are `is_error` results.
   - Unknown tools and over-limit calls also get error results.
 - **Keys:** never stored in a table. `assistant_provider.apiKeyEnvName` holds only an allowed environment variable NAME; `apiKeyStatus` is computed on read (last 4 at most) and stripped on save.
+  - Scheduled task `credentialEnvName` is a separately allow-listed environment variable NAME. Tokens never enter rows, model context or logs. `credentialStatus` is computed and stripped on save.
+  - Scheduled write approval is invalidated by changes to prompt, run-as user, credential reference, profile or write request. Scheduled writes always require the designated user's panel confirmation.
 - **Logging:** never log message content, prompts, tool results or keys. Structured end-of-turn log only.
 - **Thinking:** thinking is never streamed or stored. The Anthropic adapter keeps the raw assistant message (with signatures) only in memory, as `providerState`, for the tool loop.
 - **Links:** only `/app` or `/app/...` hrefs are emitted (`TurnEngine.isAppHref`).
