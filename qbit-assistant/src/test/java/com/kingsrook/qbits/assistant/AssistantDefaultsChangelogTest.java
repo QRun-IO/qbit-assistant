@@ -145,6 +145,33 @@ class AssistantDefaultsChangelogTest extends BaseAssistantTest
 
 
    /*******************************************************************************
+    ** Rolling the changelog back never deletes data: not the host's own rows
+    ** (changesets marked ran included), not the seeded ones.
+    *******************************************************************************/
+   @Test
+   void rollbackKeepsEveryRow() throws Exception
+   {
+      try(Connection connection = freshSchema(); Statement statement = connection.createStatement())
+      {
+         statement.execute("INSERT INTO assistant_policy (name, kill_switch) VALUES ('default', FALSE)");
+         statement.execute("INSERT INTO assistant_profile (name, display_name, is_default, enabled) VALUES ('default', 'Hal', TRUE, TRUE)");
+         statement.execute("INSERT INTO assistant_skill (name, instructions) VALUES ('find-and-count', 'The host wrote this.')");
+         runChangelog(connection);
+         Map<String, Integer> before = counts(connection);
+
+         Database database = DatabaseFactory.getInstance().findCorrectDatabaseImplementation(new JdbcConnection(connection));
+         new Liquibase(CHANGELOG.substring(1), new ClassLoaderResourceAccessor(), database).rollback(10, (String) null);
+
+         assertThat(ranChangesets(connection)).isEmpty();
+         assertThat(counts(connection)).isEqualTo(before);
+         assertThat(scalar(connection, "SELECT display_name FROM assistant_profile WHERE name = 'default'")).isEqualTo("Hal");
+         assertThat(scalar(connection, "SELECT instructions FROM assistant_skill WHERE name = 'find-and-count'")).isEqualTo("The host wrote this.");
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** A host without one of the tables: that changeset is marked ran, the
     ** rest apply, nothing fails.
     *******************************************************************************/
@@ -174,7 +201,7 @@ class AssistantDefaultsChangelogTest extends BaseAssistantTest
       for(String changeset : changesets)
       {
          assertThat(changeset).contains("-- preconditions onFail:MARK_RAN onError:MARK_RAN").contains("-- precondition-sql-check expectedResult:0 ")
-            .doesNotContain("precondition-table-exists").contains("-- rollback ").contains("NOT EXISTS");
+            .doesNotContain("precondition-table-exists").contains("-- rollback empty").contains("NOT EXISTS");
       }
       for(String table : SEEDED_TABLES)
       {

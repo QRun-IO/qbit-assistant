@@ -9,6 +9,9 @@
 -- Rules for this file:
 --   * insert-only: every row is inserted only when its natural key is absent,
 --     so an administrator's edits always survive and nothing is ever updated;
+--   * rollback is empty: a seeded row cannot be told apart from a host's own
+--     row with the same name, and Liquibase also rolls back changesets it marked
+--     ran, so undoing would delete the host's data (remove seeded rows by hand);
 --   * no secrets: environment variable NAMES only, never values;
 --   * portable SQL (PostgreSQL and H2): INSERT ... SELECT ... WHERE NOT EXISTS;
 --   * every changeset has a precondition on its table, so a host that has not
@@ -22,7 +25,7 @@
 INSERT INTO assistant_policy (name, kill_switch, writes_require_confirmation, redact_pii, max_rows_per_call, create_date, modify_date)
 SELECT 'default', FALSE, TRUE, TRUE, 50, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 WHERE NOT EXISTS (SELECT 1 FROM assistant_policy);
--- rollback DELETE FROM assistant_policy WHERE name = 'default';
+-- rollback empty
 
 -- changeset qbit-assistant:defaults-2
 -- preconditions onFail:MARK_RAN onError:MARK_RAN
@@ -37,7 +40,7 @@ Which tables can I look at?
 What changed in the last 7 days?',
    TRUE, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 WHERE NOT EXISTS (SELECT 1 FROM assistant_profile WHERE name = 'default' OR is_default = TRUE);
--- rollback DELETE FROM assistant_profile WHERE name = 'default';
+-- rollback empty
 
 -- changeset qbit-assistant:defaults-3
 -- preconditions onFail:MARK_RAN onError:MARK_RAN
@@ -53,7 +56,7 @@ SELECT 'find-and-count', 'Finding, filtering and counting records.',
 5. If the result was truncated, say so and offer the link instead of listing more.',
    TRUE, 'find,show,list,which,how many,count,filter,search,look up', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 WHERE NOT EXISTS (SELECT 1 FROM assistant_skill WHERE name = 'find-and-count');
--- rollback DELETE FROM assistant_skill WHERE name = 'find-and-count';
+-- rollback empty
 
 -- changeset qbit-assistant:defaults-4
 -- preconditions onFail:MARK_RAN onError:MARK_RAN
@@ -68,7 +71,7 @@ SELECT 'explain-a-record', 'Summarizing a record and who changed it.',
 4. Link to the record.',
    TRUE, 'explain,summarize,summary,tell me about,what is,status,history,changed,who changed,audit', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 WHERE NOT EXISTS (SELECT 1 FROM assistant_skill WHERE name = 'explain-a-record');
--- rollback DELETE FROM assistant_skill WHERE name = 'explain-a-record';
+-- rollback empty
 
 -- changeset qbit-assistant:defaults-5
 -- preconditions onFail:MARK_RAN onError:MARK_RAN
@@ -83,7 +86,7 @@ SELECT 'safe-changes', 'Proposing creates, updates and deletes safely.',
 4. For many rows from a file, use the bulk load tools and always run bulk_load_dry_run and show its summary before bulk_load_run.',
    TRUE, 'change,update,set,edit,create,add,new,delete,remove,fix,rename,import,load', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 WHERE NOT EXISTS (SELECT 1 FROM assistant_skill WHERE name = 'safe-changes');
--- rollback DELETE FROM assistant_skill WHERE name = 'safe-changes';
+-- rollback empty
 
 -- changeset qbit-assistant:defaults-6
 -- preconditions onFail:MARK_RAN onError:MARK_RAN
@@ -97,7 +100,7 @@ SELECT 'access-questions', 'Explaining why data is missing or not available.',
 3. Suggest the next step: check the filter, open the list screen, or ask an administrator for access.',
    TRUE, 'cannot see,can''t see,missing,not found,denied,access,permission,not allowed,hidden', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 WHERE NOT EXISTS (SELECT 1 FROM assistant_skill WHERE name = 'access-questions');
--- rollback DELETE FROM assistant_skill WHERE name = 'access-questions';
+-- rollback empty
 
 -- changeset qbit-assistant:defaults-7
 -- preconditions onFail:MARK_RAN onError:MARK_RAN
@@ -109,7 +112,7 @@ FROM assistant_profile p, assistant_skill s
 WHERE p.name = 'default'
   AND s.name IN ('find-and-count', 'explain-a-record', 'safe-changes', 'access-questions')
   AND NOT EXISTS (SELECT 1 FROM assistant_profile_skill ps WHERE ps.profile_id = p.id AND ps.skill_id = s.id);
--- rollback DELETE FROM assistant_profile_skill WHERE profile_id IN (SELECT id FROM assistant_profile WHERE name = 'default') AND skill_id IN (SELECT id FROM assistant_skill WHERE name IN ('find-and-count', 'explain-a-record', 'safe-changes', 'access-questions'));
+-- rollback empty
 
 -- changeset qbit-assistant:defaults-8
 -- preconditions onFail:MARK_RAN onError:MARK_RAN
@@ -120,7 +123,7 @@ SELECT 'Monthly spend (whole instance)', TRUE, 'INSTANCE', 'MONTH', 'COST_USD', 
    'Starter budget. Warns everyone at 80% of $50 a month, switches to the cheapest allowed model at 100% (or stops when there is none), and stops at 120%. Set Downgrade Model to choose the fallback; add an override to raise it temporarily.',
    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 WHERE NOT EXISTS (SELECT 1 FROM assistant_budget);
--- rollback DELETE FROM assistant_budget WHERE name = 'Monthly spend (whole instance)';
+-- rollback empty
 
 -- changeset qbit-assistant:defaults-9
 -- preconditions onFail:MARK_RAN onError:MARK_RAN
@@ -143,7 +146,7 @@ FROM (VALUES
    ('anthropic', 'claude-haiku-4-5', 1.00, 5.00, 0.10, 1.25, 2.00, 'Anthropic list price, 2026-10')
 ) AS v (provider_type, model, input_price, output_price, cache_read, cache_write5m, cache_write1h, notes)
 WHERE NOT EXISTS (SELECT 1 FROM assistant_model_price p);
--- rollback SELECT 1; -- prices may have been edited; keep them
+-- rollback empty
 
 -- changeset qbit-assistant:defaults-10
 -- preconditions onFail:MARK_RAN onError:MARK_RAN
@@ -156,4 +159,4 @@ SELECT 'Example: weekly change summary', FALSE,
    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 FROM (SELECT MIN(id) AS id FROM assistant_profile WHERE name = 'default') p
 WHERE NOT EXISTS (SELECT 1 FROM assistant_scheduled_task WHERE name = 'Example: weekly change summary');
--- rollback DELETE FROM assistant_scheduled_task WHERE name = 'Example: weekly change summary' AND enabled = FALSE;
+-- rollback empty
