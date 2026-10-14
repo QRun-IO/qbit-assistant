@@ -1,5 +1,36 @@
 # Upgrading qbit-assistant
 
+## P-f: knowledge retrieval
+
+Apply the **P-f** assistant-table DDL in
+[docs/schema-postgres.sql](docs/schema-postgres.sql) before deployment. It adds
+`assistant_model.model_kind` (existing rows default to CHAT),
+`embedding_dimensions`, and the admin-only `assistant_rag_source` table.
+No sources are seeded. Existing chat selections remain unchanged; explicitly
+EMBEDDING models are excluded from chat, classifier, fallback and downgrade
+selection. Correct discovery's kind/dimensions if a model name is ambiguous.
+
+For persistent vectors, add `qbit-assistant-rag-pgvector` at the same version as
+the QBit, supply the host's JDBC DataSource/driver, and install pgvector in the
+database. A DBA runs `CREATE EXTENSION IF NOT EXISTS vector`; the application
+role needs schema creation rights for initial setup (or a DBA-created schema),
+then normal DML rights. `ensureSchema()` checks for an existing extension first
+and does not require extension installation privileges when it is already present.
+The optional pgvector DDL is a **commented reference block**, separate from the
+assistant-table migration. See [RAG setup](README.md#rag-setup).
+
+Use a distinct validated schema for each QQQ instance. `vector(N)` fixes dimensions
+for that store; changing dimensions requires a new schema and re-indexing.
+Sources can use different models with that dimension; ranking is restricted to
+sources using the query's model. If the weights behind an unchanged model id
+change, clear and rebuild its sources. Editing source chunk/filter/model settings
+or registry model identity/dimensions automatically clears affected vectors.
+
+Every indexing batch produces EMBED usage and updates existing budget rollups.
+PHI source content and PHI conversation queries require a HIPAA-eligible embedding
+provider. No background runner or designated credentials are installed in P-f.
+The default in-memory store is lost on restart and must be indexed again.
+
 ## P-e: profile routing and provider fallback
 
 Apply the additive **P-e** ALTER TABLE statements at the end of

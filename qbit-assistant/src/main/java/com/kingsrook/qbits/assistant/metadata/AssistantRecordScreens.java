@@ -17,6 +17,10 @@
 package com.kingsrook.qbits.assistant.metadata;
 
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 import com.kingsrook.qbits.assistant.AssistantModelRouting;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.access.DataAccessMode;
@@ -37,6 +41,7 @@ import com.kingsrook.qbits.assistant.model.AssistantPolicy;
 import com.kingsrook.qbits.assistant.model.AssistantProfile;
 import com.kingsrook.qbits.assistant.model.AssistantProfileSkill;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
+import com.kingsrook.qbits.assistant.model.AssistantRagSource;
 import com.kingsrook.qbits.assistant.model.AssistantSkill;
 import com.kingsrook.qbits.assistant.model.AssistantToolCall;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
@@ -47,6 +52,8 @@ import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.ChildRecordListRenderer;
 import com.kingsrook.qqq.backend.core.instances.QInstanceEnricher;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.AdornmentType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.DisplayFormat;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldAdornment;
@@ -64,10 +71,6 @@ import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleVal
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSection;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Tier;
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
 
 
 /*******************************************************************************
@@ -184,6 +187,7 @@ public final class AssistantRecordScreens
          case AssistantUsageDaily.TABLE_NAME -> usageDaily(table);
          case AssistantProvider.TABLE_NAME -> provider(table);
          case AssistantModel.TABLE_NAME -> model(table);
+         case AssistantRagSource.TABLE_NAME -> knowledge(table);
          case AssistantModelPrice.TABLE_NAME -> price(table);
          case AssistantUsage.TABLE_NAME -> usage(table);
          case AssistantDataAccess.TABLE_NAME -> dataAccess(table);
@@ -291,6 +295,7 @@ public final class AssistantRecordScreens
          enumSource("assistant_provider_kind", kinds),
          enumSource("assistant_provider_location", List.of(new QPossibleValue<>("LOCAL", "Local"), new QPossibleValue<>("CLOUD", "Cloud"))),
          enumSource("assistant_routing_mode", List.of(new QPossibleValue<>("OFF", "Off"), new QPossibleValue<>("HEURISTIC", "Heuristic"), new QPossibleValue<>("CLASSIFIER", "Classifier"))),
+         enumSource("assistant_model_kind", List.of(new QPossibleValue<>("CHAT", "Chat"), new QPossibleValue<>("EMBEDDING", "Embedding"))),
          enumSource("assistant_model_source", List.of(new QPossibleValue<>("DISCOVERED", "Discovered"), new QPossibleValue<>("MANUAL", "Manual"))),
          QPossibleValueSource.newForTable(AssistantProvider.TABLE_NAME)));
    }
@@ -888,6 +893,7 @@ public final class AssistantRecordScreens
    {
       link(table, "providerId", AssistantProvider.TABLE_NAME, "Provider");
       pvs(table, "source", "assistant_model_source", "Source");
+      pvs(table, "modelKind", "assistant_model_kind", "Model kind");
       pvs(table, "fallbackModelId", "assistant_registry_model", "Fallback model");
       table.getField("contextWindowTokens").withLabel("Context window (tokens)");
       table.getField("maxOutputTokens").withLabel("Max output tokens");
@@ -896,7 +902,7 @@ public final class AssistantRecordScreens
       table.getField("outputUsdPerMTok").withLabel("Output (USD per million tokens)");
       table.getField("lastTestLatencyMs").withLabel("Last test latency (ms)");
       sections(table,
-         section("model", "Model", "memory", Tier.T1, "id", "providerId", "modelId", "displayName", "enabled", "source", "discoveredAt", "fallbackModelId"),
+         section("model", "Model", "memory", Tier.T1, "id", "providerId", "modelId", "displayName", "enabled", "modelKind", "embeddingDimensions", "source", "discoveredAt", "fallbackModelId"),
          section("capabilities", "Capabilities", "settings", Tier.T2, "supportsTools", "supportsVision", "supportsStreaming", "supportsReasoningEffort", "contextWindowTokens", "maxOutputTokens"),
          section("prices", "Prices", "payments", Tier.T2, "inputUsdPerMTok", "outputUsdPerMTok"),
          section("lastTest", "Last connection test", "network_check", Tier.T2, "lastTestAt", "lastTestStatus", "lastTestLatencyMs", "lastTestError"));
@@ -936,4 +942,22 @@ public final class AssistantRecordScreens
          section("budget", "Budget", "savings", Tier.T1, "id", "name", "enabled", "scopeType", "scopeValue", "period", "metric", "limitValue"),
          section("thresholds", "Thresholds", "notifications", Tier.T2, "warnPercent", "atLimitAction", "downgradeModelId", "hardCeilingPercent", "notes"));
    }
+
+
+   /*******************************************************************************
+    ** Standard source editor and status, with explicit embedding model selection.
+    *******************************************************************************/
+   private static void knowledge(QTableMetaData table)
+   {
+      pvs(table, "embeddingModelId", "assistant_registry_model", "Embedding model");
+      table.getField("embeddingModelId").withPossibleValueSourceFilter(new QQueryFilter()
+         .withCriteria("modelKind", QCriteriaOperator.EQUALS, "EMBEDDING").withCriteria("enabled", QCriteriaOperator.EQUALS, true));
+      help(table, "embeddingModelId", "Select an enabled EMBEDDING model. Chat models are refused on save.");
+      help(table, "filterJson", "Optional QQQ query filter JSON. Index now reads it through the UI API as the clicking administrator.");
+      sections(table,
+         section("source", "Knowledge source", "manage_search", Tier.T1, "id", "name", "enabled", "tableName", "fieldNames", "titleFieldName", "filterJson"),
+         section("embedding", "Embedding", "memory", Tier.T2, "embeddingModelId", "chunkChars", "chunkOverlapChars"),
+         section("status", "Last index", "info", Tier.T2, "lastIndexedAt", "lastIndexStatus", "lastIndexError", "indexedRecordCount", "indexedChunkCount"));
+   }
+
 }

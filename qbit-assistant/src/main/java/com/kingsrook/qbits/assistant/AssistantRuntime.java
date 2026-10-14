@@ -17,6 +17,12 @@
 package com.kingsrook.qbits.assistant;
 
 
+import java.time.Clock;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.regex.Pattern;
 import com.kingsrook.qbits.assistant.access.AccessExplainer;
 import com.kingsrook.qbits.assistant.access.DataAccessService;
 import com.kingsrook.qbits.assistant.engine.BudgetService;
@@ -27,6 +33,10 @@ import com.kingsrook.qbits.assistant.engine.ProviderService;
 import com.kingsrook.qbits.assistant.engine.RateLimiter;
 import com.kingsrook.qbits.assistant.engine.RunningTurn;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
+import com.kingsrook.qbits.assistant.rag.InMemoryVectorStore;
+import com.kingsrook.qbits.assistant.rag.RagService;
+import com.kingsrook.qbits.assistant.rag.VectorStore;
+import com.kingsrook.qbits.assistant.tools.KnowledgeTool;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
 import com.kingsrook.qbits.assistant.uiapi.LoopbackUiApiGateway;
 import com.kingsrook.qbits.assistant.uiapi.UiApiGateway;
@@ -37,12 +47,6 @@ import com.kingsrook.qqq.backend.core.actions.ai.output.AiRedactor;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitMetaData;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
-import java.time.Clock;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.regex.Pattern;
 
 
 /*******************************************************************************
@@ -52,6 +56,9 @@ import java.util.regex.Pattern;
  *******************************************************************************/
 public class AssistantRuntime
 {
+   private final RagService ragService;
+   private final KnowledgeTool knowledgeTool;
+
    private final QInstance                        qInstance;
    private final AssistantQBitConfig              config;
    private final Clock                            clock;
@@ -106,7 +113,10 @@ public class AssistantRuntime
       this.toolbox = new UiApiToolbox(qInstance, dataAccessService, exposurePolicy, new AiRedactor(settings.getCustomRedactionPatterns()),
          config.getMaxCellChars() == null ? AiToolKernelSettings.DEFAULT_MAX_CELL_CHARS : config.getMaxCellChars());
       this.uiApiGateway = config.getUiApiGateway() != null ? config.getUiApiGateway() : new LoopbackUiApiGateway(this::uiApiBaseUrl, qInstance);
-      this.contextBuilder = new ContextBuilder(config, kernel, toolbox);
+      VectorStore vectors = config.getVectorStore() == null ? new InMemoryVectorStore() : config.getVectorStore();
+      this.ragService = new RagService(this, vectors);
+      this.knowledgeTool = new KnowledgeTool(this, ragService, vectors);
+      this.contextBuilder = new ContextBuilder(config, kernel, toolbox).withKnowledgeTool(knowledgeTool);
    }
 
 
@@ -417,4 +427,24 @@ public class AssistantRuntime
    {
       return (budgetService);
    }
+
+
+   /*******************************************************************************
+    ** Manual indexing service, always using the current caller's session.
+    *******************************************************************************/
+   public RagService getRagService()
+   {
+      return (ragService);
+   }
+
+
+
+   /*******************************************************************************
+    ** Permission-filtered retrieval tool.
+    *******************************************************************************/
+   public KnowledgeTool getKnowledgeTool()
+   {
+      return (knowledgeTool);
+   }
+
 }

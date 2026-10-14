@@ -58,4 +58,14 @@ public interface AssistantModelProvider
       return (null);
    }
 
+
+
+   /*******************************************************************************
+    ** Optional embedding capability. Unsupported adapters fail before transport.
+    *******************************************************************************/
+   default EmbeddingResponse embed(EmbeddingRequest request) throws ModelProviderException
+   {
+      throw (new ModelProviderException(ModelProviderException.Kind.INVALID_REQUEST, null, "Embeddings are unsupported by this provider."));
+   }
+
 }

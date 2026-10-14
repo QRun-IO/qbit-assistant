@@ -74,7 +74,7 @@ public class TurnClassification
          return;
       }
       Map<String, Object> input = use.getInput() == null ? Map.of() : use.getInput();
-      boolean crossTable = "search_records".equals(use.getToolName()) || "get_record_history".equals(use.getToolName());
+      boolean crossTable = "search_knowledge".equals(use.getToolName()) || "search_records".equals(use.getToolName()) || "get_record_history".equals(use.getToolName());
       String table = result.getTableName() != null ? result.getTableName()
          : (input.get("table") instanceof String name ? name : (input.get("tableName") instanceof String name ? name : null));
       if(crossTable)
@@ -97,6 +97,10 @@ public class TurnClassification
          }
          collectTables(result.getRender(), touched);
          collectResultTables(result.getModelContent(), touched);
+         if("search_knowledge".equals(use.getToolName()) && touched.isEmpty())
+         {
+            return;
+         }
          if(touched.isEmpty() || touched.stream().anyMatch(name -> QContext.getQInstance().getTable(name) == null))
          {
             touchUnknown();

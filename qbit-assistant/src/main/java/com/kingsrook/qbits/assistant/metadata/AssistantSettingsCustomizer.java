@@ -83,6 +83,18 @@ public class AssistantSettingsCustomizer implements TableCustomizerInterface
       {
          for(QRecord record : records)
          {
+            if(record.getValue("id") == null && record.getValue("modelKind") == null)
+            {
+               record.setValue("modelKind", "CHAT");
+            }
+            if(record.getValue("modelKind") != null && !List.of("CHAT", "EMBEDDING").contains(record.getValueString("modelKind")))
+            {
+               record.addError(new BadInputStatusMessage("Model kind must be CHAT or EMBEDDING."));
+            }
+            if(record.getValue("embeddingDimensions") != null && record.getValueInteger("embeddingDimensions") < 1)
+            {
+               record.addError(new BadInputStatusMessage("Embedding dimensions must be positive."));
+            }
             if(record.getValue("id") == null)
             {
                if(record.getValue("source") == null)
@@ -168,6 +180,25 @@ public class AssistantSettingsCustomizer implements TableCustomizerInterface
             if(Boolean.TRUE.equals(record.getValueBoolean("isDefault")) && record.getValue("id") != null && record.getErrors().isEmpty())
             {
                runtime.getStore().clearOtherDefaultProviders(record.getValueInteger("id"));
+            }
+         }
+      }
+      if(AssistantModel.TABLE_NAME.equals(tableName(input)) && oldRecordList.isPresent())
+      {
+         Map<Serializable, QRecord> previous = oldRecordListToMap("id", oldRecordList).orElse(Map.of());
+         for(QRecord record : records)
+         {
+            QRecord before = previous.get(record.getValue("id"));
+            if(before != null && List.of("providerId", "modelId", "modelKind", "embeddingDimensions").stream()
+               .anyMatch(name -> record.getValues().containsKey(name) && !java.util.Objects.equals(before.getValue(name), record.getValue(name))))
+            {
+               for(var source : runtime.getRagService().sources())
+               {
+                  if(java.util.Objects.equals(source.getEmbeddingModelId(), record.getValueInteger("id")))
+                  {
+                     runtime.getRagService().clear(source);
+                  }
+               }
             }
          }
       }

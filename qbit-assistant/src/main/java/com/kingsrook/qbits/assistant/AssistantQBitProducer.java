@@ -26,6 +26,7 @@ import com.kingsrook.qbits.assistant.home.AssistantHome;
 import com.kingsrook.qbits.assistant.metadata.AssistantMetaDataBuilder;
 import com.kingsrook.qbits.assistant.metadata.AssistantRecordScreens;
 import com.kingsrook.qbits.assistant.processes.DiscoverModelsProcess;
+import com.kingsrook.qbits.assistant.processes.KnowledgeIndexProcess;
 import com.kingsrook.qbits.assistant.processes.TestConnectionProcess;
 import com.kingsrook.qbits.assistant.processes.TestModelConnectionProcess;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -168,6 +169,12 @@ public class AssistantQBitProducer implements QBitMetaDataProducer<AssistantQBit
       testConnection.setSourceQBitName(qBitMetaData.getName());
       qInstance.addProcess(testConnection);
       for(QProcessMetaData process : java.util.List.of(DiscoverModelsProcess.process(), TestModelConnectionProcess.process()))
+      {
+         process.setSourceQBitName(qBitMetaData.getName());
+         qInstance.addProcess(process);
+      }
+
+      for(QProcessMetaData process : KnowledgeIndexProcess.processes())
       {
          process.setSourceQBitName(qBitMetaData.getName());
          qInstance.addProcess(process);

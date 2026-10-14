@@ -85,12 +85,22 @@ final class OpenAiHttp
     *******************************************************************************/
    HttpRequest.Builder request(String model, Integer seconds) throws ModelProviderException
    {
+      return (request(model, seconds, "chat/completions"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Chat and embeddings share authentication, TLS, deadlines and Azure paths.
+    *******************************************************************************/
+   HttpRequest.Builder request(String model, Integer seconds, String operation) throws ModelProviderException
+   {
       try
       {
-         String path = model == null ? "/models" : "/chat/completions";
+         String path = model == null ? "/models" : "/" + operation;
          if("AZURE_OPENAI".equals(settings.getKind()))
          {
-            path = model == null ? "/openai/models" : "/openai/deployments/" + encode(model) + "/chat/completions";
+            path = model == null ? "/openai/models" : "/openai/deployments/" + encode(model) + "/" + operation;
             path += "?api-version=" + encode(settings.getApiVersion() == null || settings.getApiVersion().isBlank() ? "2024-10-21" : settings.getApiVersion());
          }
          HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(base + path)).timeout(Duration.ofSeconds(seconds)).header("Content-Type", "application/json");
