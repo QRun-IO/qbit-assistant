@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased - Foreign keys
+
+- Reference DDL: add the missing foreign keys (conversation tree, usage, data audit,
+  budget accounting, profile skills) with orphan quarantine and their indexes; make
+  `assistant_model.provider_id` `ON DELETE CASCADE`. A Postgres guardrail test fails
+  any declared relation without a foreign key.
+
 ## Unreleased - X1/Y1
 
 - Add default-off `withRecordHistory(true)` host opt-in: remove only `audit*` on RC.6, or invoke core #1193 audit-read/write-deny support when available. Preserve user permissions and all other channel denials; kof22 does not opt in.
