@@ -237,6 +237,8 @@ The nav lists the home and the main tables: **Providers**, **Conversations**, **
 | `providerTestTimeoutSeconds` | 30 | How long Test connection waits for the model. |
 | `homeMaxRows` | 20000 | Rows per table the app home reads for its period; it says when totals are partial. |
 | `tablePathPrefix` | `/app` | The front of the links the app home makes to tables and records. |
+| `emailExternalApproved` | `false` | Stands in for the EXTERNAL approval rule (not built yet): scheduled-task result email is sent only when `true`. |
+| `emailRecipientResolver` | owner id if it is an address | Hook: task owner user id to email address. |
 
 At runtime, an admin can override the kill switch, the main model and effort, and the budgets in the single **`assistant_policy`** row.
 
@@ -494,6 +496,24 @@ engine/tool golden turns. No cloud credentials or live endpoints are required.
 
 Apache 2.0.
 
+
+## Email through qbit-email
+
+When the optional [qbit-email](https://github.com/QRun-IO/qbit-email) is on the classpath **and** produced in the instance, a finished scheduled-task run can be emailed to its owner. Without it nothing changes: `AssistantEmail.sendScheduledResult` returns `NOT_AVAILABLE`. The dependency is `optional`; every reference to it is in `AssistantEmailSender`.
+
+This integration uses qbit-email **0.1.0-RC.1**. Scheduled tasks (P-g) are available, but the runner does not yet wire email delivery. Hosts can call `AssistantEmail.sendScheduledResult(qInstance, config, new ScheduledResultNotice(...))` after a run, supplying its owner, classification, absolute run link and explicit opt-in as `emailResult`. Persisting a task-level email opt-in and wiring the runner remain a separate integration step.
+
+Gates, in order (each returns a status and queues nothing):
+1. the task opted in (`NOT_REQUESTED`);
+2. qbit-email is installed (`NOT_AVAILABLE`);
+3. `emailExternalApproved` is `true` (`NOT_APPROVED`). The EXTERNAL approval rule exists only in the spec, so this explicit flag gates it until the rule is built;
+4. a recipient resolves (`NO_RECIPIENT`): `emailRecipientResolver` maps the owner's user id to an address; by default an owner id that already is an address is used.
+
+What is sent, one message per recipient, idempotency key `assistant:scheduled:<run id>`, linked record the run:
+- result classified PUBLIC (or none): template `assistant_scheduled_result` (NOTIFICATION, Markdown, registered on first send and never overwritten) with the task name, run time, a summary cut to 280 characters and a link to the run. The full model output is never emailed;
+- result classified above PUBLIC (core's `DataClassification`): only the link, through qbit-email's `email_secure_message` pattern. No task name, summary or output.
+
+The outbox result maps to `QUEUED`, `DUPLICATE`, `SUPPRESSED` or `REFUSED` (for example a link that is not absolute http(s)). Addresses and bodies are never logged.
 
 ## Data classification and HIPAA mode
 

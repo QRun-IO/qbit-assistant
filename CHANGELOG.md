@@ -16,6 +16,11 @@
   Document the host audit migration and the QBit column widening.
 - Verify the admin denial matrix through the real invoker and Next UI, startup
   failures, and confirmed-write human/channel attribution with decoded audit links.
+## Unreleased - Email
+
+### Changed
+
+- Add optional qbit-email 0.1.0-RC.1 delivery of a scheduled task's result (`AssistantEmail.sendScheduledResult`): template `assistant_scheduled_result`, link-only secure message for results above PUBLIC using core's `DataClassification`, owner-recipient hook, opt-in and `emailExternalApproved` gates. Scheduled-task wiring remains a separate integration step.
 
 ## Unreleased - Provider API extraction (#30)
 
