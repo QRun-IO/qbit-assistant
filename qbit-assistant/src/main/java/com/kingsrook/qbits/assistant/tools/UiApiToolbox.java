@@ -204,6 +204,21 @@ public class UiApiToolbox
 
 
       /*******************************************************************************
+       ** An outcome built by another tool family (e.g. the bulk-load tools), so
+       ** TurnEngine and the confirm route log it the same way.
+       *******************************************************************************/
+      public static Outcome of(AiToolResult result, String operation, Integer httpStatus, Integer pendingActionId)
+      {
+         Outcome outcome = new Outcome(result);
+         outcome.operation = operation;
+         outcome.httpStatus = httpStatus;
+         outcome.pendingActionId = pendingActionId;
+         return (outcome);
+      }
+
+
+
+      /*******************************************************************************
        ** Getter for result
        *******************************************************************************/
       public AiToolResult getResult()

@@ -37,6 +37,7 @@ import com.kingsrook.qbits.assistant.rag.InMemoryVectorStore;
 import com.kingsrook.qbits.assistant.rag.RagService;
 import com.kingsrook.qbits.assistant.rag.VectorStore;
 import com.kingsrook.qbits.assistant.tools.KnowledgeTool;
+import com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadTools;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
 import com.kingsrook.qbits.assistant.uiapi.LoopbackUiApiGateway;
 import com.kingsrook.qbits.assistant.uiapi.UiApiGateway;
@@ -58,6 +59,7 @@ public class AssistantRuntime
 {
    private final RagService ragService;
    private final KnowledgeTool knowledgeTool;
+   private final BulkLoadTools bulkLoadTools;
 
    private final QInstance                        qInstance;
    private final AssistantQBitConfig              config;
@@ -116,7 +118,8 @@ public class AssistantRuntime
       VectorStore vectors = config.getVectorStore() == null ? new InMemoryVectorStore() : config.getVectorStore();
       this.ragService = new RagService(this, vectors);
       this.knowledgeTool = new KnowledgeTool(this, ragService, vectors);
-      this.contextBuilder = new ContextBuilder(config, kernel, toolbox).withKnowledgeTool(knowledgeTool);
+      this.bulkLoadTools = new BulkLoadTools(qInstance, dataAccessService, config.getBulkLoadRunner());
+      this.contextBuilder = new ContextBuilder(config, kernel, toolbox).withKnowledgeTool(knowledgeTool).withBulkLoadTools(bulkLoadTools);
    }
 
 
@@ -445,6 +448,16 @@ public class AssistantRuntime
    public KnowledgeTool getKnowledgeTool()
    {
       return (knowledgeTool);
+   }
+
+
+
+   /*******************************************************************************
+    ** The bulk-load tools (saved profiles, attached files, dry runs, loads).
+    *******************************************************************************/
+   public BulkLoadTools getBulkLoadTools()
+   {
+      return (bulkLoadTools);
    }
 
 }
