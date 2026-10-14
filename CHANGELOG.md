@@ -11,6 +11,8 @@
 
 ## Unreleased - P-d
 
+- Require QQQ RC.5 and send budget alerts directly through core QAlerts, with admin-visible alert type metadata and core sink tests.
+
 - Admin budgets, expiring overrides, deduplicated warning/downgrade/stop events.
 - Per-dispatch limits preserving PHI routing and existing caps.
 - Home budget cards, 30-day cost/token bars and provider breakdowns.

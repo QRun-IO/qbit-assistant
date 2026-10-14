@@ -387,8 +387,10 @@ AI exposure NONE is not enough, because the assistant acts as the user and an ad
   reason, session grantor and expiry; they never waive the other limit layers.
 - Start-turn checks use the existing 429 BUDGET path through PolicyService.
   Every dispatch, including strict retries, evaluates current usage and overrides.
-  Events deduplicate WARNED, DOWNGRADED and STOPPED; optional reflective QAlerts
-  signals accompany panel notices without a compile-time Alerts dependency.
+  Events deduplicate WARNED, DOWNGRADED and STOPPED.
+- QQQ RC.5 core QAlerts sends budget signals alongside panel notices, with three
+  admin-visible alert types and a default logging sink. Resolution awaits active
+  alert/recurrence tracking so overrides cannot clear shared alerts incorrectly.
 - Explicit registry model selection leaves provider defaults untouched. Automatic
   downgrades prefer LOCAL, then price. PHI eligibility and destination provider caps
   still apply; a missing eligible target stops the turn.

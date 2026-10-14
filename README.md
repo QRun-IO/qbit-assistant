@@ -385,7 +385,7 @@ Apache 2.0.
 
 ## Data classification and HIPAA mode
 
-On QQQ 4.1.0-RC.4, classify application tables/fields in the host configuration:
+On QQQ 4.1.0-RC.5, classify application tables/fields in the host configuration:
 
 ```java
 import com.kingsrook.qbits.assistant.classification.DataClassification;
@@ -455,7 +455,7 @@ extra allowance or temporary unlimited use from the budget's Overrides child lis
 with a required reason and expiry; the session sets the grantor.
 
 Budget state changes appear once per scope/period/state in the Events child list,
-as panel notices and, when the optional QQQ Alerts SPI is installed, bell alerts.
+as panel notices and, through core QAlerts, bell alerts when an alerts sink is installed (logging otherwise).
 The Assistant home shows budgets, overrides, daily cost and tokens, and breakdowns
 by user, model, provider and tool. Existing `AssistantBudgets`/policy limits and
 provider monthly caps continue to apply independently of these rows and overrides.
