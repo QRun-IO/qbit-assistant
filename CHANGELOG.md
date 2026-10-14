@@ -19,6 +19,18 @@
   `message.start.startedAt`, cancelReason `SUPERSEDED`. The 429 response stays
   documented for budgets and per-minute limits; the "answer already in progress"
   refusal is no longer returned. Cancel keeps 202 documented for older replicas.
+||||||| befb90a
+
+## Unreleased - Starter defaults
+
+- Fix the defaults changelog: every precondition is a portable `sql-check` (the formatted-SQL `table-exists` form failed to parse); the policy, budget and prices are seeded only into empty tables and the profile only when no default exists, so an existing host never changes on deploy. The test now runs the changelog through Liquibase 4.33, including an already configured host and a missing table.
+- The Setup card prices the default model the way calls are costed (registry, price rows, configured prices); "Add rows for every table" reads fresh data-access rows.
+
+- Ship `db/liquibase/qbit-assistant/assistant-defaults.changelog.sql`: insert-only starter rows for the policy, a default profile, four starter skills offered through it, a monthly instance budget (warn, downgrade, stop), current Anthropic prices and a disabled example scheduled task.
+- Add the Setup card to the Assistant home: every configuration table with its state (set up, needs setup, using defaults, optional) and the next step.
+- Add the `assistant_data_access` table action "Add rows for every table", which writes the default access out as editable rows.
+- Add `help/qbit-assistant.yaml` (QQQ help-bundle format) for the app and every assistant table, saying what each table is for and how its rows get created; applied by `AssistantHelp` until core help bundles ship in a release.
+- Guardrail tests: every table is used at runtime, seeded or explained, and has empty-state help; the changelog seeds a fresh schema and the seeded rows change the assistant's behavior.
 
 ## Unreleased - X1/Y1
 

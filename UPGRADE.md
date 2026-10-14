@@ -39,6 +39,31 @@ isolated from turn execution. Tracking ids are local to the owning runtime;
 reaping an already dead owner does not invent another tracking job. Hosts should
 associate their durable tracking row with the supplied turn id. The SPI is a
 stand-in for QQQ #1210.
+||||||| befb90a
+
+## Starter defaults, setup card and table help
+
+The jar now ships `db/liquibase/qbit-assistant/assistant-defaults.changelog.sql`.
+Include it from the host's master changelog **after** the changesets that create
+the `assistant_*` tables:
+
+```yaml
+- include: { file: db/liquibase/qbit-assistant/assistant-defaults.changelog.sql }
+```
+
+It is insert-only and never changes a host that already configured the
+assistant: the policy, the **$50/month instance budget** (warn 80%, downgrade
+100%, stop 120%) and the Anthropic list prices are seeded only into empty tables,
+and the `default` profile only when no default profile exists. Price rows take
+precedence over `AssistantQBitConfig.withPricing`, which is why they are seeded
+only when there are none. The four starter skills and a disabled example
+scheduled task are always added (by name); on a host with its own default
+profile the skills are not linked to it, and the Setup card says so. Requires
+Liquibase 4.x or later (preconditions are `sql-check`s).
+
+No DDL changes. New: the Assistant home's Setup card, the `assistant_data_access`
+table action **Add rows for every table** (`assistantDataAccessAddDefaults`,
+admin only) and bundle help on every assistant table (`help/qbit-assistant.yaml`).
 
 ## X1/Y1: channel wall and audit attribution
 

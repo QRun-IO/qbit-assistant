@@ -90,6 +90,7 @@ public final class AssistantHomeView
    public static String render(AssistantHomeData data, String prefix)
    {
       StringBuilder html = new StringBuilder("<div class=\"assistant-home\" style=\"" + ROOT + "\">");
+      setup(html, data, prefix);
       status(html, data, prefix);
       providers(html, data, prefix);
       html.append("<div style=\"").append(GRID).append("\">");
@@ -107,6 +108,52 @@ public final class AssistantHomeView
          html.append("<p style=\"").append(MUTED).append("font-size:.85rem;margin:0;\">Some totals are partial: a table had more rows in this period than the home reads.</p>");
       }
       return (html.append("</div>").toString());
+   }
+
+
+
+   /*******************************************************************************
+    ** The Setup card: each part of the assistant, set up or not, and the next
+    ** step, linked to its table.
+    *******************************************************************************/
+   private static void setup(StringBuilder html, AssistantHomeData data, String prefix)
+   {
+      if(data.getSetup().isEmpty())
+      {
+         return;
+      }
+      open(html, "Setup");
+      long todo = data.getSetup().stream().filter(i -> i.state() == AssistantSetupStatus.State.TODO).count();
+      html.append("<p style=\"margin:0 0 .6rem;font-size:.9rem;\">")
+         .append(todo == 0 ? "Everything the assistant needs is set up." : esc(todo + (todo == 1 ? " item needs" : " items need") + " attention."))
+         .append("</p><ul style=\"list-style:none;margin:0;padding:0;\">");
+      for(AssistantSetupStatus.Item item : data.getSetup())
+      {
+         String color = switch(item.state())
+         {
+            case OK -> GREEN;
+            case TODO -> RED;
+            case DEFAULT -> AMBER;
+            case OPTIONAL -> GREY;
+         };
+         String label = switch(item.state())
+         {
+            case OK -> "Set up";
+            case TODO -> "Needs setup";
+            case DEFAULT -> "Using defaults";
+            case OPTIONAL -> "Optional";
+         };
+         html.append("<li style=\"").append(ROW).append("\"><div style=\"display:flex;flex-wrap:wrap;align-items:center;gap:.5rem .75rem;\">")
+            .append("<strong><a style=\"").append(LINK).append("\" href=\"").append(esc(prefix + "/" + item.tableName())).append("\">").append(esc(item.label())).append("</a></strong>")
+            .append(chip(color, label)).append("</div><div style=\"font-size:.9rem;margin-top:.35rem;\">").append(esc(item.detail())).append("</div>");
+         if(item.nextStep() != null)
+         {
+            html.append("<div style=\"").append(MUTED).append("font-size:.9rem;margin-top:.2rem;\">Next: ").append(esc(item.nextStep())).append("</div>");
+         }
+         html.append("</li>");
+      }
+      html.append("</ul>");
+      close(html);
    }
 
 
