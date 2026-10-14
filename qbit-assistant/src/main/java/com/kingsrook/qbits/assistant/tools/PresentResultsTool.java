@@ -28,7 +28,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.kingsrook.qbits.assistant.provider.ModelToolDefinition;
+import com.kingsrook.qbits.assistant.spi.ModelToolDefinition;
 import com.kingsrook.qbits.assistant.uiapi.UiApiCall;
 import com.kingsrook.qbits.assistant.uiapi.UiApiResult;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolOutcome;

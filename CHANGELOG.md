@@ -25,7 +25,9 @@
 
 ## Unreleased - Provider API extraction (#30)
 
-- Extract provider SPI/value types and `engine.ModelPricing` into `qbit-assistant-provider-api`, preserving package names. Its only production dependency is Jackson annotations.
+- **BREAKING:** move all 23 provider API types, including `ModelPricing`, to `com.kingsrook.qbits.assistant.spi`. Recompile consumers with the new imports; see UPGRADE.md. Enforce exclusive package ownership and API dependency boundaries with ArchUnit.
+
+- Extract provider SPI/value types and `ModelPricing` into `qbit-assistant-provider-api`, now exclusively in `com.kingsrook.qbits.assistant.spi`. Its only production dependency is Jackson annotations.
 - Move Anthropic, OpenAI, Bedrock and Vertex main dependencies to the API; retain runtime fixtures in test scope. Pgvector still needs runtime RAG interfaces.
 - Provider-specific validation now takes unresolved `ProviderSettings` instead of `AssistantProvider`; add an ArchUnit boundary and standalone coverage gates.
 ## Unreleased - P-g

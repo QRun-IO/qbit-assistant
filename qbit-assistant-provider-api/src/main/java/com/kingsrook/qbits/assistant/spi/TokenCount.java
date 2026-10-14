@@ -14,27 +14,43 @@
  * limitations under the License.
  */
 
-package com.kingsrook.qbits.assistant.provider;
+package com.kingsrook.qbits.assistant.spi;
 
 
 /*******************************************************************************
- ** Receives streamed output while a model call runs. Called on the
- ** provider's thread; implementations must be quick and thread-safe.
- ** Thinking content is never passed here.
+ ** Result of AssistantModelProvider.countTokens.
  *******************************************************************************/
-public interface ModelEventListener
+public class TokenCount
 {
+   private Long inputTokens;
 
    /*******************************************************************************
-    ** A chunk of visible answer text.
+    ** Getter for inputTokens
     *******************************************************************************/
-   void onTextDelta(String text);
-
-   /*******************************************************************************
-    ** A tool_use block started streaming (name known, input still arriving).
-    *******************************************************************************/
-   default void onToolUseStart(String toolUseId, String toolName)
+   public Long getInputTokens()
    {
+      return (this.inputTokens);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for inputTokens
+    *******************************************************************************/
+   public void setInputTokens(Long inputTokens)
+   {
+      this.inputTokens = inputTokens;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for inputTokens
+    *******************************************************************************/
+   public TokenCount withInputTokens(Long inputTokens)
+   {
+      this.inputTokens = inputTokens;
+      return (this);
    }
 
 }

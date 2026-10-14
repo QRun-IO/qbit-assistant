@@ -24,12 +24,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.kingsrook.qbits.assistant.provider.ModelCapabilities;
-import com.kingsrook.qbits.assistant.provider.ModelMessage;
-import com.kingsrook.qbits.assistant.provider.ModelPart;
-import com.kingsrook.qbits.assistant.provider.ModelRequest;
-import com.kingsrook.qbits.assistant.provider.ModelToolDefinition;
-import com.kingsrook.qbits.assistant.provider.SystemBlock;
+import com.kingsrook.qbits.assistant.spi.ModelCapabilities;
+import com.kingsrook.qbits.assistant.spi.ModelMessage;
+import com.kingsrook.qbits.assistant.spi.ModelPart;
+import com.kingsrook.qbits.assistant.spi.ModelRequest;
+import com.kingsrook.qbits.assistant.spi.ModelToolDefinition;
+import com.kingsrook.qbits.assistant.spi.SystemBlock;
 
 
 /*******************************************************************************

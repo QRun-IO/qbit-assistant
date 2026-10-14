@@ -29,7 +29,7 @@ import com.kingsrook.qbits.assistant.model.AssistantDataAccess;
 import com.kingsrook.qbits.assistant.model.AssistantProfile;
 import com.kingsrook.qbits.assistant.model.AssistantProfileSkill;
 import com.kingsrook.qbits.assistant.model.AssistantSkill;
-import com.kingsrook.qbits.assistant.provider.ModelRequest;
+import com.kingsrook.qbits.assistant.spi.ModelRequest;
 import com.kingsrook.qbits.assistant.testing.AssistantTestFixture;
 import com.kingsrook.qbits.assistant.testing.BaseAssistantTest;
 import com.kingsrook.qbits.assistant.testing.UiApiTestServer;

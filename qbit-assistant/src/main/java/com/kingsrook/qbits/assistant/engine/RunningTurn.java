@@ -18,7 +18,7 @@ package com.kingsrook.qbits.assistant.engine;
 
 
 import java.util.concurrent.atomic.AtomicReference;
-import com.kingsrook.qbits.assistant.provider.StreamHandle;
+import com.kingsrook.qbits.assistant.spi.StreamHandle;
 
 
 /*******************************************************************************

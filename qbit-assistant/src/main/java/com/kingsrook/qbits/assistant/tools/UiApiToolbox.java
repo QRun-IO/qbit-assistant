@@ -30,7 +30,7 @@ import java.util.TreeMap;
 import com.kingsrook.qbits.assistant.access.DataAccessMode;
 import com.kingsrook.qbits.assistant.access.DataAccessService;
 import com.kingsrook.qbits.assistant.engine.PolicyService;
-import com.kingsrook.qbits.assistant.provider.ModelToolDefinition;
+import com.kingsrook.qbits.assistant.spi.ModelToolDefinition;
 import com.kingsrook.qbits.assistant.uiapi.UiApiCall;
 import com.kingsrook.qbits.assistant.uiapi.UiApiGateway;
 import com.kingsrook.qbits.assistant.uiapi.UiApiResult;

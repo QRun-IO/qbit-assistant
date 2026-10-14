@@ -14,249 +14,275 @@
  * limitations under the License.
  */
 
-package com.kingsrook.qbits.assistant.provider;
-
-
-import java.util.LinkedHashMap;
-import java.util.Map;
+package com.kingsrook.qbits.assistant.spi;
 
 
 /*******************************************************************************
- ** One content part of a model message: text, a tool_use (assistant) or a
- ** tool_result (user). Tool results that report a failure set isError.
+ ** What a model supports. The turn engine turns features off that a model
+ ** lacks (e.g. runs tools one at a time without parallelToolCalls).
  *******************************************************************************/
-public class ModelPart
+public class ModelCapabilities
 {
-   /*******************************************************************************
-    ** The kinds of part.
-    *******************************************************************************/
-   public enum Type
-   {
-      TEXT,
-      TOOL_USE,
-      TOOL_RESULT
-   }
 
-   private Type                type;
-   private String              text;
-   private String              toolUseId;
-   private String              toolName;
-   private Map<String, Object> input;
-   private Boolean             isError = false;
+   private Boolean vision = false;
 
 
+   private Boolean streaming = true;
+
+
+   private Boolean reasoningEffort = false;
+
+
+   private Boolean tools             = true;
+   private Boolean parallelToolCalls = true;
+   private Boolean promptCaching     = false;
+   private Boolean thinking          = false;
+   private Integer maxContextTokens  = 200_000;
 
    /*******************************************************************************
-    ** A text part.
+    ** Getter for tools
     *******************************************************************************/
-   public static ModelPart text(String text)
+   public Boolean getTools()
    {
-      return (new ModelPart().withType(Type.TEXT).withText(text));
+      return (this.tools);
    }
 
 
 
    /*******************************************************************************
-    ** A tool_use part.
+    ** Setter for tools
     *******************************************************************************/
-   public static ModelPart toolUse(String toolUseId, String toolName, Map<String, Object> input)
+   public void setTools(Boolean tools)
    {
-      return (new ModelPart().withType(Type.TOOL_USE).withToolUseId(toolUseId).withToolName(toolName).withInput(input == null ? new LinkedHashMap<>() : input));
+      this.tools = tools;
    }
 
 
 
    /*******************************************************************************
-    ** A tool_result part (text is the content sent back to the model).
+    ** Fluent setter for tools
     *******************************************************************************/
-   public static ModelPart toolResult(String toolUseId, String content, boolean isError)
+   public ModelCapabilities withTools(Boolean tools)
    {
-      return (new ModelPart().withType(Type.TOOL_RESULT).withToolUseId(toolUseId).withText(content).withIsError(isError));
-   }
-
-
-
-   /*******************************************************************************
-    ** Getter for type
-    *******************************************************************************/
-   public Type getType()
-   {
-      return (this.type);
-   }
-
-
-
-   /*******************************************************************************
-    ** Setter for type
-    *******************************************************************************/
-   public void setType(Type type)
-   {
-      this.type = type;
-   }
-
-
-
-   /*******************************************************************************
-    ** Fluent setter for type
-    *******************************************************************************/
-   public ModelPart withType(Type type)
-   {
-      this.type = type;
+      this.tools = tools;
       return (this);
    }
 
 
 
    /*******************************************************************************
-    ** Getter for text
+    ** Getter for parallelToolCalls
     *******************************************************************************/
-   public String getText()
+   public Boolean getParallelToolCalls()
    {
-      return (this.text);
+      return (this.parallelToolCalls);
    }
 
 
 
    /*******************************************************************************
-    ** Setter for text
+    ** Setter for parallelToolCalls
     *******************************************************************************/
-   public void setText(String text)
+   public void setParallelToolCalls(Boolean parallelToolCalls)
    {
-      this.text = text;
+      this.parallelToolCalls = parallelToolCalls;
    }
 
 
 
    /*******************************************************************************
-    ** Fluent setter for text
+    ** Fluent setter for parallelToolCalls
     *******************************************************************************/
-   public ModelPart withText(String text)
+   public ModelCapabilities withParallelToolCalls(Boolean parallelToolCalls)
    {
-      this.text = text;
+      this.parallelToolCalls = parallelToolCalls;
       return (this);
    }
 
 
 
    /*******************************************************************************
-    ** Getter for toolUseId
+    ** Getter for promptCaching
     *******************************************************************************/
-   public String getToolUseId()
+   public Boolean getPromptCaching()
    {
-      return (this.toolUseId);
+      return (this.promptCaching);
    }
 
 
 
    /*******************************************************************************
-    ** Setter for toolUseId
+    ** Setter for promptCaching
     *******************************************************************************/
-   public void setToolUseId(String toolUseId)
+   public void setPromptCaching(Boolean promptCaching)
    {
-      this.toolUseId = toolUseId;
+      this.promptCaching = promptCaching;
    }
 
 
 
    /*******************************************************************************
-    ** Fluent setter for toolUseId
+    ** Fluent setter for promptCaching
     *******************************************************************************/
-   public ModelPart withToolUseId(String toolUseId)
+   public ModelCapabilities withPromptCaching(Boolean promptCaching)
    {
-      this.toolUseId = toolUseId;
+      this.promptCaching = promptCaching;
       return (this);
    }
 
 
 
    /*******************************************************************************
-    ** Getter for toolName
+    ** Getter for thinking
     *******************************************************************************/
-   public String getToolName()
+   public Boolean getThinking()
    {
-      return (this.toolName);
+      return (this.thinking);
    }
 
 
 
    /*******************************************************************************
-    ** Setter for toolName
+    ** Setter for thinking
     *******************************************************************************/
-   public void setToolName(String toolName)
+   public void setThinking(Boolean thinking)
    {
-      this.toolName = toolName;
+      this.thinking = thinking;
    }
 
 
 
    /*******************************************************************************
-    ** Fluent setter for toolName
+    ** Fluent setter for thinking
     *******************************************************************************/
-   public ModelPart withToolName(String toolName)
+   public ModelCapabilities withThinking(Boolean thinking)
    {
-      this.toolName = toolName;
+      this.thinking = thinking;
       return (this);
    }
 
 
 
    /*******************************************************************************
-    ** Getter for input
+    ** Getter for maxContextTokens
     *******************************************************************************/
-   public Map<String, Object> getInput()
+   public Integer getMaxContextTokens()
    {
-      return (this.input);
+      return (this.maxContextTokens);
    }
 
 
 
    /*******************************************************************************
-    ** Setter for input
+    ** Setter for maxContextTokens
     *******************************************************************************/
-   public void setInput(Map<String, Object> input)
+   public void setMaxContextTokens(Integer maxContextTokens)
    {
-      this.input = input;
+      this.maxContextTokens = maxContextTokens;
    }
 
 
 
    /*******************************************************************************
-    ** Fluent setter for input
+    ** Fluent setter for maxContextTokens
     *******************************************************************************/
-   public ModelPart withInput(Map<String, Object> input)
+   public ModelCapabilities withMaxContextTokens(Integer maxContextTokens)
    {
-      this.input = input;
+      this.maxContextTokens = maxContextTokens;
+      return (this);
+   }
+
+
+
+
+   /*******************************************************************************
+    ** Getter for vision
+    *******************************************************************************/
+   public Boolean getVision()
+   {
+      return (this.vision);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for vision
+    *******************************************************************************/
+   public void setVision(Boolean vision)
+   {
+      this.vision = vision;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for vision
+    *******************************************************************************/
+   public ModelCapabilities withVision(Boolean vision)
+   {
+      this.vision = vision;
       return (this);
    }
 
 
 
    /*******************************************************************************
-    ** Getter for isError
+    ** Getter for streaming
     *******************************************************************************/
-   public Boolean getIsError()
+   public Boolean getStreaming()
    {
-      return (this.isError);
+      return (this.streaming);
    }
 
 
 
    /*******************************************************************************
-    ** Setter for isError
+    ** Setter for streaming
     *******************************************************************************/
-   public void setIsError(Boolean isError)
+   public void setStreaming(Boolean streaming)
    {
-      this.isError = isError;
+      this.streaming = streaming;
    }
 
 
 
    /*******************************************************************************
-    ** Fluent setter for isError
+    ** Fluent setter for streaming
     *******************************************************************************/
-   public ModelPart withIsError(Boolean isError)
+   public ModelCapabilities withStreaming(Boolean streaming)
    {
-      this.isError = isError;
+      this.streaming = streaming;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for reasoningEffort
+    *******************************************************************************/
+   public Boolean getReasoningEffort()
+   {
+      return (this.reasoningEffort);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for reasoningEffort
+    *******************************************************************************/
+   public void setReasoningEffort(Boolean reasoningEffort)
+   {
+      this.reasoningEffort = reasoningEffort;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for reasoningEffort
+    *******************************************************************************/
+   public ModelCapabilities withReasoningEffort(Boolean reasoningEffort)
+   {
+      this.reasoningEffort = reasoningEffort;
       return (this);
    }
 

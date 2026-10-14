@@ -14,13 +14,12 @@
  * limitations under the License.
  */
 
-package com.kingsrook.qbits.assistant.engine;
+package com.kingsrook.qbits.assistant.spi;
 
 
 import java.io.Serializable;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import com.kingsrook.qbits.assistant.provider.ModelUsage;
 
 
 /*******************************************************************************

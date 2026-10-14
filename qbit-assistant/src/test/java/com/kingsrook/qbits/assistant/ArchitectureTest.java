@@ -23,9 +23,9 @@ import com.kingsrook.qbits.assistant.model.AssistantProfile;
 import com.kingsrook.qbits.assistant.model.AssistantProfileSkill;
 import com.kingsrook.qbits.assistant.model.AssistantSkill;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
+import com.kingsrook.qbits.assistant.spi.AssistantModelProvider;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
 import com.kingsrook.qbits.assistant.uiapi.CoreUiApiGateway;
-import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolKernel;
 import com.kingsrook.qqq.backend.core.actions.dashboard.RenderWidgetAction;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
@@ -39,8 +39,10 @@ import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.RecordSearchAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
+import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
@@ -78,6 +80,23 @@ class ArchitectureTest
       classes = new ClassFileImporter()
          .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
          .importPackages("com.kingsrook.qbits.assistant");
+   }
+
+
+
+   /*******************************************************************************
+    ** The runtime must not contribute classes to any package owned by the SPI jar.
+    *******************************************************************************/
+   @Test
+   void noSplitPackagesWithProviderApi()
+   {
+      JavaClasses apiClasses = new ClassFileImporter().importUrl(AssistantModelProvider.class.getProtectionDomain().getCodeSource().getLocation());
+      JavaClasses runtimeClasses = new ClassFileImporter().importUrl(AssistantQBitProducer.class.getProtectionDomain().getCodeSource().getLocation());
+      String[] apiPackages = apiClasses.stream().map(JavaClass::getPackageName).distinct().toArray(String[]::new);
+      assertThat(apiPackages).containsExactly("com.kingsrook.qbits.assistant.spi");
+      noClasses().should().resideInAnyPackage(apiPackages)
+         .because("provider API packages belong exclusively to qbit-assistant-provider-api")
+         .check(runtimeClasses);
    }
 
 

@@ -14,19 +14,33 @@
  * limitations under the License.
  */
 
-package com.kingsrook.qbits.assistant.provider;
+package com.kingsrook.qbits.assistant.spi;
+
+
+import java.time.Duration;
 
 
 /*******************************************************************************
- ** A health probe result; null healthy means unsupported.
+ ** A running streamed model call.
  *******************************************************************************/
-public record HealthResult(Boolean healthy, Long latencyMs, String message)
+public interface StreamHandle
 {
+
    /*******************************************************************************
-    ** Sanitize provider diagnostics.
+    ** Abort the call (idempotent). await() then returns a response with stop
+    ** reason "cancelled" (and whatever content had arrived).
     *******************************************************************************/
-   public HealthResult
-   {
-      message = ModelProviderException.sanitizeProviderMessage(message, 300);
-   }
+   void cancel();
+
+   /*******************************************************************************
+    ** Whether cancel() was called.
+    *******************************************************************************/
+   boolean isCancelled();
+
+   /*******************************************************************************
+    ** Wait for the complete response. Throws ModelProviderException (kind
+    ** TIMEOUT) when the timeout passes; the call is then cancelled.
+    *******************************************************************************/
+   ModelResponse await(Duration timeout) throws ModelProviderException, InterruptedException;
+
 }

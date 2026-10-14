@@ -22,10 +22,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.kingsrook.qbits.assistant.provider.ModelMessage;
-import com.kingsrook.qbits.assistant.provider.ModelPart;
-import com.kingsrook.qbits.assistant.provider.ModelRequest;
-import com.kingsrook.qbits.assistant.provider.ModelResponse;
+import com.kingsrook.qbits.assistant.spi.ModelMessage;
+import com.kingsrook.qbits.assistant.spi.ModelPart;
+import com.kingsrook.qbits.assistant.spi.ModelRequest;
+import com.kingsrook.qbits.assistant.spi.ModelResponse;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 
 

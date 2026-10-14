@@ -19,9 +19,10 @@ package com.kingsrook.qbits.assistant.engine;
 
 import com.kingsrook.qbits.assistant.model.AssistantUsage;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
-import com.kingsrook.qbits.assistant.provider.ModelProviderException;
-import com.kingsrook.qbits.assistant.provider.ModelResponse;
-import com.kingsrook.qbits.assistant.provider.ModelUsage;
+import com.kingsrook.qbits.assistant.spi.ModelPricing;
+import com.kingsrook.qbits.assistant.spi.ModelProviderException;
+import com.kingsrook.qbits.assistant.spi.ModelResponse;
+import com.kingsrook.qbits.assistant.spi.ModelUsage;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;

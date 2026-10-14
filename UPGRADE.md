@@ -21,9 +21,22 @@ exceed the old 500-character limit. No new QBit column is required. `GET /assist
 
 ## Provider API extraction (#30)
 
-Hosts that depend on `qbit-assistant` keep working: it now brings in
-`qbit-assistant-provider-api` transitively. Package names are unchanged, including
-`com.kingsrook.qbits.assistant.engine.ModelPricing`. No schema migration is needed.
+**BREAKING:** every provider API type now lives in the exclusive package
+`com.kingsrook.qbits.assistant.spi`. Update imports and recompile consumers.
+Hosts still receive `qbit-assistant-provider-api` transitively from `qbit-assistant`.
+No schema migration is needed.
+
+| Old import | New import |
+|---|---|
+| `com.kingsrook.qbits.assistant.provider.X` (API types) | `com.kingsrook.qbits.assistant.spi.X` |
+| `com.kingsrook.qbits.assistant.engine.ModelPricing` | `com.kingsrook.qbits.assistant.spi.ModelPricing` |
+
+Internal classes such as `provider.RegistryModelProvider` and
+`provider.fake.ScriptedModelProvider` stay in the runtime and are not API types.
+External consumers such as qbit-marketing depend only on
+`com.kingsrook.qbits:qbit-assistant-provider-api` for these contracts and allow
+package `com.kingsrook.qbits.assistant.spi` in their guardrails. qbit-bom will add
+this package to the G1 defaults.
 
 External providers and applications using only provider/pricing types should
 replace their `qbit-assistant` dependency with
@@ -36,7 +49,7 @@ Recompile custom provider types that override `validate(AssistantProvider)` and
 change the signature to `validate(ProviderSettings)`. The settings carry the
 configured kind, URL, API version, region, project, CA bundle name, timeouts and
 `apiKeyEnvName`; the key and bearer-token supplier are not resolved for validation.
-Providers using the default validator need no source change. Keep the runtime and
+Providers using the default validator need only the import migration. Keep the runtime and
 provider artifacts on the same version; old validator overrides must be rebuilt.
 ## P-g: scheduled tasks
 
