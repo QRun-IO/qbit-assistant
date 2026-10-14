@@ -17,18 +17,6 @@
 package com.kingsrook.qbits.assistant.engine;
 
 
-import com.kingsrook.qbits.assistant.AssistantQBitConfig;
-import com.kingsrook.qbits.assistant.model.AssistantModel;
-import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
-import com.kingsrook.qbits.assistant.model.AssistantProvider;
-import com.kingsrook.qbits.assistant.persistence.AssistantStore;
-import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
-import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
-import com.kingsrook.qbits.assistant.provider.ProviderSettings;
-import com.kingsrook.qbits.assistant.provider.RegistryModelProvider;
-import com.kingsrook.qqq.backend.core.exceptions.QException;
-import com.kingsrook.qqq.backend.core.logging.QLogger;
-import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
@@ -43,6 +31,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
+import com.kingsrook.qbits.assistant.AssistantQBitConfig;
+import com.kingsrook.qbits.assistant.model.AssistantModel;
+import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
+import com.kingsrook.qbits.assistant.model.AssistantProvider;
+import com.kingsrook.qbits.assistant.persistence.AssistantStore;
+import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
+import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
+import com.kingsrook.qbits.assistant.provider.ProviderSettings;
+import com.kingsrook.qbits.assistant.provider.RegistryModelProvider;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 

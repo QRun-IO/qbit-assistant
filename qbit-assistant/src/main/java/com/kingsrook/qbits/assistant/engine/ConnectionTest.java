@@ -21,7 +21,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
-import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qbits.assistant.model.AssistantModel;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
 import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
@@ -33,6 +32,7 @@ import com.kingsrook.qbits.assistant.provider.ModelResponse;
 import com.kingsrook.qbits.assistant.provider.RegistryModelProvider;
 import com.kingsrook.qbits.assistant.provider.StreamHandle;
 import com.kingsrook.qbits.assistant.rag.EmbeddingService;
+import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 

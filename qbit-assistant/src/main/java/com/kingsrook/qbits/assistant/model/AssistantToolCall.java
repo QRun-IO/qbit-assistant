@@ -40,6 +40,9 @@ public class AssistantToolCall extends QRecordEntity
    @Deprecated(since = "0.1.0-RC.3")
    public static final String LEGACY_TABLE_NAME = "assistantToolCall";
 
+   @QField(isEditable = false, maxLength = 64)
+   private String clientChannel;
+
    @QField(isEditable = false, isPrimaryKey = true)
    private Integer id;
 
@@ -803,4 +806,35 @@ public class AssistantToolCall extends QRecordEntity
       return (this);
    }
 
+
+
+
+   /*******************************************************************************
+    ** Getter for clientChannel
+    *******************************************************************************/
+   public String getClientChannel()
+   {
+      return (clientChannel);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for clientChannel
+    *******************************************************************************/
+   public void setClientChannel(String clientChannel)
+   {
+      this.clientChannel = clientChannel;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for clientChannel
+    *******************************************************************************/
+   public AssistantToolCall withClientChannel(String clientChannel)
+   {
+      this.clientChannel = clientChannel;
+      return (this);
+   }
 }

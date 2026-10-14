@@ -479,6 +479,92 @@ AI exposure NONE is not enough, because the assistant acts as the user and an ad
   per-record pgvector replacement is transactional, while scan reconciliation is
   not a snapshot of concurrently changing application data.
 
+### P-g as built
+
+- `assistant_scheduled_task` is admin-only, AI exposure NONE, and appears as
+  Scheduled tasks. The owner-locked, read-only `assistant_scheduled_run` child
+  list retains run status, accounting and a bounded summary. Conversations gain
+  read-only `scheduledTaskId` and `channel` (`panel` or `assistant/scheduled`).
+  Task and run timestamps use the runtime clock; cron uses Quartz and a validated
+  ZoneId, including DST. Enablement and schedule edits recompute `nextRunAt`.
+- Credentials are references, never stored tokens. `credentialEnvName` must
+  match `[A-Z_][A-Z0-9_]*` and the dedicated
+  `allowedScheduledCredentialEnvNames` allowlist. The existing secret resolver
+  supplies its value. Read-only `credentialStatus` reports presence without
+  exposing token characters and is stripped on every save.
+- A run sends JSON `{accessToken: ...}` to the same loopback base URL's
+  `POST /qqq/v1/manageSession`. RC.5 with HTTP-only cookies returns the UUID in
+  `Set-Cookie: sessionUUID`; legacy JSON `uuid` is also accepted. Only then does
+  the runner resolve that UUID through the host authentication module, exactly
+  the UUID lookup used by the UI request pipeline. No direct token authentication,
+  automated-user session or constructed QSession exists in assistant code.
+  The resolved user id must equal `runAsUserId` before any model call. MOCK in
+  the integration fixture maps test tokens to the existing user-prefix sessions;
+  that token adapter is test code only.
+- kof22 provisions an Authentik designated account with normal QQQ permissions
+  and injects an accepted long-lived token through its secret manager and
+  ExternalSecret into an allow-listed environment variable. The task holds the
+  variable name and QQQ user id. Host authentication must accept that token type
+  as `accessToken`; an Authentik management API token is not automatically an
+  application access token. Neither account nor credential is provisioned here.
+- `assistantScheduledTasksRunner` registers a 60-second QScheduleMetaData when
+  `scheduledTasksSchedulerName` names a host scheduler. QQQ supplies its normal
+  scheduler context for assistant-table bookkeeping; no ArchUnit exception is
+  necessary. Configure `uiApiBaseUrl` at startup. No browser visit is required.
+- **Claim compatibility:** RC.5 UpdateInput cannot express a conditional
+  `WHERE next_run_at = expected`. AssistantStore therefore claims the expected
+  schedule slot using the database-enforced unique `(taskId, scheduledFor)` run
+  key and advances `nextRunAt` before login/dispatch. This is a unique-insert
+  optimistic claim rather than a conditional update. The memory fixture also
+  serializes claim operations on its instance. The database constraint, not
+  that monitor, prevents cross-replica duplicate execution. Do not remove claim
+  history or deploy to a backend without atomic unique keys. A crash can lose a
+  run; it never retries a claimed slot. A later tick advances an already-claimed
+  slot left behind by a crash between claim and schedule update.
+- The unchanged AssistantApi starts a new normal turn under the logged-in
+  designated user, preserving start gates, rate limiting, P-c classification,
+  P-d budgets and P-e routing/fallback. An internal context supplies the task's
+  selected profile and additional cost cap. Cost includes chat, classifier,
+  failed calls and knowledge-query embeddings. STOP is checked at dispatch
+  boundaries; an in-flight call can exceed the cap, and no next call is sent.
+- Every scheduled UI API request, including metadata and knowledge retrieval,
+  carries `X-QQQ-Client: assistant/scheduled/<taskId>`. The only uiapi change is
+  additive `LoopbackUiApiGateway.invokeWithClient`; custom gateways currently
+  fail closed for scheduled requests because their channel contract is unknown.
+  Tool-call rows also record `clientChannel`. Core channel deny enforcement
+  remains pending the client-channel RC; existing AI exposure/data-access
+  restrictions continue to apply on RC.5.
+- Approve write mode, Revoke write mode and Run now are admin record actions
+  using standard streamed ETL Review/Result. Review shows the exact prompt's
+  SHA-256 and run-as user. Result rereads and compares the complete reviewed
+  definition before recording the actual administrator's user id and time.
+  A persisted approval hash additionally binds prompt, run-as user, credential
+  reference, profile and requested mode. Editing any of these clears approval;
+  ordinary saves cannot set approval or computed bookkeeping fields.
+- This base has create/update/delete tools, but no W1 conversation mode/policy
+  switch. Scheduled runs explicitly narrow the existing tool policy: write tools
+  require both request and matching approval, a READ_WRITE table and the policy's
+  allowed-tools list. All scheduled writes require panel confirmation, including
+  when normal policy allows immediate writes. A pending proposal adds a waiting
+  notice to the run summary; the scheduler never confirms it.
+- RECORD keeps the run and conversation; NOTIFICATION and BOTH also submit an
+  Alerts notification with `NotificationAudience.user(runAsUserId)` and an
+  `/app/...` conversation link. Reflection targets the installed Alerts QBit's
+  RC.5 notification SPI/sink, following WebhooksAlerts' optional-dependency
+  pattern. Without it, a log contains run id and status only. Notification text
+  contains no answer data. In HIPAA mode run summaries contain exactly
+  `see conversation`; conversation payloads retain the existing encryption.
+    The existing record URL is an admin-screen link. Non-admin owners can read
+    their scheduled conversations in the panel's conversation list; opening a
+    particular existing conversation from a notification still needs a frontend
+    deep-link contract (the current panel only supports open/new-prompt links).
+    This phase does not broaden existing conversation record-screen permissions.
+- Failures close the run as FAILED or BLOCKED with sanitized errors and wait
+  until the next schedule. All output modes retain their audit record. Tests
+  exercise real manageSession and UI API requests with a fixed clock, designated
+  permissions and owner locks, headers, competing runners, approval invalidation,
+  notification modes, PHI refusal, encrypted HIPAA storage and cost STOP.
+
 ### Phases (each a green PR)
 | | Scope | Depends on |
 |---|---|---|

@@ -47,6 +47,7 @@ import com.kingsrook.qqq.backend.core.actions.ai.output.AiRedactor;
 import com.kingsrook.qqq.backend.core.actions.ai.tools.AiJsonSchema;
 import com.kingsrook.qqq.backend.core.actions.ai.tools.AiToolContext;
 import com.kingsrook.qqq.backend.core.actions.ai.tools.AiToolException;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
@@ -56,6 +57,7 @@ import com.kingsrook.qqq.backend.core.model.audits.AuditsMetaDataProvider;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.ClientChannelsMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
@@ -358,7 +360,30 @@ public class UiApiToolbox
       byName.put(DELETE_RECORD, tool(DELETE_RECORD, "Delete a record. The user confirms it in the panel before anything is deleted, unless the administrator turned confirmation off.",
          AiJsonSchema.object(AiJsonSchema.properties("table", AiJsonSchema.string("Table name from list_tables"), "id", AiJsonSchema.string("The record's primary key value.")), List.of("table", "id"))));
 
+      if(!historyAllowed())
+      {
+         byName.remove(RECORD_HISTORY);
+      }
       return (new ArrayList<>(byName.values()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Offer history only when every audit table it queries is available to the
+    ** assistant channel, including inherited permission rules.
+    *******************************************************************************/
+   private boolean historyAllowed()
+   {
+      for(String name : List.of(AuditsMetaDataProvider.TABLE_NAME_AUDIT_TABLE, AuditsMetaDataProvider.TABLE_NAME_AUDIT, AuditsMetaDataProvider.TABLE_NAME_AUDIT_DETAIL))
+      {
+         QTableMetaData table = qInstance.getTable(name);
+         if(table == null || ClientChannelsMetaData.of(qInstance).isDenied("assistant", table.getName(), PermissionsHelper.getEffectivePermissionRules(table, qInstance)))
+         {
+            return (false);
+         }
+      }
+      return (true);
    }
 
 

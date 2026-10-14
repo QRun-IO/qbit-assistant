@@ -17,23 +17,22 @@
 package com.kingsrook.qbits.assistant.engine;
 
 
-import java.util.stream.Collectors;
-import java.util.Objects;
-import com.kingsrook.qbits.assistant.model.AssistantProvider;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Semaphore;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
-import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantPendingAction;
 import com.kingsrook.qbits.assistant.model.AssistantProfile;
+import com.kingsrook.qbits.assistant.model.AssistantProvider;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
 import com.kingsrook.qbits.assistant.provider.CacheHint;
 import com.kingsrook.qbits.assistant.provider.ModelMessage;
@@ -43,6 +42,8 @@ import com.kingsrook.qbits.assistant.provider.ModelResponse;
 import com.kingsrook.qbits.assistant.provider.ModelUsage;
 import com.kingsrook.qbits.assistant.provider.StreamHandle;
 import com.kingsrook.qbits.assistant.provider.SystemBlock;
+import com.kingsrook.qbits.assistant.scheduled.ScheduledTurn;
+import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
@@ -116,7 +117,9 @@ public class ModelRouter
    public Route route(QSession session, AssistantConversation conversation, AssistantTurn turn, String question, Map<String, Object> pageContext,
       PolicyService.EffectivePolicy policy, TurnClassification classification, RunningTurn running, Instant deadline, Consumer<String> notice) throws QException, InterruptedException
    {
-      AssistantProfile profile = runtime.getProfileService().pick(session, runtime.appNameFor(pageContext));
+      var scheduled = runtime.getScheduledTurn().task(conversation.getId());
+      ScheduledTurn.checkCost(scheduled, 0L);
+      AssistantProfile profile = runtime.getProfileService().pick(session, runtime.appNameFor(pageContext), scheduled == null ? null : scheduled.getProfileId());
       String mode = profile == null || profile.getRoutingMode() == null ? "OFF" : profile.getRoutingMode();
       Boolean escalation = profile == null && Boolean.TRUE.equals(runtime.getConfig().getModels().getEscalationEnabled());
       String decision = "OFF";

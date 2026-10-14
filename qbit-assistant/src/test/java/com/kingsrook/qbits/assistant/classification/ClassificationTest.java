@@ -21,7 +21,6 @@
 package com.kingsrook.qbits.assistant.classification;
 
 
-import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +32,7 @@ import com.kingsrook.qbits.assistant.provider.ModelPart;
 import com.kingsrook.qbits.assistant.testing.AssistantTestFixture;
 import com.kingsrook.qbits.assistant.testing.BaseAssistantTest;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolResult;
+import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;

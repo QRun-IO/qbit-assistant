@@ -34,7 +34,7 @@ import com.kingsrook.qqq.middleware.javalin.specs.AbstractMiddlewareVersion;
  ** package to override it. Everything else (the operation allow-list, the
  ** credentials, the client channel, the depth limit) is core's own.
  **
- ** Remove this class once core's UiApiRequest has withHeader.
+ ** stand-in until QRun-IO/qqq adds UiApiRequest.withHeader; delete then
  *******************************************************************************/
 public class HeaderedUiApiInvoker extends UiApiInvoker
 {
@@ -63,11 +63,21 @@ public class HeaderedUiApiInvoker extends UiApiInvoker
    HttpRequest buildHttpRequest(UiApiOperation operation, UiApiRequest request) throws QException
    {
       HttpRequest built = super.buildHttpRequest(operation, request);
-      if(!(request instanceof HeaderedRequest headered) || headered.getHeaders().isEmpty())
-      {
-         return (built);
-      }
       HttpRequest.Builder builder = HttpRequest.newBuilder(built, (name, value) -> true);
+      ////////////////////////////////////////////////////////////////////////////
+      // RC.6 strips slashes from client detail. Preserve nested attribution    //
+      // while keeping the channel chosen by core, never by extra headers.     //
+      ////////////////////////////////////////////////////////////////////////////
+      if(request.getClientDetail() != null && request.getClientDetail().contains("/"))
+      {
+         String channel = built.headers().firstValue(CLIENT_CHANNEL_HEADER).orElseThrow().split("/", 2)[0];
+         String detail = request.getClientDetail().replaceAll("[^A-Za-z0-9._:/-]", "");
+         builder.setHeader(CLIENT_CHANNEL_HEADER, channel + "/" + detail);
+      }
+      if(!(request instanceof HeaderedRequest headered))
+      {
+         return (builder.build());
+      }
       headered.getHeaders().forEach((name, value) ->
       {
          if(!RESERVED_HEADERS.contains(name.toLowerCase(Locale.ROOT)))

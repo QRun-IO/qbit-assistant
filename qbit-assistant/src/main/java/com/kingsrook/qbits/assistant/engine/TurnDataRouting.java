@@ -22,10 +22,10 @@ package com.kingsrook.qbits.assistant.engine;
 
 
 import com.kingsrook.qbits.assistant.AssistantRuntime;
-import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qbits.assistant.model.AssistantDataAudit;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
+import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 
 

@@ -22,8 +22,8 @@ package com.kingsrook.qbits.assistant.engine;
 
 
 import java.util.Optional;
-import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
+import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 
 
 /*******************************************************************************

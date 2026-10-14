@@ -550,6 +550,45 @@ health is probed when unknown/stale with a two-second timeout. Provider cards sh
 health and down-until, failures show fallback totals, and turn records show the
 route and final destination. See [UPGRADE.md](UPGRADE.md) for the additive schema.
 
+## Scheduled tasks
+
+Administrators configure recurring prompts in **Assistant → Scheduled tasks**.
+Tasks use Quartz cron syntax (for example `0 0 8 * * ?`) and an IANA timezone
+(for example `America/Chicago`; default `UTC`). Tasks start disabled.
+
+```java
+config.withUiApiBaseUrl("http://127.0.0.1:8000")
+   .withScheduledTasksSchedulerName("hostScheduler")
+   .withAllowedScheduledCredentialEnvNames(Set.of("ASSISTANT_SCHEDULED_TOKEN"));
+```
+
+Provide a long-lived access token accepted by the host's authentication provider
+in that environment variable. Store only its **name** on the task and set
+`runAsUserId` to the corresponding QQQ user id. The runner posts the token to
+`/qqq/v1/manageSession`, reads its session cookie and verifies the returned
+session's user before starting a new conversation. No system session reads user
+data. Configure the loopback URL at startup; a scheduled job cannot rely on a
+browser having visited first.
+
+For kof22, provision a designated Authentik account with the intended application
+permissions, obtain a token that kof22's QQQ authentication provider accepts as an
+`accessToken`, and inject it through the existing secret-manager/ExternalSecret
+pipeline. An Authentik management API token is suitable only if the host's auth
+adapter explicitly accepts it. Rotate the token in the secret manager, never in
+the task table. This feature does not provision an account or token.
+
+**Run now**, **Approve write mode** and **Revoke write mode** are Review/Result
+record actions. Write approval names the designated user and displays the exact
+prompt SHA-256. Changing prompt, user, credential reference, profile or write-mode
+request clears approval. Scheduled writes always wait for that user's panel
+confirmation, even if normal policy disables confirmation.
+
+Each run keeps an owner-locked audit row and a normal conversation. RECORD adds
+no notification; NOTIFICATION and BOTH also notify the designated user through
+the optional Alerts QBit SPI. Without Alerts, notification delivery is log-only.
+HIPAA summaries are always `see conversation`. Cost caps stop at dispatch
+boundaries, so the last completed call can cross the cap; no further call starts.
+Apply the [P-g migration](UPGRADE.md#p-g-scheduled-tasks) before enabling jobs.
 ### Answer presentation
 
 The always-available `present_results` tool turns retrieved results into metrics,
@@ -562,3 +601,20 @@ skills can extend the built-in presentation instructions. See the
 The image-breakdown golden task also runs in the existing opt-in live provider suite:
 `./mvnw verify -Dassistant.live=true -Dtest.excludedGroups= -Dgroups=live -Djacoco.skip=true -pl qbit-assistant-provider-anthropic -am`
 (with `ANTHROPIC_API_KEY` set). Live calls are excluded from normal verification.
+
+### Record history and the assistant channel
+
+Core's default `ClientChannelsMetaData` denies `audit*` to the `assistant`
+channel. Accordingly, `get_record_history` is offered only when all three audit
+tables it queries (`auditTable`, `audit`, and `auditDetail`) exist and are not
+channel-denied, including their effective permission rules. A host that intends
+to expose record history can opt in during instance configuration:
+
+```java
+ClientChannelsMetaData.ofOrWithNew(qInstance)
+   .getDeniedPatterns().get("assistant").remove("audit*");
+```
+
+This removes only the default audit pattern; other channel denials and the
+signed-in user's audit permissions still apply. Keep explicit denials for audit
+surfaces the host does not intend to expose. The default remains unchanged.

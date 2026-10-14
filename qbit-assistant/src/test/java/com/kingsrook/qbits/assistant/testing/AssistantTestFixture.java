@@ -39,7 +39,6 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
-import com.kingsrook.qqq.backend.core.model.metadata.permissions.ClientChannelsMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.QAuditRules;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
@@ -151,12 +150,6 @@ public class AssistantTestFixture
       {
          qInstance.getTable(auditTable).setPermissionRules(new QPermissionRules().withLevel(PermissionLevel.READ_INSERT_EDIT_DELETE_PERMISSIONS));
       }
-
-      //////////////////////////////////////////////////////////////////////////
-      // core denies the assistant channel the audit tables by default; this   //
-      // host opts in so get_record_history can read a record's change history //
-      //////////////////////////////////////////////////////////////////////////
-      ClientChannelsMetaData.ofOrWithNew(qInstance).getDeniedPatterns().get(ClientChannelsMetaData.CHANNEL_ASSISTANT).remove("audit*");
 
       qInstance.addApp(new QAppMetaData().withName("content").withLabel("Content")
          .withChild(qInstance.getTable("blog_post"))
