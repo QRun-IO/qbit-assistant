@@ -103,6 +103,11 @@ public final class DataAccessDefaultsProcess
     *******************************************************************************/
    public static List<AssistantDataAccess> missingRows(QInstance qInstance, DataAccessService access, AssistantStore store) throws QException
    {
+      ////////////////////////////////////////////////////////////////////
+      // fresh rows: a row deleted on another server must not come back //
+      // from this server's cache as a "default"                        //
+      ////////////////////////////////////////////////////////////////////
+      access.invalidate();
       Set<String> existing = new HashSet<>();
       for(AssistantDataAccess row : store.query(AssistantDataAccess.TABLE_NAME, new QQueryFilter().withLimit(10_000), AssistantDataAccess.class))
       {
