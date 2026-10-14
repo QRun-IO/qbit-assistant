@@ -34,7 +34,8 @@ import com.kingsrook.qqq.middleware.javalin.specs.AbstractMiddlewareVersion;
  ** package to override it. Everything else (the operation allow-list, the
  ** credentials, the client channel, the depth limit) is core's own.
  **
- ** stand-in until QRun-IO/qqq adds UiApiRequest.withHeader; delete then
+ ** STAND-IN(core=QRun-IO/qqq#1190, removeBy=RC.8): delete this class and use
+ ** UiApiRequest.withHeader once the qbit builds on a QQQ RC that has it.
  *******************************************************************************/
 public class HeaderedUiApiInvoker extends UiApiInvoker
 {

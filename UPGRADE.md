@@ -19,6 +19,25 @@ when the host has not enabled the audit channel field. Apply the X1/Y1 DDL in
 column to TEXT: encoded filters with long table names or string record ids can
 exceed the old 500-character limit. No new QBit column is required. `GET /assistant/access` accepts an optional owned `turnId` for attribution.
 
+## Provider API extraction (#30)
+
+Hosts that depend on `qbit-assistant` keep working: it now brings in
+`qbit-assistant-provider-api` transitively. Package names are unchanged, including
+`com.kingsrook.qbits.assistant.engine.ModelPricing`. No schema migration is needed.
+
+External providers and applications using only provider/pricing types should
+replace their `qbit-assistant` dependency with
+`com.kingsrook.qbits:qbit-assistant-provider-api` at the same version. This removes
+the assistant runtime and QQQ from that dependency path; only Jackson annotations
+are required by the API. Anthropic, OpenAI, Bedrock and Vertex adapters use this
+split; pgvector retains `qbit-assistant` for its runtime RAG interfaces.
+
+Recompile custom provider types that override `validate(AssistantProvider)` and
+change the signature to `validate(ProviderSettings)`. The settings carry the
+configured kind, URL, API version, region, project, CA bundle name, timeouts and
+`apiKeyEnvName`; the key and bearer-token supplier are not resolved for validation.
+Providers using the default validator need no source change. Keep the runtime and
+provider artifacts on the same version; old validator overrides must be rebuilt.
 ## P-g: scheduled tasks
 
 Apply the **P-g** DDL in [docs/schema-postgres.sql](docs/schema-postgres.sql)

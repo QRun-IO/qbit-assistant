@@ -28,10 +28,14 @@
    <packaging>jar</packaging>
 
    <name>QBit Assistant</name>
-   <description>In-app AI assistant QBit for QQQ: conversations, turn engine, SSE routes, budgets, provider SPI</description>
+   <description>In-app AI assistant QBit for QQQ: conversations, turn engine, SSE routes, budgets and provider registry</description>
    <url>https://github.com/QRun-IO/qbit-assistant</url>
 
    <dependencies>
+      <dependency>
+         <groupId>com.kingsrook.qbits</groupId>
+         <artifactId>qbit-assistant-provider-api</artifactId>
+      </dependency>
       <dependency>
          <groupId>com.kingsrook.qqq</groupId>
          <artifactId>qqq-backend-core</artifactId>

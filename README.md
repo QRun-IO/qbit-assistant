@@ -4,10 +4,28 @@ An in-app AI assistant for any QQQ application. The user asks a question in a ch
 
 Design spec: `QRun-IO/qqq` `docs/specs/2026-10-11-qqq-assistant-qbit-design.md`.
 
+## Modules
+
 | Artifact | What it is |
 |---|---|
-| `com.kingsrook.qbits:qbit-assistant` | The QBit: conversation tables, turn engine, `/qqq/v1/assistant` routes (JSON + Server-Sent Events), budgets, kill switch, the provider SPI, and a scripted provider for tests and demos. |
+| `com.kingsrook.qbits:qbit-assistant-provider-api` | Provider SPI, connection settings, messages, usage and pricing types; only Jackson annotations at runtime. |
+| `com.kingsrook.qbits:qbit-assistant` | The QBit: conversation tables, turn engine, `/qqq/v1/assistant` routes (JSON + Server-Sent Events), budgets, kill switch, the provider registry, and a scripted provider for tests and demos. |
 | `com.kingsrook.qbits:qbit-assistant-provider-anthropic` | The Claude provider (`com.anthropic:anthropic-java`). Add it to use Claude. The core QBit has no LLM SDK dependency. |
+| `com.kingsrook.qbits:qbit-assistant-provider-openai` | OpenAI-compatible chat and embedding providers. |
+| `com.kingsrook.qbits:qbit-assistant-provider-bedrock` | Claude through AWS Bedrock. |
+| `com.kingsrook.qbits:qbit-assistant-provider-vertex` | Claude and Gemini through Google Vertex AI. |
+| `com.kingsrook.qbits:qbit-assistant-rag-pgvector` | JDBC vector store; retains the runtime dependency for `VectorStore` and `ChunkVector`. |
+
+### Implementing a provider outside qbit-assistant
+
+Depend on `com.kingsrook.qbits:qbit-assistant-provider-api` at the same version as
+QBit Assistant, and implement `AssistantModelProvider` and optionally
+`AssistantProviderType`. No assistant runtime dependency is needed. Existing
+`com.kingsrook.qbits.assistant.provider.*` imports and
+`com.kingsrook.qbits.assistant.engine.ModelPricing` stay the same.
+`AssistantProviderType.validate(ProviderSettings)` receives unresolved settings
+(including `apiKeyEnvName`), without a database entity or resolved credentials.
+Hosts register providers through `AssistantQBitConfig` in `qbit-assistant`.
 
 Data tools use the QQQ UI API (`/qqq/v1`) with the signed-in user's session. The UI API enforces permissions and record locks; assistant data-access policy and field exposure can only narrow access. Only record-free navigation and help use the core AI tool kernel. Every tool result reaches the model wrapped as untrusted data.
 

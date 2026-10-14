@@ -15,6 +15,11 @@
 - Verify the admin denial matrix through the real invoker and Next UI, startup
   failures, and confirmed-write human/channel attribution with decoded audit links.
 
+## Unreleased - Provider API extraction (#30)
+
+- Extract provider SPI/value types and `engine.ModelPricing` into `qbit-assistant-provider-api`, preserving package names. Its only production dependency is Jackson annotations.
+- Move Anthropic, OpenAI, Bedrock and Vertex main dependencies to the API; retain runtime fixtures in test scope. Pgvector still needs runtime RAG interfaces.
+- Provider-specific validation now takes unresolved `ProviderSettings` instead of `AssistantProvider`; add an ArchUnit boundary and standalone coverage gates.
 ## Unreleased - P-g
 
 - Add admin Scheduled tasks, owner-locked run history, Quartz cron/timezones,

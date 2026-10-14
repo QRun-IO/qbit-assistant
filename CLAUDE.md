@@ -29,6 +29,8 @@ Always use the wrapper: Maven 3.10 cannot read the parent POM. The committed def
 
 ## Modules
 
+- `qbit-assistant-provider-api`: standalone provider SPI/value types and `engine.ModelPricing` (original package names); only Jackson annotations in production. Provider validation takes unresolved `ProviderSettings`, not an entity.
+
 - `qbit-assistant` (`com.kingsrook.qbits.assistant`):
   - `AssistantQBitProducer`, `AssistantQBitConfig` (with `AssistantModelRouting` and `AssistantBudgets`), `AssistantRuntime`, `AssistantSecurity`.
   - `metadata/`: tables, owner key type, the Assistant app (home + main tables in the nav), the retention process, the settings customizer (key-reference checks, masked key status), and the `assistant.admin` custom permission checker.
@@ -37,7 +39,7 @@ Always use the wrapper: Maven 3.10 cannot read the parent POM. The committed def
   - `persistence/AssistantStore`: the **only** code that calls QQQ data actions, and only on the QBit's own tables, under the user's session.
   - `engine/`: `TurnEngine` (the loop), `ContextBuilder` (cache-prefix order), `SystemPrompt`, `PolicyService` (policy row, budgets), `RateLimiter`, the `TurnEvent` / `TurnEventLog` stream, and `MessageParts`.
   - `api/`: `AssistantApi` (transport-free) and `AssistantRouteProvider` (Javalin, SSE).
-  - `provider/`: the provider-neutral SPI, plus `fake/ScriptedModelProvider` for tests, evals and demos.
+  - `provider/`: runtime-backed `RegistryModelProvider`, plus `fake/ScriptedModelProvider` for tests, evals and demos. The SPI lives in `qbit-assistant-provider-api`.
   - `developer/`: the record Developer-screen panel, on the core developer-panel contract.
   - `processes/`: `AssistantRetentionStep` and `TestConnectionProcess` (record action on `assistant_provider`).
   - `engine/ProviderService` (active provider from `assistant_provider` rows, key references, prices), `UsageRecorder` (one `assistant_usage` row per model call), `ConnectionTest`.
@@ -46,7 +48,7 @@ Always use the wrapper: Maven 3.10 cannot read the parent POM. The committed def
 - `qbit-assistant-provider-bedrock`: Claude through the Anthropic Bedrock backend, AWS default credentials and SigV4; IRSA/web-identity hosts supply STS.
 - `qbit-assistant-provider-vertex`: Claude through the Anthropic Vertex backend and Gemini through OpenAI-compatible Chat Completions, with refreshed Google ADC tokens.
 
-- `qbit-assistant-rag-pgvector`: optional host-supplied JDBC vector store, isolated by instance schema; no QQQ RDBMS internals.
+- `qbit-assistant-rag-pgvector`: optional host-supplied JDBC vector store, isolated by instance schema; depends on runtime RAG interfaces (`VectorStore`, `ChunkVector`), with no QQQ RDBMS internals.
 
 ## Invariants (do not break)
 
@@ -106,4 +108,4 @@ QQQ style:
 - `develop` publishes SNAPSHOTs.
 - `release/*` publishes RCs; the orb bumps `<revision>` in the root POM.
 - `v*` tags publish releases.
-- All six modules and the parent POM publish. The flatten plugin resolves `${revision}`.
+- All seven modules and the parent POM publish. The flatten plugin resolves `${revision}`.

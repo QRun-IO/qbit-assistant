@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ~ Copyright 2026 Kingsrook, LLC
+  ~
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~     http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+   <modelVersion>4.0.0</modelVersion>
+
+   <parent>
+      <groupId>com.kingsrook.qbits</groupId>
+      <artifactId>qbit-assistant-parent</artifactId>
+      <version>${revision}</version>
+   </parent>
+
+   <artifactId>qbit-assistant-provider-api</artifactId>
+   <packaging>jar</packaging>
+
+   <name>QBit Assistant - Provider API</name>
+   <description>Provider SPI and pricing value types, independent of the assistant runtime</description>
+   <url>https://github.com/QRun-IO/qbit-assistant</url>
+
+   <dependencies>
+      <dependency>
+         <groupId>com.fasterxml.jackson.core</groupId>
+         <artifactId>jackson-annotations</artifactId>
+      </dependency>
+      <dependency>
+         <groupId>com.fasterxml.jackson.core</groupId>
+         <artifactId>jackson-databind</artifactId>
+         <scope>test</scope>
+      </dependency>
+      <dependency>
+         <groupId>org.junit.jupiter</groupId>
+         <artifactId>junit-jupiter</artifactId>
+         <scope>test</scope>
+      </dependency>
+      <dependency>
+         <groupId>org.assertj</groupId>
+         <artifactId>assertj-core</artifactId>
+         <scope>test</scope>
+      </dependency>
+      <dependency>
+         <groupId>com.tngtech.archunit</groupId>
+         <artifactId>archunit-junit5</artifactId>
+         <scope>test</scope>
+      </dependency>
+   </dependencies>
+
+   <build>
+      <plugins>
+         <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <configuration>
+               <redirectTestOutputToFile>true</redirectTestOutputToFile>
+            </configuration>
+         </plugin>
+         <plugin>
+            <groupId>org.jacoco</groupId>
+            <artifactId>jacoco-maven-plugin</artifactId>
+            <executions>
+               <execution>
+                  <id>prepare-agent</id>
+                  <goals>
+                     <goal>prepare-agent</goal>
+                  </goals>
+               </execution>
+               <execution>
+                  <id>report</id>
+                  <phase>verify</phase>
+                  <goals>
+                     <goal>report</goal>
+                  </goals>
+               </execution>
+               <execution>
+                  <id>check</id>
+                  <goals>
+                     <goal>check</goal>
+                  </goals>
+                  <configuration>
+                     <rules>
+                        <rule>
+                           <element>BUNDLE</element>
+                           <limits>
+                              <limit>
+                                 <counter>INSTRUCTION</counter>
+                                 <value>COVEREDRATIO</value>
+                                 <minimum>0.70</minimum>
+                              </limit>
+                              <limit>
+                                 <counter>CLASS</counter>
+                                 <value>COVEREDRATIO</value>
+                                 <minimum>0.90</minimum>
+                              </limit>
+                           </limits>
+                        </rule>
+                     </rules>
+                  </configuration>
+               </execution>
+            </executions>
+         </plugin>
+      </plugins>
+   </build>
+</project>
