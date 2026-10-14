@@ -29,6 +29,11 @@ Startup prints these URLs (with the selected port):
 - Local provider: `http://localhost:8099/app/assistant_provider/1`
 - Priced and tested model: `http://localhost:8099/app/assistant_model/1`
 
+Startup also prints `Image presentation conversation id: <id>`. Open that
+conversation in the assistant panel history as `admin-demo` to capture the
+answer to "How many images do I have by type?". The id is assigned on each run;
+the conversation and its presentation are memory-backed and reset on restart.
+
 Every browser session is `admin-demo`. Startup inserts an enabled, default,
 keyless Local GPU (Ollama) provider, marked LOCAL and HIPAA eligible for the
 synthetic demo, and a disabled CLOUD OpenRouter provider whose key is Not set.
@@ -40,8 +45,14 @@ mock: `qwen3:30b-a3b`, `gpt-oss:20b`, `qwen3-coder:30b`, and `bge-m3`.
 A normal update sets qwen3's input/output compute prices to $0.05/$0.10 per
 million tokens. The provider and model Test connection processes then each
 make a real HTTP completion call, recording two TEST usage rows and the
-last-test fields. One assistant turn records a third usage row with purpose
-TURN. Discovery timestamps/status also come from the actual process.
+last-test fields. The greeting turn records a third usage row with purpose
+TURN. An image breakdown turn then makes three more model calls through the
+real OpenAI adapter and engine: five MIME-filtered `count_records` calls,
+`present_results` using the returned counts, and a short closing message.
+The fixture seeds 81 JPEG and 20 PNG rows (no WebP, GIF or SVG). The presentation
+includes a table with computed shares, filtered row links, a pie chart, JPEG
+and PNG filter links, and a "Show the PNG files" prompt action.
+Discovery timestamps/status also come from the actual process.
 
 Replies and token counts are synthetic mock API responses (24 input / 8 output
 tokens per completion), not live GPU measurements or billed cloud usage.

@@ -35,3 +35,8 @@ Light and dark, 390 and 1440 px:
 - `p-provider-local-*`: Local GPU (Ollama), keyless LOCAL settings, discovery/test results and discovered models.
 - `p-model-*`: a discovered model's capabilities, compute prices and connection-test result.
 - `p-home-providers-*`: the home's provider summary and usage from the executed demo calls, including disabled OpenRouter with its key Not set.
+
+Answer presentation (owner priority, 2026-10-13), taken against `OpenAiDemoServer` with the Next UI build of QRun-IO/qqq-frontend-next#111 (`next dev` proxied to the demo). The demo's OpenAI-compatible mock answers "How many images do I have by type?" the way a model would through the real adapter: five `count_records` calls through the UI API, then `present_results`.
+
+Light and dark, 390 and 1440 px:
+- `panel-presentation-*`: the summary line, an Images metric, the "Media by type" table (counts and the server-computed 80.2% and 19.8%, each row a filtered-list link), the pie chart, two filter links (Open JPEG media, Open PNG media) and a follow-up action.
