@@ -30,6 +30,7 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.StringJoiner;
+import java.util.UUID;
 import java.util.function.Supplier;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
@@ -63,6 +64,9 @@ public class LoopbackUiApiGateway implements UiApiGateway
    public static final String BASE_PATH         = "/qqq/v1";
    public static final String INVOKED_BY_HEADER = "X-QQQ-Invoked-By";
    public static final String TIMEZONE_HEADER   = "X-QQQ-UserTimezone";
+
+   /** Headers a call cannot set itself (lower case). */
+   private static final Set<String> RESERVED_HEADERS = Set.of("cookie", "authorization", "x-api-key", "content-type", "accept", INVOKED_BY_HEADER.toLowerCase(), TIMEZONE_HEADER.toLowerCase());
 
    private static final Set<String> SPEC_OPERATIONS = specOperations();
 
@@ -204,8 +208,31 @@ public class LoopbackUiApiGateway implements UiApiGateway
       {
          builder.header(TIMEZONE_HEADER, call.getUserTimezone());
       }
+      call.getHeaders().forEach((name, value) ->
+      {
+         if(!RESERVED_HEADERS.contains(name.toLowerCase()))
+         {
+            builder.header(name, value);
+         }
+      });
 
-      if(call.getJsonBody() != null)
+      if(!call.getFormParams().isEmpty())
+      {
+         ////////////////////////////////////////////////////////////////
+         // multipart/form-data text fields (the /processes endpoints) //
+         ////////////////////////////////////////////////////////////////
+         String        boundary = "qqq-assistant-" + UUID.randomUUID();
+         StringBuilder body     = new StringBuilder();
+         String        lineEnd  = "\r\n";
+         call.getFormParams().forEach((name, value) -> body.append("--").append(boundary).append(lineEnd)
+            .append("Content-Disposition: form-data; name=\"").append(name.replace("\"", "")).append("\"").append(lineEnd)
+            .append("Content-Type: text/plain; charset=UTF-8").append(lineEnd).append(lineEnd)
+            .append(value).append(lineEnd));
+         body.append("--").append(boundary).append("--").append(lineEnd);
+         builder.header("Content-Type", "multipart/form-data; boundary=" + boundary);
+         builder.method(call.getMethod(), HttpRequest.BodyPublishers.ofString(body.toString(), StandardCharsets.UTF_8));
+      }
+      else if(call.getJsonBody() != null)
       {
          builder.header("Content-Type", "application/json");
          builder.method(call.getMethod(), HttpRequest.BodyPublishers.ofString(call.getJsonBody() instanceof String s ? s : JsonUtils.toJson(call.getJsonBody()), StandardCharsets.UTF_8));

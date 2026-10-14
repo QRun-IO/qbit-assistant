@@ -36,6 +36,7 @@ import com.kingsrook.qbits.assistant.provider.ModelToolDefinition;
 import com.kingsrook.qbits.assistant.provider.SystemBlock;
 import com.kingsrook.qbits.assistant.tools.KnowledgeTool;
 import com.kingsrook.qbits.assistant.tools.PresentResultsTool;
+import com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadTools;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolDefinition;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolKernel;
@@ -66,12 +67,14 @@ public class ContextBuilder
 
    public static final int MAX_CONTEXT_CHARS = 512;
    public static final int MAX_SELECTED_IDS  = 100;
+   public static final int MAX_ATTACHMENTS   = 5;
 
    private final AssistantQBitConfig config;
    private final AiToolKernel        kernel;
    private final UiApiToolbox        toolbox;
    private volatile String           appDigest;
    private KnowledgeTool knowledgeTool;
+   private BulkLoadTools bulkLoadTools;
 
 
 
@@ -125,6 +128,13 @@ public class ContextBuilder
          byName.put(KnowledgeTool.NAME, knowledgeTool.definition());
       }
       byName.put(PresentResultsTool.NAME, PresentResultsTool.definition(isStrict(PresentResultsTool.NAME, true)));
+      if(bulkLoadTools != null && bulkLoadTools.offered())
+      {
+         for(ModelToolDefinition definition : bulkLoadTools.definitions(policy, toolbox.anyWritableTable()))
+         {
+            byName.put(definition.getName(), definition);
+         }
+      }
       return (new ArrayList<>(byName.values()));
    }
 
@@ -352,6 +362,32 @@ public class ContextBuilder
          }
       }
 
+      ////////////////////////////////////////////////////////////////////
+      // files the user attached in the panel (already uploaded through  //
+      // the UI API as the user): only their opaque refs and names       //
+      ////////////////////////////////////////////////////////////////////
+      if(raw.get("attachments") instanceof List<?> attachments)
+      {
+         List<Map<String, Object>> kept = new ArrayList<>();
+         for(Object attachment : attachments)
+         {
+            if(attachment instanceof Map<?, ?> a && scalar(a.get("uploadRef")) != null && kept.size() < MAX_ATTACHMENTS)
+            {
+               Map<String, Object> one = new LinkedHashMap<>();
+               one.put("uploadRef", scalar(a.get("uploadRef")));
+               if(scalar(a.get("fileName")) != null)
+               {
+                  one.put("fileName", scalar(a.get("fileName")));
+               }
+               kept.add(one);
+            }
+         }
+         if(!kept.isEmpty())
+         {
+            clean.put("attachments", kept);
+         }
+      }
+
       if(JsonUtils.toJson(clean).length() > 4000)
       {
          clean.remove("filter");
@@ -387,6 +423,17 @@ public class ContextBuilder
    public ContextBuilder withKnowledgeTool(KnowledgeTool knowledgeTool)
    {
       this.knowledgeTool = knowledgeTool;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for the bulk-load tools.
+    *******************************************************************************/
+   public ContextBuilder withBulkLoadTools(BulkLoadTools bulkLoadTools)
+   {
+      this.bulkLoadTools = bulkLoadTools;
       return (this);
    }
 

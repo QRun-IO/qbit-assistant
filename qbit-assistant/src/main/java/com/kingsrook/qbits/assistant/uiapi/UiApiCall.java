@@ -33,6 +33,8 @@ public class UiApiCall
    private final String              pathTemplate;
    private final Map<String, String> pathParams  = new LinkedHashMap<>();
    private final Map<String, String> queryParams = new LinkedHashMap<>();
+   private final Map<String, String> formParams  = new LinkedHashMap<>();
+   private final Map<String, String> headers     = new LinkedHashMap<>();
    private Object                    jsonBody;
    private String                    sessionUUID;
    private String                    userTimezone;
@@ -124,6 +126,58 @@ public class UiApiCall
    public Map<String, String> getQueryParams()
    {
       return (queryParams);
+   }
+
+
+
+   /*******************************************************************************
+    ** Add a multipart form field (ignored when null). A call with form fields
+    ** is sent as multipart/form-data (the /processes endpoints), mirroring
+    ** core's UiApiRequest.withFormParam.
+    *******************************************************************************/
+   public UiApiCall withFormParam(String name, Object value)
+   {
+      if(value != null)
+      {
+         formParams.put(name, String.valueOf(value));
+      }
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for formParams
+    *******************************************************************************/
+   public Map<String, String> getFormParams()
+   {
+      return (formParams);
+   }
+
+
+
+   /*******************************************************************************
+    ** Add a request header the invoker sets (e.g. X-QQQ-AI-Route); ignored
+    ** when null. The session cookie and the invoked-by marker cannot be
+    ** overridden this way.
+    *******************************************************************************/
+   public UiApiCall withHeader(String name, Object value)
+   {
+      if(name != null && value != null)
+      {
+         headers.put(name, String.valueOf(value));
+      }
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for headers
+    *******************************************************************************/
+   public Map<String, String> getHeaders()
+   {
+      return (headers);
    }
 
 
