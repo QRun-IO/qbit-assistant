@@ -11,6 +11,37 @@ Design spec: `QRun-IO/qqq` `docs/specs/2026-10-11-qqq-assistant-qbit-design.md`.
 
 Data tools use the QQQ UI API (`/qqq/v1`) with the signed-in user's session. The UI API enforces permissions and record locks; assistant data-access policy and field exposure can only narrow access. Only record-free navigation and help use the core AI tool kernel. Every tool result reaches the model wrapped as untrusted data.
 
+## Host audit attribution (X1/Y1)
+
+Use QQQ **4.1.0-RC.6 or later**. The QBit explicitly denies every assistant
+configuration table, process, report and widget to the `assistant` channel;
+runtime initialization fails if an assistant object is exposed. The same human
+can still administer it through Next UI (`next-ui`). Core's security-surface
+deny patterns remain in place.
+
+Enable the audit client field in the host's core audit provider **after adding
+the backing column**:
+
+```java
+new AuditsMetaDataProvider().withClientChannelField(true)
+   .defineAll(qInstance, backendName, null);
+```
+
+Add nullable `audit.client_channel VARCHAR(100)` using the host's migration and
+column-naming conventions. For kof22 this requires a feature-named changeset
+under `changesets/features/`; this QBit does not migrate the host's audit table.
+The actor remains the signed-in human; `clientChannel` distinguishes
+`assistant/<turnId>`, `assistant/scheduled/<taskId>` and `next-ui`.
+
+Apply the X1/Y1 DDL in [UPGRADE.md](UPGRADE.md) to widen the existing
+`assistant_tool_call.audit_href` column to TEXT for encoded filters.
+Successful record writes store `assistant_tool_call.auditHref` as an `/app/audit`
+filter link over `recordId`, `auditTable.name` and `clientChannel`. The human
+opens this link with their UI permissions; the assistant cannot read audits by
+default. Without the audit channel field, the QBit leaves `auditHref` empty.
+Confirmed scheduled actions use their original turn id when the human approves.
+
+
 ## RAG setup
 
 Knowledge retrieval is optional. The vector index stores **no record content**:

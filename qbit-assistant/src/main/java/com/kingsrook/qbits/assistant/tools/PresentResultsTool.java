@@ -20,7 +20,6 @@ package com.kingsrook.qbits.assistant.tools;
 import java.io.InputStream;
 import java.math.BigDecimal;
 import java.math.MathContext;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -388,7 +387,7 @@ public class PresentResultsTool
          values.forEach(PresentResultsTool::scalar);
          output.add(map("fieldName", fieldName, "operator", operator, "values", values));
       }
-      return (safeHref(AiLinkBuilder.objectHref(tableName) + "?filter=" + URLEncoder.encode(JsonUtils.toJson(map("criteria", output, "booleanOperator", "AND")), StandardCharsets.UTF_8)));
+      return (safeHref(FilterLinkBuilder.href(tableName, output)));
    }
 
 

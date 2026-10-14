@@ -1285,10 +1285,19 @@ public class UiApiToolbox
          default -> "Deleted";
       };
       String label = table == null ? tableName : label(table);
+      QTableMetaData audit = qInstance.getTable(AuditsMetaDataProvider.TABLE_NAME_AUDIT);
+      if(id != null && audit != null && audit.getField(AuditsMetaDataProvider.FIELD_CLIENT_CHANNEL) != null)
+      {
+         String channel = "assistant" + (context.turnId() == null ? "" : "/" + context.turnId());
+         outcome.auditHref = FilterLinkBuilder.href(AuditsMetaDataProvider.TABLE_NAME_AUDIT, List.of(
+            Map.of("fieldName", "recordId", "operator", "EQUALS", "values", List.of(id)),
+            Map.of("fieldName", "auditTable.name", "operator", "EQUALS", "values", List.of(tableName)),
+            Map.of("fieldName", AuditsMetaDataProvider.FIELD_CLIENT_CHANNEL, "operator", "EQUALS", "values", List.of(channel))));
+      }
       if(id != null && !DELETE_RECORD.equals(toolName))
       {
          String href = AiLinkBuilder.recordHref(tableName, id);
-         outcome.auditHref = href;
+
          outcome.result.getRecordRefs().add(new AiRecordRef().withTableName(tableName).withTableLabel(label).withId(id).withLabel(label + " " + id).withHref(href));
       }
       outcome.result.withOutcome(AiToolOutcome.OK).withTableName(tableName).withRowCount(1).withSummary(verb + " " + label + (id == null ? "" : " " + id))

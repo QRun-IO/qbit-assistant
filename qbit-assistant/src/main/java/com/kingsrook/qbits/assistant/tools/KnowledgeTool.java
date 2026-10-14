@@ -72,6 +72,16 @@ public class KnowledgeTool
     *******************************************************************************/
    public Boolean offered(PolicyService.ToolPolicy policy, QSession session)
    {
+      return (offered(policy, session, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Tool discovery is a UI API call too: retain the turn when known.
+    *******************************************************************************/
+   public Boolean offered(PolicyService.ToolPolicy policy, QSession session, String turnId)
+   {
       if(session == null || (policy != null && !policy.allows(NAME)))
       {
          return (false);
@@ -90,7 +100,7 @@ public class KnowledgeTool
          {
             return (false);
          }
-         return (runtime.getAccessExplainer().explain(runtime.getUiApiGateway(), session.getUuid(), policy, null, null).stream()
+         return (runtime.getAccessExplainer().explain(runtime.getUiApiGateway(), session.getUuid(), null, policy, null, null, turnId).stream()
             .anyMatch(t -> tables.contains(t.table()) && t.uiRead() && t.mode().allowsRead()));
       }
       catch(QException e)

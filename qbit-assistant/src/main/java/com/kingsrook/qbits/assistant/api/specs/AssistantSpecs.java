@@ -61,7 +61,7 @@ import io.javalin.http.HttpStatus;
 public final class AssistantSpecs
 {
    public static final String EXTENSION_NAME    = "assistant";
-   public static final String EXTENSION_VERSION = "1.0.0";
+   public static final String EXTENSION_VERSION = "1.1.0";
    public static final String PREFIX            = "/assistant";
 
 
@@ -1312,7 +1312,7 @@ public final class AssistantSpecs
       @Override
       public List<Parameter> defineRequestParameters()
       {
-         return (List.of(queryParam("table", Type.STRING, "Only this table."), queryParam("prompt", Type.STRING, "Only the tables this text mentions.")));
+         return (List.of(queryParam("table", Type.STRING, "Only this table."), queryParam("prompt", Type.STRING, "Only the tables this text mentions."), queryParam("turnId", Type.INTEGER, "Attribute this request to an owned turn.")));
       }
 
 
@@ -1329,7 +1329,7 @@ public final class AssistantSpecs
       protected Object handle(AssistantApi api, JsonInput input) throws Exception
       {
          String table = input.getQueryParam("table");
-         return (api.access(StringUtils.hasContent(table) ? table : null, input.getQueryParam("prompt")));
+         return (api.access(StringUtils.hasContent(table) ? table : null, input.getQueryParam("prompt"), input.getQueryParamInteger("turnId")));
       }
    }
 

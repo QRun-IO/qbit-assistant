@@ -25,6 +25,7 @@ import com.kingsrook.qbits.assistant.api.AssistantRoutes;
 import com.kingsrook.qbits.assistant.developer.AssistantDeveloperPanels;
 import com.kingsrook.qbits.assistant.home.AssistantAccessWidget;
 import com.kingsrook.qbits.assistant.home.AssistantHome;
+import com.kingsrook.qbits.assistant.metadata.AssistantChannelWall;
 import com.kingsrook.qbits.assistant.metadata.AssistantInstanceMetaData;
 import com.kingsrook.qbits.assistant.metadata.AssistantMetaDataBuilder;
 import com.kingsrook.qbits.assistant.metadata.AssistantRecordScreens;
@@ -201,6 +202,7 @@ public class AssistantQBitProducer implements QBitMetaDataProducer<AssistantQBit
       QAppMetaData app = builder.buildAdminApp(tables);
       qInstance.addApp(app);
 
+      AssistantChannelWall.register(qInstance);
       postProduceActions(new MetaDataProducerMultiOutput(), qInstance);
       return (new MetaDataProducerMultiOutput());
    }

@@ -321,7 +321,7 @@ class UiApiToolsSecurityTest extends BaseAssistantTest
       assertThat(log).hasSize(1);
       assertThat(log.get(0).getUiApiOperation()).isEqualTo("POST /table/{tableName}");
       assertThat(log.get(0).getHttpStatus()).isBetween(200, 299);
-      assertThat(log.get(0).getAuditHref()).startsWith("/app/blog_post/");
+      assertThat(log.get(0).getAuditHref()).startsWith("/app/audit?filter=");
       QContext.clear();
    }
 
