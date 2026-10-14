@@ -27,6 +27,8 @@ import com.kingsrook.qbits.assistant.spi.HealthResult;
 import com.kingsrook.qbits.assistant.spi.ModelProviderException;
 import com.kingsrook.qbits.assistant.spi.ProviderSettings;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.health.HealthRunner;
+import com.kingsrook.qqq.backend.core.health.HealthStatus;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 
 
@@ -71,6 +73,21 @@ public class ProviderHealth
       if(!"LOCAL".equals(runtime.getProviderService().location(row)) || (row.getHealthCheckedAt() != null && row.getHealthCheckedAt().plusSeconds(60).isAfter(now)))
       {
          return;
+      }
+      HealthRunner runner = HealthRunner.getForInstance(runtime.getQInstance());
+      String checkName = "assistant.provider." + row.getId();
+      Instant checked = runner == null ? null : runner.getLastOutcomeAt(checkName);
+      var outcome = runner == null ? null : runner.getLastOutcome(checkName);
+      if(checked != null && !checked.isAfter(now) && checked.plusSeconds(60).isAfter(now) && outcome != null)
+      {
+         if(outcome.getStatus() == HealthStatus.DOWN)
+         {
+            throw (new ModelProviderException(ModelProviderException.Kind.NETWORK, null, "Provider health check failed."));
+         }
+         if(outcome.getStatus() == HealthStatus.UP || outcome.getStatus() == HealthStatus.DEGRADED)
+         {
+            return;
+         }
       }
       ProviderSettings settings = runtime.getProviderService().settings(row).withConnectTimeoutSeconds(2).withRequestTimeoutSeconds(2);
       FutureTask<HealthResult> probe = new FutureTask<>(() -> runtime.getConfig().getProviderTypes().get(row.getProviderType()).checkHealth(settings));
