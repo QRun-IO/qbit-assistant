@@ -119,7 +119,7 @@ class RobustnessTest extends BaseAssistantTest
          // idempotent: a second look adds nothing             //
          ////////////////////////////////////////////////////////
          assertThat(api.turnEvents(turn.getId(), 0).persisted()).hasSize(4);
-         assertThatThrownBy(() -> api.cancelTurn(turn.getId())).isInstanceOfSatisfying(AssistantApiException.class, e -> assertThat(e.getStatus()).isEqualTo(409));
+         assertThat(api.cancelTurn(turn.getId())).containsEntry("status", "ERROR");
 
          assertThat(api.turnEvents(young.getId(), 0).finished()).isFalse();
          assertThatThrownBy(() -> api.deleteConversation(conversation.getId())).isInstanceOfSatisfying(AssistantApiException.class, e -> assertThat(e.getStatus()).isEqualTo(409));
