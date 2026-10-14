@@ -21,8 +21,13 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.metadata.AssistantMetaDataBuilder;
 import com.kingsrook.qbits.assistant.model.AssistantModel;
@@ -35,6 +40,9 @@ import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
 import com.kingsrook.qbits.assistant.provider.fake.ScriptedModelProvider;
 import com.kingsrook.qbits.assistant.provider.openai.OpenAiCompatibleProviderType;
 import com.kingsrook.qbits.assistant.testing.AssistantTestFixture;
+import com.kingsrook.qbits.assistant.testing.EvalSupport;
+import com.kingsrook.qbits.assistant.testing.GoldenTasks;
+import com.kingsrook.qbits.assistant.testing.PresentationGoldenTask;
 import com.kingsrook.qbits.assistant.testing.TurnRunner;
 import com.kingsrook.qqq.backend.core.actions.processes.QProcessCallbackFactory;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
@@ -61,6 +69,8 @@ public class OpenAiDemoServer extends AbstractQQQApplication
 {
    private static final String ADMIN = "admin-demo";
    private static final String MODEL = "qwen3:30b-a3b";
+   private static final String IMAGE_QUESTION = "How many images do I have by type?";
+   private static final ObjectMapper JSON = new ObjectMapper();
    private static QInstance instance;
 
 
@@ -160,6 +170,8 @@ public class OpenAiDemoServer extends AbstractQQQApplication
       {
          throw (new QException("Demo assistant turn failed: " + outcome.errorCode()));
       }
+      TurnRunner.Outcome presentation = new TurnRunner(instance, config).run(ADMIN, IMAGE_QUESTION);
+      PresentationGoldenTask.check(presentation);
       instance.withInstanceDefaultAuthentication(new QAuthenticationMetaData().withName("mock").withType(QAuthenticationType.MOCK)
          .withCustomizer(new QCodeReference(DemoSessionCustomizer.class)));
       instance.setHomeAppName(AssistantMetaDataBuilder.APP_NAME);
@@ -167,6 +179,7 @@ public class OpenAiDemoServer extends AbstractQQQApplication
       System.out.println("Assistant home: http://localhost:" + port + "/app/" + AssistantMetaDataBuilder.APP_NAME);
       System.out.println("Local provider: http://localhost:" + port + "/app/assistant_provider/" + providerId);
       System.out.println("Local model: http://localhost:" + port + "/app/assistant_model/" + modelId);
+      System.out.println("Image presentation conversation id: " + presentation.conversationId());
    }
 
 
@@ -211,7 +224,7 @@ public class OpenAiDemoServer extends AbstractQQQApplication
    {
       try(exchange)
       {
-         exchange.getRequestBody().readAllBytes();
+         byte[] request = exchange.getRequestBody().readAllBytes();
          String path = exchange.getRequestURI().getPath();
          String body;
          if("GET".equals(exchange.getRequestMethod()) && "/v1/models".equals(path))
@@ -227,16 +240,7 @@ public class OpenAiDemoServer extends AbstractQQQApplication
          else if("POST".equals(exchange.getRequestMethod()) && "/v1/chat/completions".equals(path))
          {
             exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
-            body = """
-               data: {"id":"demo-completion","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello from the local demo provider."}}]}
-
-               data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
-
-               data: {"choices":[],"usage":{"prompt_tokens":24,"completion_tokens":8,"total_tokens":32}}
-
-               data: [DONE]
-
-               """;
+            body = completion(JSON.readTree(request));
          }
          else
          {
@@ -247,5 +251,85 @@ public class OpenAiDemoServer extends AbstractQQQApplication
          exchange.getResponseBody().write(body.getBytes(StandardCharsets.UTF_8));
          exchange.getResponseBody().flush();
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Follow the latest user turn, so connection tests and repeated chats are
+    ** independent. Counts are read from the adapter's actual tool messages.
+    *******************************************************************************/
+   private static String completion(JsonNode request) throws IOException
+   {
+      String question = "";
+      Map<String, Integer> counts = new LinkedHashMap<>();
+      boolean presented = false;
+      for(JsonNode message : request.path("messages"))
+      {
+         if("user".equals(message.path("role").asText()))
+         {
+            question = message.path("content").asText();
+            counts.clear();
+            presented = false;
+         }
+         else if("tool".equals(message.path("role").asText()) && IMAGE_QUESTION.equals(question))
+         {
+            String id = message.path("tool_call_id").asText();
+            if(id.startsWith("count-image/"))
+            {
+               counts.put(id.substring("count-".length()), ((Number) EvalSupport.unwrap(message.path("content").asText()).get("count")).intValue());
+            }
+            else if("present-images".equals(id))
+            {
+               presented = true;
+            }
+         }
+      }
+
+      Map<String, Object> delta = Map.of("role", "assistant", "content", "Hello from the local demo provider.");
+      String finish = "stop";
+      if(IMAGE_QUESTION.equals(question) && !presented)
+      {
+         List<Map<String, Object>> calls = new ArrayList<>();
+         if(counts.isEmpty())
+         {
+            for(String mime : List.of("image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml"))
+            {
+               calls.add(toolCall(calls.size(), "count-" + mime, "count_records", Map.of("table", "media", "filter",
+                  GoldenTasks.filter("AND", GoldenTasks.criterion("mimeType", "EQUALS", mime)))));
+            }
+         }
+         else
+         {
+            if(counts.size() != 5 || counts.get("image/webp") != 0 || counts.get("image/gif") != 0 || counts.get("image/svg+xml") != 0)
+            {
+               throw (new IOException("Unexpected demo image counts."));
+            }
+            Map<String, Object> input = PresentationGoldenTask.input(counts.get("image/jpeg"), counts.get("image/png"));
+            input.put("actions", List.of(Map.of("label", "Show the PNG files", "prompt", "Show the PNG files")));
+            calls.add(toolCall(0, "present-images", "present_results", input));
+         }
+         delta = Map.of("role", "assistant", "tool_calls", calls);
+         finish = "tool_calls";
+      }
+      else if(presented)
+      {
+         delta = Map.of("role", "assistant", "content", "You can open either image type above.");
+      }
+      return ("data: " + JSON.writeValueAsString(Map.of("id", "demo-completion", "object", "chat.completion.chunk",
+         "choices", List.of(Map.of("index", 0, "delta", delta)))) + "\n\n"
+         + "data: " + JSON.writeValueAsString(Map.of("choices", List.of(Map.of("index", 0, "delta", Map.of(), "finish_reason", finish)))) + "\n\n"
+         + "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":24,\"completion_tokens\":8,\"total_tokens\":32}}\n\n"
+         + "data: [DONE]\n\n");
+   }
+
+
+
+   /*******************************************************************************
+    ** Encode tool arguments as a JSON string, as OpenAI streaming requires.
+    *******************************************************************************/
+   private static Map<String, Object> toolCall(Integer index, String id, String name, Map<String, Object> arguments) throws IOException
+   {
+      return (Map.of("index", index, "id", id, "type", "function", "function", Map.of("name", name, "arguments", JSON.writeValueAsString(arguments))));
    }
 }
