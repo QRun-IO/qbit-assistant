@@ -1,0 +1,280 @@
+{
+  "type": "object",
+  "properties": {
+    "summary": {
+      "type": "string",
+      "maxLength": 300
+    },
+    "metrics": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/metric"
+      }
+    },
+    "table": {
+      "$ref": "#/$defs/table"
+    },
+    "chart": {
+      "$ref": "#/$defs/chart"
+    },
+    "filterLinks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/filterLink"
+      }
+    },
+    "recordLinks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/recordLink"
+      }
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/action"
+      }
+    }
+  },
+  "required": [
+    "summary"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "cell": {
+      "type": [
+        "string",
+        "number",
+        "boolean",
+        "null"
+      ]
+    },
+    "metric": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "value": {
+          "type": "number"
+        },
+        "tableName": {
+          "type": "string"
+        },
+        "fieldName": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "column": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "tableName": {
+          "type": "string"
+        },
+        "fieldName": {
+          "type": "string"
+        },
+        "percentOfColumn": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "label"
+      ],
+      "additionalProperties": false
+    },
+    "rowFilter": {
+      "type": "object",
+      "properties": {
+        "tableName": {
+          "type": "string"
+        },
+        "fieldName": {
+          "type": "string"
+        },
+        "operator": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "tableName",
+        "fieldName"
+      ],
+      "additionalProperties": false
+    },
+    "criterion": {
+      "type": "object",
+      "properties": {
+        "fieldName": {
+          "type": "string"
+        },
+        "operator": {
+          "type": "string"
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/cell"
+          }
+        }
+      },
+      "required": [
+        "fieldName",
+        "operator",
+        "values"
+      ],
+      "additionalProperties": false
+    },
+    "filterLink": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "tableName": {
+          "type": "string"
+        },
+        "criteria": {
+          "$ref": "#/$defs/criteria"
+        }
+      },
+      "required": [
+        "label",
+        "tableName",
+        "criteria"
+      ],
+      "additionalProperties": false
+    },
+    "recordLink": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "tableName": {
+          "type": "string"
+        },
+        "recordId": {
+          "$ref": "#/$defs/cell"
+        }
+      },
+      "required": [
+        "label",
+        "tableName",
+        "recordId"
+      ],
+      "additionalProperties": false
+    },
+    "action": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "navigateTo": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "label"
+      ],
+      "additionalProperties": false
+    },
+    "chart": {
+      "type": "object",
+      "properties": {
+        "chartType": {
+          "type": "string",
+          "enum": [
+            "bar",
+            "pie",
+            "line"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "labelColumn": {
+          "type": "integer"
+        },
+        "valueColumn": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "chartType",
+        "labelColumn",
+        "valueColumn"
+      ],
+      "additionalProperties": false
+    },
+    "row": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/cell"
+      }
+    },
+    "columns": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/column"
+      }
+    },
+    "rows": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/row"
+      }
+    },
+    "rowKeys": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/cell"
+      }
+    },
+    "criteria": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/criterion"
+      }
+    },
+    "table": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "columns": {
+          "$ref": "#/$defs/columns"
+        },
+        "rows": {
+          "$ref": "#/$defs/rows"
+        },
+        "rowFilter": {
+          "$ref": "#/$defs/rowFilter"
+        },
+        "rowKeys": {
+          "$ref": "#/$defs/rowKeys"
+        }
+      },
+      "required": [
+        "columns",
+        "rows"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "description": "Present only facts from previous tool results. Optional sections may be omitted. In strict mode use empty arrays, empty strings, empty table rows/columns and -1 for unused indexes; every property must be supplied. rowKeys belongs to table, one raw key per row. Percent columns may use null cells; the server computes them."
+}

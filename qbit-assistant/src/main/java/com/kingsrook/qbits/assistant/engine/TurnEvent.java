@@ -33,6 +33,7 @@ public class TurnEvent
    public static final String TEXT_DELTA    = "text.delta";
    public static final String TOOL_START    = "tool.start";
    public static final String TOOL_RESULT   = "tool.result";
+   public static final String PRESENTATION  = "presentation";
    public static final String UI_NAVIGATE   = "ui.navigate";
    public static final String NOTICE        = "notice";
    public static final String USAGE         = "usage";

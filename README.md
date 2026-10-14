@@ -9,7 +9,7 @@ Design spec: `QRun-IO/qqq` `docs/specs/2026-10-11-qqq-assistant-qbit-design.md`.
 | `com.kingsrook.qbits:qbit-assistant` | The QBit: conversation tables, turn engine, `/qqq/v1/assistant` routes (JSON + Server-Sent Events), budgets, kill switch, the provider SPI, and a scripted provider for tests and demos. |
 | `com.kingsrook.qbits:qbit-assistant-provider-anthropic` | The Claude provider (`com.anthropic:anthropic-java`). Add it to use Claude. The core QBit has no LLM SDK dependency. |
 
-The data access itself is done by the AI tool kernel in QQQ core (`com.kingsrook.qqq.backend.core.actions.ai.AiToolKernel`). The kernel checks table permissions and exposure rules, applies record security, and caps and redacts what the model sees. Every tool result reaches the model wrapped as untrusted data.
+Data tools call the QQQ UI API through `UiApiToolbox` and `UiApiGateway` with the signed-in user's session. The UI enforces permissions and record security; the assistant further narrows access and caps and redacts returned values. Data tool results reach the model wrapped as untrusted data. Only record-free navigation and help use the core AI tool kernel.
 
 ## Requirements
 
@@ -203,6 +203,7 @@ Base path `/qqq/v1/assistant`. Every request is authenticated through the app's 
 The stream sends these events, each with a `seq`:
 - `message.start`, `text.delta`
 - `tool.start`, `tool.result` (with `render` and `recordRefs`)
+- `presentation` (`messageId`, `part`: summary, blocks and server-built GFM markdown)
 - `ui.navigate`, `notice`
 - `usage`, `message.end`
 - `error`
@@ -487,3 +488,16 @@ NETWORK/TIMEOUT marks a provider DOWN for 60 seconds; success marks it UP. Local
 health is probed when unknown/stale with a two-second timeout. Provider cards show
 health and down-until, failures show fallback totals, and turn records show the
 route and final destination. See [UPGRADE.md](UPGRADE.md) for the additive schema.
+
+### Answer presentation
+
+The always-available `present_results` tool turns retrieved results into metrics,
+tables, charts and actionable in-app links. The server validates the user's UI API
+visibility, formats field values, computes shares and builds all links. It emits
+and stores a `presentation` part with a complete GFM Markdown fallback. Profile
+skills can extend the built-in presentation instructions. See the
+[part, stream and input contract](docs/answer-presentation.md).
+
+The image-breakdown golden task also runs in the existing opt-in live provider suite:
+`./mvnw verify -Dassistant.live=true -Dtest.excludedGroups= -Dgroups=live -Djacoco.skip=true -pl qbit-assistant-provider-anthropic -am`
+(with `ANTHROPIC_API_KEY` set). Live calls are excluded from normal verification.
