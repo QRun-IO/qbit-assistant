@@ -133,6 +133,7 @@ public class AssistantQBitConfig implements QBitConfig
    //////////////////////////////////////////////////////////////////////////
    private String                    uiApiBaseUrl;
    private UiApiGateway              uiApiGateway;
+   private com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadRunner bulkLoadRunner;
    private Integer                   pendingActionTtlSeconds  = 900;
    private List<String>              customRedactionPatterns  = new ArrayList<>();
    private Integer                   killSwitchPollMillis     = 2000;
@@ -1197,6 +1198,38 @@ public class AssistantQBitConfig implements QBitConfig
    public AssistantQBitConfig withUiApiBaseUrl(String uiApiBaseUrl)
    {
       this.uiApiBaseUrl = uiApiBaseUrl;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for bulkLoadRunner (null: the durable jobs launch,
+    ** JobsLaunchBulkLoadRunner) - how bulk_load_run starts a load.
+    *******************************************************************************/
+   public com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadRunner getBulkLoadRunner()
+   {
+      return (this.bulkLoadRunner);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for bulkLoadRunner
+    *******************************************************************************/
+   public void setBulkLoadRunner(com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadRunner bulkLoadRunner)
+   {
+      this.bulkLoadRunner = bulkLoadRunner;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for bulkLoadRunner
+    *******************************************************************************/
+   public AssistantQBitConfig withBulkLoadRunner(com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadRunner bulkLoadRunner)
+   {
+      this.bulkLoadRunner = bulkLoadRunner;
       return (this);
    }
 
