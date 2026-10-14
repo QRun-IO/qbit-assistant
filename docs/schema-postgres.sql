@@ -578,6 +578,21 @@ CREATE INDEX assistant_scheduled_run_owner ON assistant_scheduled_run(user_id, s
 -- X1/Y1: encoded audit filters can exceed the old 500-character record links.
 ALTER TABLE assistant_tool_call ALTER COLUMN audit_href TYPE TEXT;
 
+
+-- Durable turns: apply this additive block before deploying the new runtime.
+-- Like earlier additions, fresh installs run the CREATEs followed by ALTERs.
+ALTER TABLE assistant_turn ADD COLUMN heartbeat_at TIMESTAMP;
+ALTER TABLE assistant_turn ADD COLUMN lease_owner VARCHAR(100);
+ALTER TABLE assistant_turn ADD COLUMN cancel_requested_at TIMESTAMP;
+ALTER TABLE assistant_turn ADD COLUMN phase VARCHAR(64);
+ALTER TABLE assistant_turn ADD COLUMN concurrency_mode VARCHAR(16);
+CREATE INDEX assistant_turn_user_status ON assistant_turn (user_id, status);
+
+-- Fence concurrent orphan reapers at the database boundary. A turn ends once.
+-- Check for pre-existing duplicate message.end rows before applying this index.
+CREATE UNIQUE INDEX assistant_turn_event_terminal ON assistant_turn_event (turn_id)
+   WHERE event_type = 'message.end';
+
 -- Index audit (2026-10-14): lookup, retention and FK paths with no leading index.
 -- ScheduledTurn.cost reads usage by turn on every scheduled run.
 CREATE INDEX IF NOT EXISTS assistant_usage_turn ON assistant_usage (turn_id);

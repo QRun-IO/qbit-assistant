@@ -102,6 +102,10 @@ public class TurnEngine implements Runnable
 {
    private static final QLogger LOG = QLogger.getLogger(TurnEngine.class);
 
+   public static final String SUPERSEDED_TEXT = "Stopped because you asked something else.";
+   public static final String TIMEOUT_TEXT = "The assistant took too long to answer, so it was stopped. Ask again.";
+   public static final String RESTART_TEXT = "The server restarted while answering. Ask again.";
+
    private static final int MAX_INPUT_JSON_CHARS  = 4000;
 
    private static final AiRedactor INPUT_REDACTOR = new AiRedactor(List.of());
@@ -175,6 +179,10 @@ public class TurnEngine implements Runnable
       this.policy = policy;
       this.running = running;
       this.softBudgetNotice = softBudgetNotice;
+      this.startedAt = turn.getStartedAt() == null ? runtime.getClock().instant() : turn.getStartedAt();
+      this.deadline = startedAt.plusSeconds(config.getMaxTurnSeconds());
+      running.setStartedAt(startedAt);
+      running.setForceFinalizer(this::forceFinish);
    }
 
 
@@ -198,8 +206,11 @@ public class TurnEngine implements Runnable
    @Override
    public void run()
    {
-      startedAt = runtime.getClock().instant();
-      deadline = startedAt.plusSeconds(config.getMaxTurnSeconds());
+      if(running.isFinalized())
+      {
+         return;
+      }
+      running.setEngineThread(Thread.currentThread());
 
       String status     = "COMPLETE";
       String stopReason = null;
@@ -209,6 +220,7 @@ public class TurnEngine implements Runnable
       try
       {
          QContext.init(runtime.getQInstance(), session);
+         startWatchdog();
          scheduledTask = runtime.getScheduledTurn().task(conversation.getId());
          if(conversation.getScheduledTaskId() != null && scheduledTask == null)
          {
@@ -218,9 +230,9 @@ public class TurnEngine implements Runnable
          ScheduledTurn.checkCost(runtime, conversation.getId(), turn.getId());
          classification = new TurnClassification(config.getClassificationSource(), conversation, pageContext);
          store.saveClassification(userId, conversation.getId(), turn.getId(), classification);
-         startKillSwitchWatcher();
 
-         emit(TurnEvent.MESSAGE_START, map("turnId", turn.getId(), "conversationId", conversation.getId(), "userMessageId", userMessage.getId(), "messageId", assistantMessage.getId()));
+
+         emit(TurnEvent.MESSAGE_START, map("turnId", turn.getId(), "conversationId", conversation.getId(), "userMessageId", userMessage.getId(), "messageId", assistantMessage.getId(), "startedAt", startedAt.toString()));
          if(softBudgetNotice != null)
          {
             notice("warning", softBudgetNotice);
@@ -232,6 +244,7 @@ public class TurnEngine implements Runnable
          ModelRouter.Route route;
          try
          {
+            phase("thinking", null);
             route = router.route(session, conversation, turn, userText, pageContext, policy, classification, running, deadline, text -> notice("warning", text));
          }
          finally
@@ -420,8 +433,21 @@ public class TurnEngine implements Runnable
       }
       finally
       {
-         finished = true;
+         // Clear interruption while persisting the terminal state.
+         boolean interrupted = Thread.interrupted();
+         if(running.isCancelled())
+         {
+            Stop stop = cancelledStop();
+            status = stop.status();
+            stopReason = stop.stopReason();
+            errorCode = stop.errorCode();
+            errorText = stop.message();
+         }
          finish(status, stopReason, errorCode, errorText);
+         if(interrupted)
+         {
+            Thread.currentThread().interrupt();
+         }
          QContext.clear();
       }
    }
@@ -429,35 +455,56 @@ public class TurnEngine implements Runnable
 
 
    /*******************************************************************************
-    ** Poll the kill switch while the turn runs (with the user's own session),
-    ** so a flip cancels the turn - and every other turn here - even while it
-    ** waits on the model.
+    ** Renew the lease, poll cancellation and the kill switch with the user's
+    ** own session, and enforce a hard deadline even if a provider is wedged.
     *******************************************************************************/
-   private void startKillSwitchWatcher()
+   private void startWatchdog()
    {
-      long pollMillis = config.getKillSwitchPollMillis() == null ? 2000 : config.getKillSwitchPollMillis();
-      Thread.ofVirtual().name("assistant-killswitch-" + turn.getId()).start(() ->
+      long heartbeatMillis = config.getTurnHeartbeatSeconds() * 1000L;
+      long pollMillis = Math.min(heartbeatMillis, config.getKillSwitchPollMillis() == null ? 2000 : config.getKillSwitchPollMillis());
+      Thread.ofVirtual().name("assistant-watchdog-" + turn.getId()).start(() ->
       {
+         long lastHeartbeat = System.nanoTime();
          try
          {
-            while(!finished && !running.isCancelled())
+            QContext.init(runtime.getQInstance(), session);
+            while(!running.isFinalized())
             {
                Thread.sleep(pollMillis);
-               if(finished)
+               if(running.isFinalized())
                {
-                  return;
+                  break;
                }
-               QContext.init(runtime.getQInstance(), session);
                try
                {
+                  if(System.nanoTime() - lastHeartbeat >= heartbeatMillis * 1_000_000L)
+                  {
+                     lastHeartbeat = System.nanoTime();
+                     heartbeat();
+                  }
                   if(runtime.getPolicyService().isKillSwitchOn())
                   {
                      runtime.cancelAll("KILL_SWITCH");
                   }
                }
+               catch(Exception e)
+               {
+                  LOG.warn("Assistant watchdog tick failed", hipaaSafe(e), logPair("turnId", turn.getId()));
+               }
                finally
                {
-                  QContext.clear();
+                  // Deadlines do not depend on successful database or policy reads.
+                  Instant now = runtime.getClock().instant();
+                  if(!now.isBefore(deadline))
+                  {
+                     safely(() -> running.cancel("TIMEOUT"));
+                  }
+                  if(!now.isBefore(deadline.plusSeconds(config.getTurnForceFinalizeGraceSeconds()))
+                     || running.cancelGraceElapsed(config.getTurnForceFinalizeGraceSeconds()))
+                  {
+                     Stop stop = running.isCancelled() ? cancelledStop() : new Stop("ERROR", "TIMEOUT", TIMEOUT_TEXT, "timeout");
+                     finish(stop.status(), stop.stopReason(), stop.errorCode(), stop.message());
+                  }
                }
             }
          }
@@ -465,7 +512,59 @@ public class TurnEngine implements Runnable
          {
             Thread.currentThread().interrupt();
          }
+         finally
+         {
+            QContext.clear();
+         }
       });
+   }
+
+
+
+   /*******************************************************************************
+    ** Renew only an active row, then observe persisted cancellation requests.
+    *******************************************************************************/
+   private synchronized void heartbeat() throws QException
+   {
+      if(running.isFinalized())
+      {
+         return;
+      }
+      AssistantTurn row = store.getTurn(userId, turn.getId());
+      if(row == null || !("RUNNING".equals(row.getStatus()) || "CANCELLING".equals(row.getStatus())))
+      {
+         safely(() -> running.cancel("USER"));
+         finish(row == null ? "ERROR" : row.getStatus(), row == null ? "interrupted" : row.getStopReason(),
+            row == null ? "INTERNAL" : row.getErrorCode(), null);
+         return;
+      }
+      store.updateFields(AssistantTurn.TABLE_NAME, new QRecord().withValue("id", turn.getId())
+         .withValue("heartbeatAt", runtime.getClock().instant()).withValue("phase", running.getPhase()));
+      row = store.getTurn(userId, turn.getId());
+      if(row != null && (row.getCancelRequestedAt() != null || "CANCELLING".equals(row.getStatus())))
+      {
+         running.cancel(row.getCancelReason() == null ? "USER" : row.getCancelReason());
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Finalize from shutdown using the original authenticated user's context.
+    *******************************************************************************/
+   private void forceFinish(String reason)
+   {
+      try
+      {
+         QContext.init(runtime.getQInstance(), session);
+         safely(() -> running.cancel(reason));
+         Stop stop = "SHUTDOWN".equals(reason) ? new Stop("ERROR", "INTERRUPTED", RESTART_TEXT, "interrupted") : cancelledStop();
+         finish(stop.status(), stop.stopReason(), stop.errorCode(), stop.message());
+      }
+      finally
+      {
+         QContext.clear();
+      }
    }
 
 
@@ -504,14 +603,15 @@ public class TurnEngine implements Runnable
       }
       if(!runtime.getClock().instant().isBefore(deadline))
       {
-         return (new Stop("ERROR", "TIMEOUT", "The assistant ran out of time for this question.", "timeout"));
+         running.cancel("TIMEOUT");
+         return (cancelledStop());
       }
       try
       {
          AssistantTurn row = store.getTurn(userId, turn.getId());
          if(row != null && "CANCELLING".equals(row.getStatus()))
          {
-            running.cancel("USER");
+            running.cancel(row.getCancelReason() == null ? "USER" : row.getCancelReason());
             return (cancelledStop());
          }
       }
@@ -529,6 +629,18 @@ public class TurnEngine implements Runnable
     *******************************************************************************/
    private Stop cancelledStop()
    {
+      if("TIMEOUT".equals(running.getCancelReason()))
+      {
+         return (new Stop("ERROR", "TIMEOUT", TIMEOUT_TEXT, "timeout"));
+      }
+      if("SHUTDOWN".equals(running.getCancelReason()))
+      {
+         return (new Stop("ERROR", "INTERRUPTED", RESTART_TEXT, "interrupted"));
+      }
+      if("SUPERSEDED".equals(running.getCancelReason()))
+      {
+         return (new Stop("CANCELLED", null, SUPERSEDED_TEXT, ModelResponse.STOP_CANCELLED));
+      }
       if("KILL_SWITCH".equals(running.getCancelReason()))
       {
          String reason = StringUtils.hasContent(policy.killSwitchReason()) ? " " + policy.killSwitchReason() : "";
@@ -618,6 +730,7 @@ public class TurnEngine implements Runnable
          @Override
          public void onTextDelta(String text)
          {
+            phase("writing", null);
             bufferText(text);
          }
       };
@@ -639,6 +752,7 @@ public class TurnEngine implements Runnable
          TurnDataRouting.beforeModelCall(runtime, classification, turn, active);
          fallback.beforeCall(active);
          modelCallCount++;
+         phase("thinking", null);
          StreamHandle handle = provider.stream(request.copy(), fallback.listener(listener));
          running.setCurrentHandle(handle);
          try
@@ -707,6 +821,7 @@ public class TurnEngine implements Runnable
             continue;
          }
          toolCallCount++;
+         phase("tool", use.getToolName());
          emit(TurnEvent.TOOL_START, map("messageId", assistantMessage.getId(), "toolCallId", use.getToolUseId(), "name", use.getToolName(), "summary", ToolLabels.running(use.getToolName())));
 
          if(!allowedTools.contains(use.getToolName()))
@@ -996,93 +1111,100 @@ public class TurnEngine implements Runnable
    /*******************************************************************************
     ** Persist the message, turn, conversation and usage; emit the end events.
     *******************************************************************************/
-   private void finish(String status, String stopReason, String errorCode, String errorText)
+   private synchronized void finish(String status, String stopReason, String errorCode, String errorText)
    {
+      if(!running.tryFinalize())
+      {
+         return;
+      }
       try
       {
-         persistClassification();
-         flushText(true);
-         Instant now = runtime.getClock().instant();
-
-         if(errorText != null)
-         {
-            parts.addNotice("error", errorText);
-         }
-
-         String model = this.model != null ? this.model : (policy == null ? null : policy.mainModel());
+         AssistantTurn persistedTurn = null;
          try
          {
-            store.updateFields(AssistantMessage.TABLE_NAME, new QRecord()
-               .withValue("id", assistantMessage.getId())
-               .withValue("status", status)
-               .withValue("model", model)
-               .withValue("partsJson", parts.toJson()));
-
-            AssistantConversation current = store.getConversation(userId, conversation.getId());
-            if(current != null)
-            {
-               store.updateFields(AssistantConversation.TABLE_NAME, new QRecord()
-                  .withValue("id", current.getId())
-                  .withValue("lastMessageAt", now)
-                  .withValue("unreadCount", (current.getUnreadCount() == null ? 0 : current.getUnreadCount()) + 1)
-                  .withValue("totalTokensIn", nz(current.getTotalTokensIn()) + nz(usage.getInputTokens()) + nz(usage.getCacheReadTokens()) + nz(usage.getCacheWriteTokens()))
-                  .withValue("totalTokensOut", nz(current.getTotalTokensOut()) + nz(usage.getOutputTokens()))
-                  .withValue("totalCostMicros", nz(current.getTotalCostMicros()) + costMicros));
-            }
-
-            store.addUsage(userId, LocalDate.now(runtime.getClock().withZone(ZoneOffset.UTC)), usage, costMicros, true);
+            persistedTurn = store.getTurn(userId, turn.getId());
          }
-         catch(QException e)
+         catch(Exception e)
          {
-            LOG.warn("Could not persist the end of an assistant turn", hipaaSafe(e), logPair("turnId", turn.getId()));
+            LOG.warn("Could not read final assistant status", hipaaSafe(e), logPair("turnId", turn.getId()));
+         }
+         boolean alreadyTerminal = persistedTurn != null && !("RUNNING".equals(persistedTurn.getStatus()) || "CANCELLING".equals(persistedTurn.getStatus()));
+         if(alreadyTerminal)
+         {
+            status = persistedTurn.getStatus();
+            stopReason = persistedTurn.getStopReason();
+            errorCode = persistedTurn.getErrorCode();
+         }
+         String finalStatus = status;
+         String finalStopReason = stopReason;
+         String finalErrorCode = errorCode;
+         String model = this.model != null ? this.model : (policy == null ? null : policy.mainModel());
+         Instant now = runtime.getClock().instant();
+         safely(() -> flushText(true));
+         if(errorText != null && !alreadyTerminal)
+         {
+            parts.addNotice("CANCELLED".equals(status) ? "info" : "error", errorText);
+         }
+         running.setPhase("done", null);
+         if(!alreadyTerminal)
+         {
+            safely(() -> persistClassification());
+            safely(() -> store.updateFields(AssistantMessage.TABLE_NAME, new QRecord()
+               .withValue("id", assistantMessage.getId()).withValue("status", finalStatus)
+               .withValue("model", model).withValue("partsJson", parts.toJson())));
          }
 
-         /////////////////////////////////////////////////////////////////////
-         // terminal events are persisted BEFORE the turn row turns final, //
-         // so a replay of a finished turn always ends with message.end    //
-         /////////////////////////////////////////////////////////////////////
          emit(TurnEvent.USAGE, map("turnId", turn.getId(), "inputTokens", usage.getInputTokens(), "outputTokens", usage.getOutputTokens(),
             "cacheReadTokens", usage.getCacheReadTokens(), "cacheWriteTokens", usage.getCacheWriteTokens(), "costMicros", costMicros));
          if(errorCode != null)
          {
             emit(TurnEvent.ERROR, map("code", errorCode, "message", errorText));
          }
-         Map<String, Object> end = map("messageId", assistantMessage.getId(), "status", status);
-         if(stopReason != null)
+         emit(TurnEvent.MESSAGE_END, map("messageId", assistantMessage.getId(), "status", status, "stopReason", stopReason));
+         if(!alreadyTerminal)
          {
-            end.put("stopReason", stopReason);
+            safely(this::persistPendingEvents);
+            // Accounting failures cannot skip the terminal row or local cleanup.
+            safely(() ->
+            {
+               store.updateRunningTurn(userId, new QRecord()
+                  .withValue("id", turn.getId())
+                  .withValue("status", finalStatus)
+                  .withValue("phase", "done")
+                  .withValue("stopReason", truncate(finalStopReason, 64))
+                  .withValue("errorCode", finalErrorCode)
+                  .withValue("cancelReason", running.getCancelReason())
+                  .withValue("model", model)
+                  .withValue("providerId", active == null ? null : active.providerId())
+                  .withValue("routeDecision", turn.getRouteDecision())
+                  .withValue("routeSource", turn.getRouteSource())
+                  .withValue("fallbackCount", turn.getFallbackCount())
+                  .withValue("endedAt", now)
+                  .withValue("toolCallCount", toolCallCount)
+                  .withValue("modelCallCount", modelCallCount)
+                  .withValue("inputTokens", usage.getInputTokens())
+                  .withValue("outputTokens", usage.getOutputTokens())
+                  .withValue("cacheReadTokens", usage.getCacheReadTokens())
+                  .withValue("cacheWriteTokens", usage.getCacheWriteTokens())
+                  .withValue("costMicros", costMicros)
+                  .withValue("providerRequestIds", requestIds.isEmpty() ? null : String.join(",", requestIds)));
+            });
+            safely(() ->
+            {
+               AssistantConversation current = store.getConversation(userId, conversation.getId());
+               if(current != null)
+               {
+                  store.updateFields(AssistantConversation.TABLE_NAME, new QRecord()
+                     .withValue("id", current.getId())
+                     .withValue("lastMessageAt", now)
+                     .withValue("unreadCount", (current.getUnreadCount() == null ? 0 : current.getUnreadCount()) + 1)
+                     .withValue("totalTokensIn", nz(current.getTotalTokensIn()) + nz(usage.getInputTokens()) + nz(usage.getCacheReadTokens()) + nz(usage.getCacheWriteTokens()))
+                     .withValue("totalTokensOut", nz(current.getTotalTokensOut()) + nz(usage.getOutputTokens()))
+                     .withValue("totalCostMicros", nz(current.getTotalCostMicros()) + costMicros));
+               }
+            });
+            safely(() -> store.addUsage(userId, LocalDate.now(runtime.getClock().withZone(ZoneOffset.UTC)), usage, costMicros, true));
          }
-         emit(TurnEvent.MESSAGE_END, end);
-         persistPendingEvents();
-
-         try
-         {
-            store.updateFields(AssistantTurn.TABLE_NAME, new QRecord()
-               .withValue("id", turn.getId())
-               .withValue("status", status)
-               .withValue("stopReason", truncate(stopReason, 64))
-               .withValue("errorCode", errorCode)
-               .withValue("cancelReason", running.getCancelReason())
-               .withValue("model", model)
-               .withValue("providerId", active == null ? null : active.providerId())
-               .withValue("routeDecision", turn.getRouteDecision())
-               .withValue("routeSource", turn.getRouteSource())
-               .withValue("fallbackCount", turn.getFallbackCount())
-               .withValue("endedAt", now)
-               .withValue("toolCallCount", toolCallCount)
-               .withValue("modelCallCount", modelCallCount)
-               .withValue("inputTokens", usage.getInputTokens())
-               .withValue("outputTokens", usage.getOutputTokens())
-               .withValue("cacheReadTokens", usage.getCacheReadTokens())
-               .withValue("cacheWriteTokens", usage.getCacheWriteTokens())
-               .withValue("costMicros", costMicros)
-               .withValue("providerRequestIds", requestIds.isEmpty() ? null : String.join(",", requestIds)));
-         }
-         catch(QException e)
-         {
-            LOG.warn("Could not persist the end of an assistant turn", hipaaSafe(e), logPair("turnId", turn.getId()));
-         }
-
          LOG.info("Assistant turn finished",
             logPair("turnId", turn.getId()),
             logPair("conversationId", conversation.getId()),
@@ -1091,6 +1213,7 @@ public class TurnEngine implements Runnable
             logPair("status", status),
             logPair("stopReason", stopReason),
             logPair("errorCode", errorCode),
+            logPair("cancelReason", running.getCancelReason()),
             logPair("modelCalls", modelCallCount),
             logPair("toolCalls", toolCallCount),
             logPair("inputTokens", usage.getInputTokens()),
@@ -1100,20 +1223,77 @@ public class TurnEngine implements Runnable
             logPair("costMicros", costMicros),
             logPair("durationMs", Duration.between(startedAt, now).toMillis()));
       }
-      catch(QException | RuntimeException e)
-      {
-         LOG.warn("Assistant turn finish failed", hipaaSafe(e), logPair("turnId", turn.getId()));
-      }
       finally
       {
+         finished = true;
          running.getLog().close();
-         if(scheduledTask != null)
+         safely(() ->
          {
-            runtime.getScheduledTurn().detach(conversation.getId(), session.getUuid());
+            if(scheduledTask != null)
+            {
+               runtime.getScheduledTurn().detach(conversation.getId(), session.getUuid());
+            }
+         });
+         String finalStatus = status;
+         String finalText = errorText;
+         try
+         {
+            safely(() -> config.getRunTracker().finish(running.getTrackingId(), finalStatus, finalText));
          }
-         runtime.unregister(turn.getId());
-         runtime.getRateLimiter().release(userId);
+         finally
+         {
+            runtime.unregister(turn.getId());
+            runtime.getRateLimiter().release(userId);
+         }
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** One independently fallible finalization operation.
+    *******************************************************************************/
+   @FunctionalInterface
+   private interface FinishStep
+   {
+      /*******************************************************************************
+       ** Execute the step.
+       *******************************************************************************/
+      void run() throws Exception;
+   }
+
+
+
+   /*******************************************************************************
+    ** A failure in a collaborator must not strand the run.
+    *******************************************************************************/
+   private void safely(FinishStep step)
+   {
+      try
+      {
+         step.run();
+      }
+      catch(Exception e)
+      {
+         LOG.warn("Assistant lifecycle step failed", hipaaSafe(e), logPair("turnId", turn.getId()));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Emit and track only phase changes, including the current tool label.
+    *******************************************************************************/
+   private synchronized void phase(String phase, String toolName)
+   {
+      if(running.isFinalized() || (phase.equals(running.getPhase()) && Objects.equals(toolName, running.getToolName())))
+      {
+         return;
+      }
+      running.setPhase(phase, toolName);
+      String label = toolName == null ? phase : ToolLabels.running(toolName);
+      emit(TurnEvent.TURN_PHASE, map("phase", phase, "toolName", toolName, "label", label));
+      safely(() -> config.getRunTracker().progress(running.getTrackingId(), phase, label));
    }
 
 
@@ -1121,8 +1301,12 @@ public class TurnEngine implements Runnable
    /*******************************************************************************
     ** Buffer streamed text; emit it in small chunks (provider thread).
     *******************************************************************************/
-   private void bufferText(String text)
+   private synchronized void bufferText(String text)
    {
+      if(running.isFinalized())
+      {
+         return;
+      }
       synchronized(textBuffer)
       {
          textBuffer.append(text);
@@ -1135,7 +1319,7 @@ public class TurnEngine implements Runnable
    /*******************************************************************************
     ** Emit buffered text as one text.delta (when big or old enough, or forced).
     *******************************************************************************/
-   private void flushText(boolean force)
+   private synchronized void flushText(boolean force)
    {
       String chunk;
       synchronized(textBuffer)
@@ -1170,8 +1354,12 @@ public class TurnEngine implements Runnable
     ** Append to the live log; queue for persistence (done on the engine
     ** thread, which has the QContext).
     *******************************************************************************/
-   private void emit(String type, Map<String, Object> data)
+   private synchronized void emit(String type, Map<String, Object> data)
    {
+      if(finished)
+      {
+         return;
+      }
       toPersist.add(running.getLog().append(type, data));
    }
 
@@ -1189,7 +1377,7 @@ public class TurnEngine implements Runnable
          {
             store.insertEvent(turn.getId(), userId, event.getSeq(), event.getType(), event.toJson());
          }
-         catch(QException e)
+         catch(Exception e)
          {
             LOG.warn("Could not persist assistant turn event", hipaaSafe(e), logPair("turnId", turn.getId()), logPair("seq", event.getSeq()));
          }

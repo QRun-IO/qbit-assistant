@@ -99,6 +99,7 @@ public class AssistantTestFixture
     *******************************************************************************/
    public static QInstance build(AssistantQBitConfig config) throws Exception
    {
+      config.setRegisterShutdownHook(false);
       MemoryRecordStore.fullReset();
       QContext.clear();
 
