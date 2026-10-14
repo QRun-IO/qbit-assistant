@@ -2,6 +2,8 @@
 
 ## Unreleased - Starter defaults
 
+- Every seed changeset's rollback is empty: a seeded row cannot be told apart from a host's own row with the same name, and Liquibase also rolls back changesets it marked ran, so a name-based undo would delete host data.
+
 - Fix the defaults changelog: every precondition is a portable `sql-check` (the formatted-SQL `table-exists` form failed to parse); the policy, budget and prices are seeded only into empty tables and the profile only when no default exists, so an existing host never changes on deploy. The test now runs the changelog through Liquibase 4.33, including an already configured host and a missing table.
 - The Setup card prices the default model the way calls are costed (registry, price rows, configured prices); "Add rows for every table" reads fresh data-access rows.
 
