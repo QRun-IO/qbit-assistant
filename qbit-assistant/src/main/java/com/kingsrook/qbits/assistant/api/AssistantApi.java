@@ -46,6 +46,7 @@ import com.kingsrook.qbits.assistant.model.AssistantTurn;
 import com.kingsrook.qbits.assistant.model.AssistantTurnEvent;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
+import com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadTools;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolOutcome;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolResult;
 import com.kingsrook.qqq.backend.core.actions.ai.output.AiRedactor;
@@ -598,7 +599,9 @@ public class AssistantApi
       }
       PolicyService.EffectivePolicy policy = runtime.getPolicyService().current(true);
       UiApiToolbox.Context context = new UiApiToolbox.Context(session.getUuid(), session.getValue(QSession.VALUE_KEY_USER_TIMEZONE), runtime.getUiApiGateway(), policy.tools(), null);
-      UiApiToolbox.Outcome outcome = runtime.getToolbox().executeConfirmedWrite(context, action.getToolCallId(), action.getToolName(), action.getTableName(), action.getRecordId(), values);
+      UiApiToolbox.Outcome outcome = BulkLoadTools.WRITE_TOOLS.contains(action.getToolName())
+         ? runtime.getBulkLoadTools().executeConfirmed(context, action.getToolCallId(), action.getToolName(), action.getTableName(), values)
+         : runtime.getToolbox().executeConfirmedWrite(context, action.getToolCallId(), action.getToolName(), action.getTableName(), action.getRecordId(), values);
       AiToolResult result = outcome.getResult();
       boolean ok = result.getOutcome() == AiToolOutcome.OK;
 

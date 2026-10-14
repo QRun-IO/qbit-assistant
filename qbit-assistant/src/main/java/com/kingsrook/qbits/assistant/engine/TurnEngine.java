@@ -58,6 +58,7 @@ import com.kingsrook.qbits.assistant.provider.StreamHandle;
 import com.kingsrook.qbits.assistant.scheduled.ScheduledTurn;
 import com.kingsrook.qbits.assistant.tools.KnowledgeTool;
 import com.kingsrook.qbits.assistant.tools.PresentResultsTool;
+import com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadTools;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
 import com.kingsrook.qqq.backend.core.actions.ai.AiRecordRef;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolCall;
@@ -733,6 +734,11 @@ public class TurnEngine implements Runnable
                            {
                               results[index] = runtime.getKnowledgeTool().execute(toolContext(), call.getId(), call.getInput(), classification.getClassification(), conversation.getId(), turn.getId());
                            }
+                           else if(BulkLoadTools.NAMES.contains(call.getName()))
+                           {
+                              outcomes[index] = runtime.getBulkLoadTools().execute(toolContext(), call.getId(), call.getName(), call.getInput(), hipaaRoute());
+                              results[index] = outcomes[index].getResult();
+                           }
                            else
                            {
                               outcomes[index] = runtime.getToolbox().execute(toolContext(), call.getId(), call.getName(), call.getInput());
@@ -874,7 +880,7 @@ public class TurnEngine implements Runnable
             .withRowCount(result.getRowCount())
             .withDurationMs(result.getDurationMs())
             .withResultSummary(summary)
-            .withResultJson(truncate(result.getModelContent(), MAX_RESULT_JSON_CHARS))
+            .withResultJson(truncate(BulkLoadTools.NAMES.contains(use.getToolName()) ? BulkLoadTools.forLog(result.getModelContent()) : result.getModelContent(), MAX_RESULT_JSON_CHARS))
             .withRedactionsJson(result.getRedactions() == null || result.getRedactions().isEmpty() ? null : JsonUtils.toJson(result.getRedactions()))
             .withUiApiOperation(extras == null ? ("search_knowledge".equals(use.getToolName()) ? "GET /table/{tableName}/{primaryKey}" : null) : extras.getOperation())
             .withHttpStatus(extras == null ? null : extras.getHttpStatus())
@@ -893,6 +899,21 @@ public class TurnEngine implements Runnable
     ** Where a data tool runs: the user's own session (by its UUID, for the UI
     ** API), the gateway, the policy's tool settings, and the pending-action
     ** store for writes that need confirmation.
+    *******************************************************************************/
+   private boolean hipaaRoute()
+   {
+      ///////////////////////////////////////////////////////////////////////
+      // the X-QQQ-AI-Route the bulk-load tools send: the turn's provider's //
+      // HIPAA eligibility, never anything the model says                  //
+      ///////////////////////////////////////////////////////////////////////
+      return (active != null && active.row() != null && Boolean.TRUE.equals(active.row().getHipaaEligible()));
+   }
+
+
+
+   /*******************************************************************************
+    ** The UI API tool context: the user's session, the gateway, the policy's
+    ** tools and the pending-action hook.
     *******************************************************************************/
    private UiApiToolbox.Context toolContext()
    {
