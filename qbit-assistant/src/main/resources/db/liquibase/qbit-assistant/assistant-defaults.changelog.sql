@@ -26,8 +26,8 @@ WHERE NOT EXISTS (SELECT 1 FROM assistant_policy);
 
 -- changeset qbit-assistant:defaults-2
 -- preconditions onFail:MARK_RAN onError:MARK_RAN
--- precondition-sql-check expectedResult:0 SELECT COUNT(*) FROM assistant_profile WHERE name = 'default'
--- comment: The default profile (persona): used for every app and user that no more specific profile matches.
+-- precondition-sql-check expectedResult:0 SELECT COUNT(*) FROM assistant_profile WHERE name = 'default' OR is_default = TRUE
+-- comment: The default profile (persona): used for every app and user that no more specific profile matches. Skipped when the host already has a default profile, so there is never a second default.
 INSERT INTO assistant_profile (name, display_name, icon, personality, greeting, starter_prompts, is_default, enabled, create_date, modify_date)
 SELECT 'default', 'Assistant', 'auto_awesome',
    'Be concise, friendly and plain-spoken. Lead with the answer, then the detail that supports it. When something is ambiguous, ask one short question instead of guessing. Offer a link to the list or record you used so the user can check it.',
@@ -36,7 +36,7 @@ SELECT 'default', 'Assistant', 'auto_awesome',
 Which tables can I look at?
 What changed in the last 7 days?',
    TRUE, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-WHERE NOT EXISTS (SELECT 1 FROM assistant_profile WHERE name = 'default');
+WHERE NOT EXISTS (SELECT 1 FROM assistant_profile WHERE name = 'default' OR is_default = TRUE);
 -- rollback DELETE FROM assistant_profile WHERE name = 'default';
 
 -- changeset qbit-assistant:defaults-3
@@ -101,7 +101,7 @@ WHERE NOT EXISTS (SELECT 1 FROM assistant_skill WHERE name = 'access-questions')
 
 -- changeset qbit-assistant:defaults-7
 -- preconditions onFail:MARK_RAN onError:MARK_RAN
--- precondition-table-exists tableName:assistant_profile_skill
+-- precondition-sql-check expectedResult:0 SELECT COUNT(*) FROM assistant_profile_skill WHERE 1 = 0
 -- comment: Offer the starter skills through the default profile (skills reach the model only through a profile). Pairs that already exist are left alone.
 INSERT INTO assistant_profile_skill (profile_id, skill_id, create_date, modify_date)
 SELECT p.id, s.id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
@@ -113,19 +113,19 @@ WHERE p.name = 'default'
 
 -- changeset qbit-assistant:defaults-8
 -- preconditions onFail:MARK_RAN onError:MARK_RAN
--- precondition-sql-check expectedResult:0 SELECT COUNT(*) FROM assistant_budget WHERE name = 'Monthly spend (whole instance)'
--- comment: A monthly cost budget for the whole instance: warn at 80%, switch to the cheapest allowed model (local first) at 100%, stop at 120%. Change the limit to suit; overrides raise it for a while.
+-- precondition-sql-check expectedResult:0 SELECT COUNT(*) FROM assistant_budget
+-- comment: Only when the host has no budget at all, so an existing host's limits never change on deploy. A monthly cost budget for the whole instance: warn at 80%, switch to the cheapest allowed model (local first) at 100%, stop at 120%. Change the limit to suit; overrides raise it for a while.
 INSERT INTO assistant_budget (name, enabled, scope_type, period, metric, limit_value, warn_percent, at_limit_action, hard_ceiling_percent, notes, create_date, modify_date)
 SELECT 'Monthly spend (whole instance)', TRUE, 'INSTANCE', 'MONTH', 'COST_USD', 50, 80, 'DOWNGRADE', 120,
    'Starter budget. Warns everyone at 80% of $50 a month, switches to the cheapest allowed model at 100% (or stops when there is none), and stops at 120%. Set Downgrade Model to choose the fallback; add an override to raise it temporarily.',
    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-WHERE NOT EXISTS (SELECT 1 FROM assistant_budget WHERE name = 'Monthly spend (whole instance)');
+WHERE NOT EXISTS (SELECT 1 FROM assistant_budget);
 -- rollback DELETE FROM assistant_budget WHERE name = 'Monthly spend (whole instance)';
 
 -- changeset qbit-assistant:defaults-9
 -- preconditions onFail:MARK_RAN onError:MARK_RAN
--- precondition-table-exists tableName:assistant_model_price
--- comment: Anthropic first-party list prices, USD per million tokens (2026-10). Rows that already exist (by type and model) are left alone. Empty cache prices use the standard multipliers (read 0.1x, 5 minute write 1.25x, 1 hour write 2x input).
+-- precondition-sql-check expectedResult:0 SELECT COUNT(*) FROM assistant_model_price
+-- comment: Anthropic first-party list prices, USD per million tokens (2026-10), only when the host has no price rows (rows take precedence over AssistantQBitConfig.withPricing, so a host's configured prices are never overridden on deploy). Empty cache prices use the standard multipliers (read 0.1x, 5 minute write 1.25x, 1 hour write 2x input).
 INSERT INTO assistant_model_price (provider_type, model, input_usd_per_m_tok, output_usd_per_m_tok, cache_read_usd_per_m_tok, cache_write5m_usd_per_m_tok, cache_write1h_usd_per_m_tok, notes, create_date, modify_date)
 SELECT v.provider_type, v.model, v.input_price, v.output_price, v.cache_read, v.cache_write5m, v.cache_write1h, v.notes, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 FROM (VALUES
@@ -142,7 +142,7 @@ FROM (VALUES
    ('anthropic', 'claude-haiku-5-5', 0.10, 0.50, 0.01, 0.125, 0.20, 'Anthropic list price, 2026-10 (prompts up to 100K tokens)'),
    ('anthropic', 'claude-haiku-4-5', 1.00, 5.00, 0.10, 1.25, 2.00, 'Anthropic list price, 2026-10')
 ) AS v (provider_type, model, input_price, output_price, cache_read, cache_write5m, cache_write1h, notes)
-WHERE NOT EXISTS (SELECT 1 FROM assistant_model_price p WHERE p.provider_type = v.provider_type AND p.model = v.model);
+WHERE NOT EXISTS (SELECT 1 FROM assistant_model_price p);
 -- rollback SELECT 1; -- prices may have been edited; keep them
 
 -- changeset qbit-assistant:defaults-10

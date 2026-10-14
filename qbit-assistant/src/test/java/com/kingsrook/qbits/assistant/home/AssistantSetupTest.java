@@ -24,8 +24,10 @@ import java.util.stream.Collectors;
 import com.kingsrook.qbits.assistant.access.DataAccessMode;
 import com.kingsrook.qbits.assistant.model.AssistantBudget;
 import com.kingsrook.qbits.assistant.model.AssistantDataAccess;
+import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
 import com.kingsrook.qbits.assistant.model.AssistantProfile;
 import com.kingsrook.qbits.assistant.model.AssistantProfileSkill;
+import com.kingsrook.qbits.assistant.model.AssistantProvider;
 import com.kingsrook.qbits.assistant.model.AssistantSkill;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
 import com.kingsrook.qbits.assistant.processes.DataAccessDefaultsProcess;
@@ -55,7 +57,7 @@ class AssistantSetupTest extends BaseAssistantTest
    {
       Map<String, AssistantSetupStatus.Item> items = items();
       assertThat(items.keySet()).containsExactly("Provider", "Model prices", "Policy", "Profiles", "Skills", "Budgets", "Data access", "Knowledge sources", "Scheduled tasks");
-      assertThat(items.get("Model prices").state()).isEqualTo(AssistantSetupStatus.State.TODO);
+      assertThat(items.get("Model prices").state()).as("no provider yet").isEqualTo(AssistantSetupStatus.State.DEFAULT);
       assertThat(items.get("Budgets").state()).isEqualTo(AssistantSetupStatus.State.TODO);
       assertThat(items.get("Budgets").nextStep()).contains("monthly instance budget");
       assertThat(items.get("Profiles").state()).isEqualTo(AssistantSetupStatus.State.DEFAULT);
@@ -77,6 +79,41 @@ class AssistantSetupTest extends BaseAssistantTest
 
       String html = AssistantHomeView.render(AssistantHomeData.load(config.getRuntime()), "/app/assistantAdmin");
       assertThat(html).contains(">Setup</h3>").contains("href=\"/app/assistantAdmin/assistant_model_price\"").contains("Needs setup").contains("Next: ");
+   }
+
+
+
+   /*******************************************************************************
+    ** Prices resolve as calls are costed: a model priced only by the code
+    ** configuration is set up; an unpriced cloud model needs a price row; a
+    ** local model costs nothing.
+    *******************************************************************************/
+   @Test
+   void priceCheckUsesTheRuntimePricing() throws Exception
+   {
+      AssistantStore store = adminStore();
+      assertThat(priceItem("anthropic", "claude-sonnet-5-5", "CLOUD").state()).as("config-priced").isEqualTo(AssistantSetupStatus.State.OK);
+      AssistantSetupStatus.Item unpriced = priceItem("anthropic", "mystery-model-1", "CLOUD");
+      assertThat(unpriced.state()).isEqualTo(AssistantSetupStatus.State.TODO);
+      assertThat(unpriced.detail()).contains("mystery-model-1");
+      assertThat(priceItem("openai-compatible", "qwen3:30b-a3b", "LOCAL").state()).as("local").isEqualTo(AssistantSetupStatus.State.OK);
+      store.insert(new AssistantModelPrice().withProviderType("anthropic").withModel("mystery-model-1").withInputUsdPerMTok(new BigDecimal("1.5"))
+         .withOutputUsdPerMTok(new BigDecimal("7")));
+      config.getRuntime().getProviderService().invalidate();
+      assertThat(priceItem("anthropic", "mystery-model-1", "CLOUD").state()).as("price row added").isEqualTo(AssistantSetupStatus.State.OK);
+   }
+
+
+
+   /*******************************************************************************
+    ** The Model prices item for an active provider of this type and model.
+    *******************************************************************************/
+   private AssistantSetupStatus.Item priceItem(String type, String model, String location) throws Exception
+   {
+      AssistantProvider row = new AssistantProvider().withId(90_000 + (int) (System.nanoTime() % 1000)).withName(type + " " + model).withProviderType(type).withModel(model)
+         .withLocation(location).withEnabled(true);
+      AssistantHomeData.ProviderHealth health = new AssistantHomeData.ProviderHealth(row, type, "Set", true, List.of(), true, 0L, null, null, location, 0L);
+      return (AssistantSetupStatus.load(config.getRuntime(), List.of(health)).stream().filter(i -> i.label().equals("Model prices")).findFirst().orElseThrow());
    }
 
 

@@ -22,6 +22,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
+import com.kingsrook.qbits.assistant.engine.ProviderService;
 import com.kingsrook.qbits.assistant.model.AssistantBudget;
 import com.kingsrook.qbits.assistant.model.AssistantDataAccess;
 import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
@@ -33,6 +34,7 @@ import com.kingsrook.qbits.assistant.model.AssistantRagSource;
 import com.kingsrook.qbits.assistant.model.AssistantScheduledTask;
 import com.kingsrook.qbits.assistant.model.AssistantSkill;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
+import com.kingsrook.qbits.assistant.spi.ModelPricing;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.data.QRecordEntity;
@@ -103,17 +105,28 @@ public final class AssistantSetupStatus
          items.add(new Item("Provider", AssistantProvider.TABLE_NAME, State.TODO, "The default provider cannot be used.", "Turn one on, set it as default, make sure its key variable is set, then run Test connection."));
       }
 
-      ///////////////////////////////////////////////////////////////
-      // prices: the active cloud model needs one, or it costs $0  //
-      ///////////////////////////////////////////////////////////////
-      List<AssistantModelPrice> prices = store.query(AssistantModelPrice.TABLE_NAME, new QQueryFilter().withLimit(LIMIT), AssistantModelPrice.class);
-      boolean activePriced = active == null || "LOCAL".equals(active.location()) || prices.stream().anyMatch(p ->
-         p.getProviderType() != null && p.getProviderType().equals(active.row().getProviderType()) && p.getModel() != null && p.getModel().equals(active.row().getModel()));
-      items.add(prices.isEmpty()
-         ? new Item("Model prices", AssistantModelPrice.TABLE_NAME, State.TODO, "No prices: every call costs $0, so cost budgets never trigger.", "Add the list price of each cloud model you use.")
-         : activePriced
-            ? new Item("Model prices", AssistantModelPrice.TABLE_NAME, State.OK, prices.size() + " model price" + (prices.size() == 1 ? "" : "s") + ".", null)
-            : new Item("Model prices", AssistantModelPrice.TABLE_NAME, State.TODO, "The default model (" + active.row().getModel() + ") has no price, so its calls cost $0.", "Add a price row for it."));
+      //////////////////////////////////////////////////////////////////////
+      // prices: resolved exactly as calls are costed (registry row, price //
+      // row, then the configured price table); local models cost nothing //
+      //////////////////////////////////////////////////////////////////////
+      int priceRows = store.query(AssistantModelPrice.TABLE_NAME, new QQueryFilter().withLimit(LIMIT), AssistantModelPrice.class).size();
+      String rowsText = priceRows + " price row" + (priceRows == 1 ? "" : "s");
+      if(active == null)
+      {
+         items.add(new Item("Model prices", AssistantModelPrice.TABLE_NAME, State.DEFAULT, rowsText + "; checked once a provider answers.", null));
+      }
+      else
+      {
+         AssistantProvider row   = active.row();
+         ModelPricing      price = runtime.getProviderService().pricing(new ProviderService.Active(row, row.getProviderType(), row.getModel(), null), row.getModel());
+         boolean           local = "LOCAL".equals(active.location());
+         boolean           known = price != null && (positive(price.getInputUsdPerMTok()) || positive(price.getOutputUsdPerMTok()));
+         items.add(known || local
+            ? new Item("Model prices", AssistantModelPrice.TABLE_NAME, State.OK, local && !known ? "The default model is local and costs nothing. " + rowsText + "."
+               : "The default model is priced at $" + price.getInputUsdPerMTok() + " in / $" + price.getOutputUsdPerMTok() + " out per million tokens. " + rowsText + ".", null)
+            : new Item("Model prices", AssistantModelPrice.TABLE_NAME, State.TODO, "The default model (" + row.getModel() + ") has no price, so its calls cost $0 and cost budgets never trigger.",
+               "Add a price row for its provider type and model."));
+      }
 
       ////////////
       // policy //
@@ -202,6 +215,17 @@ public final class AssistantSetupStatus
    private static <T extends QRecordEntity> List<T> enabled(List<T> rows)
    {
       return (rows.stream().filter(row -> !Boolean.FALSE.equals(row.toQRecord().getValueBoolean("enabled"))).toList());
+   }
+
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static boolean positive(Double value)
+   {
+      return (value != null && value > 0);
    }
 
 }

@@ -80,6 +80,13 @@
          <version>2.3.232</version>
          <scope>test</scope>
       </dependency>
+      <!-- ...through real Liquibase (the version kof22 runs), so preconditions and bookkeeping are exercised. -->
+      <dependency>
+         <groupId>org.liquibase</groupId>
+         <artifactId>liquibase-core</artifactId>
+         <version>4.33.0</version>
+         <scope>test</scope>
+      </dependency>
    </dependencies>
 
    <build>

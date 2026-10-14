@@ -47,6 +47,12 @@ import com.kingsrook.qbits.assistant.persistence.AssistantStore;
 import com.kingsrook.qbits.assistant.testing.AssistantTestFixture;
 import com.kingsrook.qbits.assistant.testing.BaseAssistantTest;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import liquibase.Contexts;
+import liquibase.Liquibase;
+import liquibase.database.Database;
+import liquibase.database.DatabaseFactory;
+import liquibase.database.jvm.JdbcConnection;
+import liquibase.resource.ClassLoaderResourceAccessor;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -82,6 +88,7 @@ class AssistantDefaultsChangelogTest extends BaseAssistantTest
       try(Connection connection = freshSchema())
       {
          runChangelog(connection);
+         assertThat(ranChangesets(connection)).hasSize(10).allSatisfy((id, type) -> assertThat(type).as(id).isEqualTo("EXECUTED"));
          Map<String, Integer> first = counts(connection);
          assertThat(first).containsEntry("assistant_policy", 1).containsEntry("assistant_profile", 1).containsEntry("assistant_skill", 4)
             .containsEntry("assistant_profile_skill", 4).containsEntry("assistant_budget", 1).containsEntry("assistant_scheduled_task", 1);
@@ -94,6 +101,7 @@ class AssistantDefaultsChangelogTest extends BaseAssistantTest
          }
 
          runChangelog(connection);
+         assertThat(ranChangesets(connection)).hasSize(10);
          assertThat(counts(connection)).isEqualTo(first);
          assertThat(scalar(connection, "SELECT limit_value FROM assistant_budget")).isEqualTo("75");
          assertThat(scalar(connection, "SELECT display_name FROM assistant_profile")).isEqualTo("Ada");
@@ -104,17 +112,51 @@ class AssistantDefaultsChangelogTest extends BaseAssistantTest
 
 
    /*******************************************************************************
-    ** An existing policy row (the host's) is never joined by a second one.
+    ** A host that already configured the assistant: its policy, default
+    ** profile, budget and prices are left exactly as they were (no second
+    ** default, no new limit, no price that overrides its configured pricing).
     *******************************************************************************/
    @Test
-   void keepsAnExistingPolicy() throws Exception
+   void neverChangesAnExistingHost() throws Exception
    {
       try(Connection connection = freshSchema(); Statement statement = connection.createStatement())
       {
          statement.execute("INSERT INTO assistant_policy (name, kill_switch) VALUES ('host', TRUE)");
+         statement.execute("INSERT INTO assistant_profile (name, display_name, is_default, enabled) VALUES ('host', 'Hal', TRUE, TRUE)");
+         statement.execute("INSERT INTO assistant_budget (name, scope_type, period, metric, limit_value) VALUES ('Host daily', 'USER', 'DAY', 'TOKENS', 1000)");
+         statement.execute("INSERT INTO assistant_model_price (provider_type, model, input_usd_per_m_tok, output_usd_per_m_tok) VALUES ('anthropic', 'claude-sonnet-5-5', 1.00, 5.00)");
+
          runChangelog(connection);
          assertThat(scalar(connection, "SELECT COUNT(*) FROM assistant_policy")).isEqualTo("1");
          assertThat(scalar(connection, "SELECT name FROM assistant_policy")).isEqualTo("host");
+         assertThat(scalar(connection, "SELECT COUNT(*) FROM assistant_profile WHERE is_default = TRUE")).isEqualTo("1");
+         assertThat(scalar(connection, "SELECT name FROM assistant_profile")).isEqualTo("host");
+         assertThat(scalar(connection, "SELECT COUNT(*) FROM assistant_budget")).isEqualTo("1");
+         assertThat(scalar(connection, "SELECT name FROM assistant_budget")).isEqualTo("Host daily");
+         assertThat(scalar(connection, "SELECT COUNT(*) FROM assistant_model_price")).isEqualTo("1");
+         assertThat(scalar(connection, "SELECT input_usd_per_m_tok FROM assistant_model_price")).isEqualTo("1");
+         assertThat(scalar(connection, "SELECT COUNT(*) FROM assistant_skill")).as("starter skills are still added").isEqualTo("4");
+         assertThat(scalar(connection, "SELECT COUNT(*) FROM assistant_profile_skill")).as("the host's profile is not changed").isEqualTo("0");
+         assertThat(ranChangesets(connection)).containsEntry("defaults-1", "MARK_RAN").containsEntry("defaults-2", "MARK_RAN")
+            .containsEntry("defaults-8", "MARK_RAN").containsEntry("defaults-9", "MARK_RAN");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A host without one of the tables: that changeset is marked ran, the
+    ** rest apply, nothing fails.
+    *******************************************************************************/
+   @Test
+   void missingTableIsSkipped() throws Exception
+   {
+      try(Connection connection = freshSchema(); Statement statement = connection.createStatement())
+      {
+         statement.execute("DROP TABLE assistant_model_price");
+         runChangelog(connection);
+         assertThat(ranChangesets(connection)).containsEntry("defaults-9", "MARK_RAN").containsEntry("defaults-8", "EXECUTED").containsEntry("defaults-7", "EXECUTED");
+         assertThat(scalar(connection, "SELECT COUNT(*) FROM assistant_profile_skill")).isEqualTo("4");
       }
    }
 
@@ -131,7 +173,8 @@ class AssistantDefaultsChangelogTest extends BaseAssistantTest
       assertThat(changesets).hasSizeGreaterThanOrEqualTo(SEEDED_TABLES.size());
       for(String changeset : changesets)
       {
-         assertThat(changeset).contains("-- preconditions onFail:MARK_RAN onError:MARK_RAN").contains("-- rollback ").contains("NOT EXISTS");
+         assertThat(changeset).contains("-- preconditions onFail:MARK_RAN onError:MARK_RAN").contains("-- precondition-sql-check expectedResult:0 ")
+            .doesNotContain("precondition-table-exists").contains("-- rollback ").contains("NOT EXISTS");
       }
       for(String table : SEEDED_TABLES)
       {
@@ -269,7 +312,7 @@ class AssistantDefaultsChangelogTest extends BaseAssistantTest
     *******************************************************************************/
    static Connection freshSchema() throws Exception
    {
-      Connection connection = DriverManager.getConnection("jdbc:h2:mem:defaults" + System.nanoTime() + ";MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH");
+      Connection connection = DriverManager.getConnection("jdbc:h2:mem:defaults" + System.nanoTime() + ";MODE=PostgreSQL;DEFAULT_NULL_ORDERING=HIGH");
       String     ddl        = Files.readString(Path.of("..", "docs", "schema-postgres.sql"), StandardCharsets.UTF_8);
       try(Statement statement = connection.createStatement())
       {
@@ -288,21 +331,30 @@ class AssistantDefaultsChangelogTest extends BaseAssistantTest
 
 
    /*******************************************************************************
-    ** Run every changeset's statements (comments, preconditions and rollbacks
-    ** are comment lines, as Liquibase formatted SQL).
+    ** Run the changelog through Liquibase, as a host does.
     *******************************************************************************/
    static void runChangelog(Connection connection) throws Exception
    {
-      try(Statement statement = connection.createStatement())
+      Database database = DatabaseFactory.getInstance().findCorrectDatabaseImplementation(new JdbcConnection(connection));
+      new Liquibase(CHANGELOG.substring(1), new ClassLoaderResourceAccessor(), database).update(new Contexts());
+   }
+
+
+
+   /*******************************************************************************
+    ** changeset id -> EXECTYPE (EXECUTED, MARK_RAN, ...).
+    *******************************************************************************/
+   static Map<String, String> ranChangesets(Connection connection) throws Exception
+   {
+      Map<String, String> rs = new HashMap<>();
+      try(Statement statement = connection.createStatement(); ResultSet result = statement.executeQuery("SELECT id, exectype FROM databasechangelog"))
       {
-         for(String changeset : changesets(changelogText()))
+         while(result.next())
          {
-            for(String sql : statements(changeset))
-            {
-               statement.execute(sql);
-            }
+            rs.put(result.getString(1), result.getString(2));
          }
       }
+      return (rs);
    }
 
 

@@ -10,13 +10,15 @@ the `assistant_*` tables:
 - include: { file: db/liquibase/qbit-assistant/assistant-defaults.changelog.sql }
 ```
 
-It is insert-only (every row is skipped when its name or key exists, so edits
-survive) and guarded by preconditions. It adds: one `default` policy row (only
-when the host has none), a `default` profile, four starter skills linked to it,
-a **$50/month instance budget** (warn 80%, downgrade 100%, stop 120%), the
-current Anthropic list prices and a disabled example scheduled task. The budget
-is enforced from the next question: raise its limit, or turn it off, before
-deploying if $50 a month is too low for the host.
+It is insert-only and never changes a host that already configured the
+assistant: the policy, the **$50/month instance budget** (warn 80%, downgrade
+100%, stop 120%) and the Anthropic list prices are seeded only into empty tables,
+and the `default` profile only when no default profile exists. Price rows take
+precedence over `AssistantQBitConfig.withPricing`, which is why they are seeded
+only when there are none. The four starter skills and a disabled example
+scheduled task are always added (by name); on a host with its own default
+profile the skills are not linked to it, and the Setup card says so. Requires
+Liquibase 4.x or later (preconditions are `sql-check`s).
 
 No DDL changes. New: the Assistant home's Setup card, the `assistant_data_access`
 table action **Add rows for every table** (`assistantDataAccessAddDefaults`,
