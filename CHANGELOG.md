@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased - Central health
+
+### Added
+
+- Dynamic `assistant.provider.<id>` and `assistant.model.<id>` dependency checks in component `assistant`, category AI, reusing provider diagnostics and minimal connection calls with deadlines, cost-cap/kill-switch skips and TEST usage accounting.
+- LOCAL breaker reuse of central provider outcomes younger than 60 seconds, with its existing lazy probe as fallback.
+- Generic Assistant health status card linking to filtered System Health; registration, status, accounting, deadline and sentinel-secret tests.
+- Offline Checkstyle configuration using a Java 21-aware engine and both existing Apache header forms; normalize existing import order and spacing.
+- Snapshot compatibility for the header shim: setting extra headers avoids duplicates now that core forwards them too.
+
+### Removed
+
+- The home's independent answering/last-test health indicators and per-provider health/down-until display. Central health owns status and history. Manual Test connection actions, `lastTest*` fields and the circuit breaker remain.
+
 ## Unreleased - X1/Y1
 
 - Add default-off `withRecordHistory(true)` host opt-in: remove only `audit*` on RC.6, or invoke core #1193 audit-read/write-deny support when available. Preserve user permissions and all other channel denials; kof22 does not opt in.
