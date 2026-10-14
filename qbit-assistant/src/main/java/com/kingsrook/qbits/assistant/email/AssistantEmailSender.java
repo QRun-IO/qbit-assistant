@@ -24,13 +24,11 @@ package com.kingsrook.qbits.assistant.email;
 import java.io.Serializable;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import com.kingsrook.qbits.email.EmailRuntime;
-import com.kingsrook.qbits.email.outbox.EmailCategory;
-import com.kingsrook.qbits.email.outbox.EmailRequest;
-import com.kingsrook.qbits.email.outbox.EmailSendResult;
-import com.kingsrook.qbits.email.outbox.EmailService;
-import com.kingsrook.qbits.email.template.EmailTemplateDefinition;
-import com.kingsrook.qbits.email.template.EmailTemplates;
+import com.kingsrook.qbits.email.api.EmailApi;
+import com.kingsrook.qbits.email.api.EmailApiCategory;
+import com.kingsrook.qbits.email.api.EmailApiRequest;
+import com.kingsrook.qbits.email.api.EmailApiResult;
+import com.kingsrook.qbits.email.api.EmailApiTemplate;
 import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -66,7 +64,7 @@ final class AssistantEmailSender
     *******************************************************************************/
    static boolean isInstalled(QInstance qInstance)
    {
-      return (EmailRuntime.config(qInstance) != null);
+      return (EmailApi.isInstalled(qInstance));
    }
 
 
@@ -79,7 +77,7 @@ final class AssistantEmailSender
    {
       boolean linkOnly = notice.classification() != null && notice.classification().isAtLeast(DataClassification.CONFIDENTIAL);
 
-      EmailRequest request = new EmailRequest().withTo(recipient)
+      EmailApiRequest request = new EmailApiRequest().withTo(recipient)
          .withIdempotencyKey("assistant:scheduled:" + notice.runId())
          .withLinkedRecord(notice.runTable(), notice.runId())
          .withSender(SENDER_QBIT, SENDER_PROCESS);
@@ -100,7 +98,7 @@ final class AssistantEmailSender
       }
       request.withVariables(variables);
 
-      return (map(EmailService.send(request)));
+      return (map(EmailApi.send(request)));
    }
 
 
@@ -123,7 +121,7 @@ final class AssistantEmailSender
    /*******************************************************************************
     ** Outbox result to the qbit's own vocabulary.
     *******************************************************************************/
-   private static ScheduledEmailStatus map(EmailSendResult result)
+   private static ScheduledEmailStatus map(EmailApiResult result)
    {
       return (switch(result.status())
       {
@@ -141,10 +139,10 @@ final class AssistantEmailSender
     *******************************************************************************/
    static void ensureTemplate() throws QException
    {
-      EmailTemplates.ensure(new EmailTemplateDefinition()
+      EmailApi.ensureTemplate(new EmailApiTemplate()
          .withName(TEMPLATE_NAME)
          .withLabel("Assistant scheduled task result")
-         .withCategory(EmailCategory.NOTIFICATION)
+         .withCategory(EmailApiCategory.NOTIFICATION)
          .withKind("MARKDOWN")
          .withOwnerQbit(SENDER_QBIT)
          .withSubject("Assistant task result: {{taskName}}")

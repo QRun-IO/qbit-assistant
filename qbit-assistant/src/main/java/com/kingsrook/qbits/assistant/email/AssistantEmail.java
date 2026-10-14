@@ -55,7 +55,7 @@ public final class AssistantEmail
    {
       try
       {
-         Class.forName("com.kingsrook.qbits.email.outbox.EmailService");
+         Class.forName("com.kingsrook.qbits.email.api.EmailApi");
       }
       catch(ClassNotFoundException | LinkageError e)
       {
