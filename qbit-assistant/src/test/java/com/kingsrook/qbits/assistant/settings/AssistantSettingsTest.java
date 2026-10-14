@@ -561,7 +561,7 @@ class AssistantSettingsTest extends BaseAssistantTest
       assertThat(data.getMonthCostMicros()).isZero();
 
       String html = render();
-      assertThat(html).contains("Answering").contains("Fake").contains("In use").contains("Last test passed").contains("…wxyz")
+      assertThat(html).contains("Configuration and usage").contains("Fake").contains("In use").doesNotContain("Answering", "Last test passed").contains("…wxyz")
          .contains("of $50.00 cap").contains("list_tables").contains("Model call #").contains("25% of 4 requests").doesNotContain(KEY).doesNotContain("<table");
    }
 
