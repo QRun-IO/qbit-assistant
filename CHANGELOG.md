@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased - P-e
+
+- Add per-profile heuristic/classifier model routing, with budgeted ROUTE usage.
+- Add bounded cross-provider fallback chains, PHI-safe selection, neutral history
+  rebuilding, and a 60-second connection circuit breaker with cached local probes.
+- Show provider health, fallback totals and turn routing; include additive schema
+  migration and admin record-screen controls.
+
+
 ## Unreleased - P-d
 
 - Admin budgets, expiring overrides, deduplicated warning/downgrade/stop events.

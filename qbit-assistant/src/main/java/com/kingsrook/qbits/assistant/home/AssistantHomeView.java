@@ -193,6 +193,11 @@ public final class AssistantHomeView
          }
          html.append("</div><div style=\"").append(CELLS).append("\">");
          cell(html, "Type", nvl(p.typeLabel(), "Not set"));
+         cell(html, "Health", nvl(row.getHealthState(), "Unknown"));
+         if(row.getDownUntil() != null)
+         {
+            cell(html, "Down until", when(row.getDownUntil()));
+         }
          cell(html, "Kind", AssistantRecordScreens.providerKindLabel(p.kind()));
          cell(html, "Location", "LOCAL".equals(p.location()) ? "Local" : "Cloud");
          if(Boolean.TRUE.equals(row.getHipaaEligible()))
@@ -423,6 +428,7 @@ public final class AssistantHomeView
    private static void failures(StringBuilder html, AssistantHomeData data, String prefix)
    {
       open(html, "Recent failures");
+      html.append("<p>").append(esc(number(data.getFallbackCount()) + " fallbacks in the last " + AssistantHomeData.DAYS + " days.")).append("</p>");
       if(data.getFailedCalls().isEmpty() && data.getFailedTools().isEmpty())
       {
          empty(html, "No failed model calls or tool calls in the last " + AssistantHomeData.DAYS + " days.");

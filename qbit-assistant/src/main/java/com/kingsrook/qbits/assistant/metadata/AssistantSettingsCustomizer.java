@@ -17,6 +17,8 @@
 package com.kingsrook.qbits.assistant.metadata;
 
 
+import com.kingsrook.qbits.assistant.model.AssistantModel;
+import com.kingsrook.qbits.assistant.engine.FallbackChain;
 import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
@@ -77,7 +79,7 @@ public class AssistantSettingsCustomizer implements TableCustomizerInterface
    public List<QRecord> preInsertOrUpdate(AbstractActionInput input, List<QRecord> records, boolean isPreview, Optional<List<QRecord>> oldRecordList) throws QException
    {
       ProviderService service = service();
-      if(com.kingsrook.qbits.assistant.model.AssistantModel.TABLE_NAME.equals(tableName(input)))
+      if(AssistantModel.TABLE_NAME.equals(tableName(input)))
       {
          for(QRecord record : records)
          {
@@ -93,6 +95,7 @@ public class AssistantSettingsCustomizer implements TableCustomizerInterface
                }
             }
          }
+         validateFallbacks(records, oldRecordList);
          return (records);
       }
       if(service == null || !AssistantProvider.TABLE_NAME.equals(tableName(input)))
@@ -204,6 +207,7 @@ public class AssistantSettingsCustomizer implements TableCustomizerInterface
       {
          String name = entry.getKey();
          boolean system = name.equals("id") || name.equals("modifyDate") || name.startsWith("lastTest") || name.startsWith("lastDiscovery")
+            || List.of("healthState", "healthCheckedAt", "downUntil").contains(name)
             || (name.equals("isDefault") && Boolean.FALSE.equals(entry.getValue()));
          if(!system)
          {
@@ -240,6 +244,56 @@ public class AssistantSettingsCustomizer implements TableCustomizerInterface
    {
       AssistantRuntime runtime = AssistantRuntime.of(QContext.getQInstance());
       return (runtime == null ? null : runtime.getProviderService());
+   }
+
+
+
+   /*******************************************************************************
+    ** Validate the resulting graph, including all changes in this save batch.
+    *******************************************************************************/
+   private void validateFallbacks(List<QRecord> records, Optional<List<QRecord>> oldRecords) throws QException
+   {
+      AssistantRuntime runtime = AssistantRuntime.of(QContext.getQInstance());
+      if(runtime == null)
+      {
+         return;
+      }
+      Map<Integer, AssistantModel> models = new java.util.LinkedHashMap<>();
+      for(AssistantModel model : runtime.getStore().listModels())
+      {
+         models.put(model.getId(), model);
+      }
+      Optional<Map<Serializable, QRecord>> old = oldRecordListToMap("id", oldRecords);
+      List<AssistantModel> proposed = new java.util.ArrayList<>();
+      for(QRecord record : records)
+      {
+         QRecord merged = new QRecord();
+         old.map(m -> m.get(record.getValue("id"))).ifPresent(o -> merged.setValues(new java.util.LinkedHashMap<>(o.getValues())));
+         record.getValues().forEach(merged::setValue);
+         AssistantModel model = new AssistantModel(merged);
+         proposed.add(model);
+         if(model.getId() != null)
+         {
+            models.put(model.getId(), model);
+         }
+      }
+      for(Integer i = 0; i < records.size(); i++)
+      {
+         String error = FallbackChain.validate(proposed.get(i), models);
+         if(error != null)
+         {
+            records.get(i).addError(new BadInputStatusMessage(error));
+         }
+      }
+      for(AssistantModel model : models.values())
+      {
+         String error = FallbackChain.validate(model, models, false);
+         if(error != null)
+         {
+            records.forEach(record -> record.addError(new BadInputStatusMessage(error)));
+            break;
+         }
+      }
    }
 
 }

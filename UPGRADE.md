@@ -1,5 +1,31 @@
 # Upgrading qbit-assistant
 
+## P-e: profile routing and provider fallback
+
+Apply the additive **P-e** ALTER TABLE statements at the end of
+[docs/schema-postgres.sql](docs/schema-postgres.sql) before deploying. Existing
+profiles default to OFF; optional model references and health columns start null.
+No routing or fallback configuration is seeded. Existing turns retain unknown
+routing/final-provider values; fallback_count defaults to zero.
+
+Profiles now have a **Model routing** section. Select HEURISTIC or CLASSIFIER,
+then optional simple/complex registry models and a classifier model. Empty route
+slots retain provider/policy selection. CLASSIFIER with no usable classifier
+uses HEURISTIC. OFF preserves prior provider selection. With no effective profile,
+code-configured escalation supplies the complex model/effort when enabled.
+
+Set a model's **Fallback model** to opt into a cross-provider chain. Saves reject
+cycles, more than four edges, or disabled/missing targets. Provider health is
+read-only; NETWORK/TIMEOUT opens a 60-second circuit, and successful calls close
+it. Local endpoints with stale health get a bounded two-second probe. Automatic
+fallback without an explicit link is confined to local models of the same adapter
+family. PHI/HIPAA eligibility and budgets apply to every destination.
+
+Classifier usage is recorded with purpose ROUTE and included in budgets. Reports
+that filter usage purpose should include ROUTE. Turn screens show route decision,
+source, fallback count and final provider; the home shows health and fallback totals.
+All configuration remains assistant.admin-only, with AI exposure NONE.
+
 ## P-d: data-driven budgets
 
 Create `assistant_budget`, `assistant_budget_override`, `assistant_budget_event`

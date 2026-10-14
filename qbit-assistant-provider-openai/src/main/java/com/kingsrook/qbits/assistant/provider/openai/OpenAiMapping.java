@@ -52,7 +52,7 @@ final class OpenAiMapping
    static ObjectNode request(ModelRequest request, String kind, ModelCapabilities capabilities) throws JsonProcessingException
    {
       ObjectNode body = OpenAiHttp.JSON.createObjectNode();
-      boolean streaming = Boolean.TRUE.equals(capabilities.getStreaming());
+      boolean streaming = !Boolean.FALSE.equals(request.getStreaming()) && Boolean.TRUE.equals(capabilities.getStreaming());
       boolean nativeOpenAi = List.of("OPENAI", "AZURE_OPENAI").contains(kind);
       String model = request.getModel();
       body.put("model", "VERTEX".equals(kind) && model != null && !model.contains("/") ? "google/" + model : model);

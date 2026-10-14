@@ -32,6 +32,18 @@ public class AssistantProfile extends QRecordEntity
 {
    public static final String TABLE_NAME = "assistant_profile";
 
+   @QField(maxLength = 16)
+   private String routingMode = "OFF";
+
+   @QField()
+   private Integer simpleModelId;
+
+   @QField()
+   private Integer complexModelId;
+
+   @QField()
+   private Integer classifierModelId;
+
    @QField(isEditable = false, isPrimaryKey = true)
    private Integer id;
 
@@ -481,4 +493,128 @@ public class AssistantProfile extends QRecordEntity
       return (this);
    }
 
+
+
+
+   /*******************************************************************************
+    ** Get routingMode.
+    *******************************************************************************/
+   public String getRoutingMode()
+   {
+      return (this.routingMode);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set routingMode.
+    *******************************************************************************/
+   public void setRoutingMode(String routingMode)
+   {
+      this.routingMode = routingMode;
+   }
+
+
+
+   /*******************************************************************************
+    ** With routingMode.
+    *******************************************************************************/
+   public AssistantProfile withRoutingMode(String routingMode)
+   {
+      this.routingMode = routingMode;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Get simpleModelId.
+    *******************************************************************************/
+   public Integer getSimpleModelId()
+   {
+      return (this.simpleModelId);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set simpleModelId.
+    *******************************************************************************/
+   public void setSimpleModelId(Integer simpleModelId)
+   {
+      this.simpleModelId = simpleModelId;
+   }
+
+
+
+   /*******************************************************************************
+    ** With simpleModelId.
+    *******************************************************************************/
+   public AssistantProfile withSimpleModelId(Integer simpleModelId)
+   {
+      this.simpleModelId = simpleModelId;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Get complexModelId.
+    *******************************************************************************/
+   public Integer getComplexModelId()
+   {
+      return (this.complexModelId);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set complexModelId.
+    *******************************************************************************/
+   public void setComplexModelId(Integer complexModelId)
+   {
+      this.complexModelId = complexModelId;
+   }
+
+
+
+   /*******************************************************************************
+    ** With complexModelId.
+    *******************************************************************************/
+   public AssistantProfile withComplexModelId(Integer complexModelId)
+   {
+      this.complexModelId = complexModelId;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Get classifierModelId.
+    *******************************************************************************/
+   public Integer getClassifierModelId()
+   {
+      return (this.classifierModelId);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set classifierModelId.
+    *******************************************************************************/
+   public void setClassifierModelId(Integer classifierModelId)
+   {
+      this.classifierModelId = classifierModelId;
+   }
+
+
+
+   /*******************************************************************************
+    ** With classifierModelId.
+    *******************************************************************************/
+   public AssistantProfile withClassifierModelId(Integer classifierModelId)
+   {
+      this.classifierModelId = classifierModelId;
+      return (this);
+   }
 }

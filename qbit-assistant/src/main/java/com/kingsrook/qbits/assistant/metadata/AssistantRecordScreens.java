@@ -128,6 +128,7 @@ public final class AssistantRecordScreens
 
       return (List.of(
          QPossibleValueSource.newForTable(AssistantBudget.TABLE_NAME),
+         QPossibleValueSource.newForTable(AssistantModel.TABLE_NAME).withName("assistant_registry_model"),
          QPossibleValueSource.newForTable(AssistantModel.TABLE_NAME).withName("assistant_budget_model"),
          budgetEnum("scopeType", "INSTANCE", "USER", "ROLE", "PROVIDER", "MODEL"),
          budgetEnum("period", "DAY", "MONTH"),
@@ -289,6 +290,7 @@ public final class AssistantRecordScreens
             .withValueFormatAndFields(PVSValueFormatAndFields.LABEL_ONLY).withEnumValues(modelValues),
          enumSource("assistant_provider_kind", kinds),
          enumSource("assistant_provider_location", List.of(new QPossibleValue<>("LOCAL", "Local"), new QPossibleValue<>("CLOUD", "Cloud"))),
+         enumSource("assistant_routing_mode", List.of(new QPossibleValue<>("OFF", "Off"), new QPossibleValue<>("HEURISTIC", "Heuristic"), new QPossibleValue<>("CLASSIFIER", "Classifier"))),
          enumSource("assistant_model_source", List.of(new QPossibleValue<>("DISCOVERED", "Discovered"), new QPossibleValue<>("MANUAL", "Manual"))),
          QPossibleValueSource.newForTable(AssistantProvider.TABLE_NAME)));
    }
@@ -365,6 +367,7 @@ public final class AssistantRecordScreens
          section("connection", "Connection", "key", Tier.T2, "apiKeyEnvName", ProviderService.KEY_STATUS_FIELD, "baseUrl", "tlsCaBundle", "cloudProject"),
          section("limits", "Limits", "speed", Tier.T2, "monthlyCostCapUsd", "maxOutputTokensPerRequest", "maxConcurrentRequests"),
          section("registry", "Provider settings", "settings", Tier.T2, "kind", "location", "hipaaEligible", "region", "apiVersion", "connectTimeoutSeconds", "requestTimeoutSeconds"),
+         section("health", "Health", "network_check", Tier.T2, "healthState", "healthCheckedAt", "downUntil"),
          section("discovery", "Last discovery", "memory", Tier.T2, "lastDiscoveryAt", "lastDiscoveryStatus", "lastDiscoveryError"),
          section("lastTest", "Last connection test", "network_check", Tier.T2, "lastTestAt", "lastTestStatus", "lastTestLatencyMs", "lastTestModel", "lastTestError"));
    }
@@ -406,7 +409,7 @@ public final class AssistantRecordScreens
       micros(table, "costMicros");
       counts(table, "inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens", "latencyMs");
       table.getField("latencyMs").withLabel("Latency (ms)");
-      help(table, "purpose", "TURN: a step of an answer. TEST: a Test connection call.");
+      help(table, "purpose", "TURN: a step of an answer. ROUTE: a routing classifier call. TEST: a Test connection call.");
       sections(table,
          section("call", "Model Call", "receipt_long", Tier.T1, "id", "purpose", "status", "model", "providerId", "providerType", "userId", "conversationId", "turnId"),
          section("result", "Result", "fact_check", Tier.T2, "latencyMs", "errorKind", "httpStatus", "requestId"),
@@ -467,11 +470,13 @@ public final class AssistantRecordScreens
     *******************************************************************************/
    private static void turn(QTableMetaData table)
    {
+      link(table, "providerId", AssistantProvider.TABLE_NAME, "Final provider");
       link(table, "userMessageId", AssistantMessage.TABLE_NAME, "User Message");
       link(table, "assistantMessageId", AssistantMessage.TABLE_NAME, "Assistant Message");
       micros(table, "costMicros");
       counts(table, "inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens", "toolCallCount", "modelCallCount");
       sections(table,
+         section("routing", "Routing", "route", Tier.T2, "routeDecision", "routeSource", "fallbackCount", "providerId"),
          section("turn", "Turn", "sync_alt", Tier.T1, "id", "conversationId", "status", "model", "startedAt", "endedAt", "userMessageId", "assistantMessageId", "userId"),
          section("outcome", "Outcome", "flag", Tier.T2, "stopReason", "cancelReason", "errorCode"),
          section("usage", "Usage", "query_stats", Tier.T2, "inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens", "costMicros", "toolCallCount", "modelCallCount"),
@@ -520,6 +525,10 @@ public final class AssistantRecordScreens
       help(table, "name", "An internal name for this profile.");
       help(table, "displayName", "The assistant's name in the panel header and its messages, e.g. Ada.");
       help(table, "icon", "A Material icon name for the panel, e.g. auto_awesome, support_agent, school.");
+      pvs(table, "routingMode", "assistant_routing_mode", "Routing mode");
+      pvs(table, "simpleModelId", "assistant_registry_model", "Simple model");
+      pvs(table, "complexModelId", "assistant_registry_model", "Complex model");
+      pvs(table, "classifierModelId", "assistant_registry_model", "Classifier model");
       help(table, "personality", "Tone and style instructions, at most " + ProfileService.MAX_PERSONALITY_CHARS + " characters, e.g. \"Friendly and brief. Use the user's first name.\" Added to the assistant's instructions; it never changes its rules, tools or what the user may do.");
       help(table, "greeting", "Shown when a new conversation opens.");
       help(table, "starterPrompts", "Suggested first questions, one per line (at most " + ProfileService.MAX_STARTER_PROMPTS + ").");
@@ -528,6 +537,7 @@ public final class AssistantRecordScreens
       help(table, "permissionName", "Optional: use this profile only for users who hold this permission (a role).");
       sections(table,
          section("profile", "Profile", "face", Tier.T1, "id", "name", "displayName", "icon", "enabled", "isDefault"),
+         section("routing", "Model routing", "route", Tier.T2, "routingMode", "simpleModelId", "complexModelId", "classifierModelId"),
          section("voice", "Personality", "record_voice_over", Tier.T2, "personality", "greeting", "starterPrompts"),
          section("scope", "Where it applies", "filter_alt", Tier.T2, "appName", "permissionName"));
    }
@@ -878,6 +888,7 @@ public final class AssistantRecordScreens
    {
       link(table, "providerId", AssistantProvider.TABLE_NAME, "Provider");
       pvs(table, "source", "assistant_model_source", "Source");
+      pvs(table, "fallbackModelId", "assistant_registry_model", "Fallback model");
       table.getField("contextWindowTokens").withLabel("Context window (tokens)");
       table.getField("maxOutputTokens").withLabel("Max output tokens");
       table.getField("supportsReasoningEffort").withLabel("Supports reasoning effort");
@@ -885,7 +896,7 @@ public final class AssistantRecordScreens
       table.getField("outputUsdPerMTok").withLabel("Output (USD per million tokens)");
       table.getField("lastTestLatencyMs").withLabel("Last test latency (ms)");
       sections(table,
-         section("model", "Model", "memory", Tier.T1, "id", "providerId", "modelId", "displayName", "enabled", "source", "discoveredAt"),
+         section("model", "Model", "memory", Tier.T1, "id", "providerId", "modelId", "displayName", "enabled", "source", "discoveredAt", "fallbackModelId"),
          section("capabilities", "Capabilities", "settings", Tier.T2, "supportsTools", "supportsVision", "supportsStreaming", "supportsReasoningEffort", "contextWindowTokens", "maxOutputTokens"),
          section("prices", "Prices", "payments", Tier.T2, "inputUsdPerMTok", "outputUsdPerMTok"),
          section("lastTest", "Last connection test", "network_check", Tier.T2, "lastTestAt", "lastTestStatus", "lastTestLatencyMs", "lastTestError"));
