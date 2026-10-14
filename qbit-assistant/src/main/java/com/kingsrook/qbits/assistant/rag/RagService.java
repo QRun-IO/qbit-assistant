@@ -145,7 +145,7 @@ public class RagService
    {
       PolicyService.ToolPolicy policy = context.policy();
       UiApiToolbox.Context internal = new UiApiToolbox.Context(context.sessionUUID(), context.userTimezone(), context.gateway(),
-         new PolicyService.ToolPolicy(true, Set.of(), policy == null ? 50 : policy.maxRowsPerCall(), policy == null || policy.redactPii()), null);
+         new PolicyService.ToolPolicy(true, Set.of(), policy == null ? 50 : policy.maxRowsPerCall(), policy == null || policy.redactPii()), null, context.credentials(), context.turnId());
       return (reader.execute(internal, "knowledge-read", UiApiToolbox.GET_RECORD, Map.of("table", table, "id", pk)));
    }
 

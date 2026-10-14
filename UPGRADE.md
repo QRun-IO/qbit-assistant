@@ -1,5 +1,24 @@
 # Upgrading qbit-assistant
 
+## X1/Y1: channel wall and audit attribution
+
+Requires QQQ 4.1.0-RC.6. Every assistant table, process, report and widget is
+explicitly denied to channel `assistant`; startup rejects an exposed object.
+Host customizations must preserve these denials. Administration uses `next-ui`.
+
+Before enabling `AuditsMetaDataProvider.withClientChannelField(true)`, add the
+nullable `audit.client_channel VARCHAR(100)` column using the host migration
+conventions. kof22 needs a feature changeset under `changesets/features/` (for
+example `2026-10-14-audit-client-channel.sql`); no host migration is applied here.
+Existing audit rows remain null. The test fixture enables the field.
+
+The existing `assistant_tool_call.auditHref` column now points to audit rows
+filtered by record, table and client channel, including for deletes. It is empty
+when the host has not enabled the audit channel field. Apply the X1/Y1 DDL in
+`docs/schema-postgres.sql` to widen the existing `assistant_tool_call.audit_href`
+column to TEXT: encoded filters with long table names or string record ids can
+exceed the old 500-character limit. No new QBit column is required. `GET /assistant/access` accepts an optional owned `turnId` for attribution.
+
 ## Provider API extraction (#30)
 
 Hosts that depend on `qbit-assistant` keep working: it now brings in
@@ -42,8 +61,8 @@ See [scheduled-task setup](README.md#scheduled-tasks) for kof22 provisioning.
 QQQ RC.5 has no conditional UpdateInput. The runner uses a database-unique
 schedule-slot insertion as its optimistic claim, then advances `nextRunAt`
 before starting work. Crashes can skip a slot; they never retry it. No ArchUnit
-exception or fabricated session is introduced. Core client-channel enforcement
-arrives with the client-channel RC; the header and tool audit are already sent.
+exception or fabricated session is introduced. Core RC.6 enforces client-channel denials; scheduled requests carry
+`assistant/scheduled/<taskId>`.
 
 Notifications use the optional Alerts QBit notification SPI with a single-user
 audience. Without it, delivery logs run id/status only. All output modes retain

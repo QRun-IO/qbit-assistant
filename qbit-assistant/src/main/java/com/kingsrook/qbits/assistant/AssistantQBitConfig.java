@@ -90,6 +90,7 @@ public class AssistantQBitConfig implements QBitConfig
    private String conversationEncryptionKeyEnvName;
 
    private Boolean               enabled                    = true;
+   private Boolean               recordHistory              = false;
    private String                backendName;
    private String                providerName               = DEFAULT_PROVIDER_NAME;
    private AssistantModelRouting models                     = new AssistantModelRouting();
@@ -1754,6 +1755,28 @@ public class AssistantQBitConfig implements QBitConfig
    public Map<String, SSLContext> getTrustedCaBundles()
    {
       return (Map.copyOf(trustedCaBundles));
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the host opts into record history; false by default.
+    *******************************************************************************/
+   public Boolean getRecordHistory()
+   {
+      return (recordHistory);
+   }
+
+
+
+   /*******************************************************************************
+    ** Owner decision — hard wall: record history requires explicit host opt-in.
+    ** kof22 does not opt in. The user's own audit permissions still apply.
+    *******************************************************************************/
+   public AssistantQBitConfig withRecordHistory(boolean recordHistory)
+   {
+      this.recordHistory = recordHistory;
+      return (this);
    }
 
 

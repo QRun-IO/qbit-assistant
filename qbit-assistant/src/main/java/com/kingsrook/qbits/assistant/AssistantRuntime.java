@@ -32,6 +32,7 @@ import com.kingsrook.qbits.assistant.engine.ProfileService;
 import com.kingsrook.qbits.assistant.engine.ProviderService;
 import com.kingsrook.qbits.assistant.engine.RateLimiter;
 import com.kingsrook.qbits.assistant.engine.RunningTurn;
+import com.kingsrook.qbits.assistant.metadata.AssistantChannelWall;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
 import com.kingsrook.qbits.assistant.rag.InMemoryVectorStore;
 import com.kingsrook.qbits.assistant.rag.RagService;
@@ -103,6 +104,7 @@ public class AssistantRuntime
     *******************************************************************************/
    public AssistantRuntime(QInstance qInstance, AssistantQBitConfig config, Clock clock)
    {
+      AssistantChannelWall.validate(qInstance);
       this.qInstance = qInstance;
       this.config = config;
       this.clock = clock;

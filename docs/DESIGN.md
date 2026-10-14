@@ -287,6 +287,14 @@ AI exposure NONE is not enough, because the assistant acts as the user and an ad
 - **Tests:** an assistant write produces audit rows with the human actor and `via=assistant/<turnId>`; the same write from the UI produces `via=next-ui`.
 - kof22 needs a feature-named changeset (`changesets/features/...`) for the audit column.
 
+### X1/Y1 as built
+- Record history is an explicit, default-off host opt-in (`withRecordHistory(true)`); kof22 does not opt in. RC.6 removes only `audit*`; later core #1193 support allows audit reads with a write-only denial. Other walls and user audit permissions remain intact.
+- RC.6's invoker fixes the `assistant` channel server-side and ignores spoofed client headers. Turn context survives knowledge discovery, RAG reads, confirm actions and owned-turn explain-access; scheduled calls retain `scheduled/<taskId>`.
+- The producer enumerates assistant tables, processes, reports and widgets (including source-QBit metadata), adds explicit denied-client rules without replacing user permissions, and registers `assistant_*` idempotently. Runtime construction independently validates the wall with core's `isDenied` and fails on exposed objects.
+- The fixture enables core's audit channel field. Hosts must migrate the nullable audit column before enabling it; kof22 needs its own feature changeset.
+- Successful insert/update/delete tool calls link to `/app/audit` with `recordId`, `auditTable.name` and `clientChannel` criteria, using the same encoder as `present_results`. Hosts without the channel field get no audit link. Existing audit link storage widens to TEXT for long encoded filters.
+- HTTP tests enumerate the configuration denial matrix for an admin, contrast Next UI access, reject broken startup metadata, and verify confirmed-write actor/channel plus the decoded audit filter.
+
 ### P. Providers, local models, HIPAA routing, budgets
 1. **Providers and models as data, any number, each with an enabled toggle.**
    - Kinds:

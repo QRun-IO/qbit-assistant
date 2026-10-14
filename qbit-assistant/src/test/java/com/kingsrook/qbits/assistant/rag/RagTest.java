@@ -41,7 +41,9 @@ import com.kingsrook.qbits.assistant.provider.ModelUsage;
 import com.kingsrook.qbits.assistant.provider.fake.ScriptedModelProvider;
 import com.kingsrook.qbits.assistant.testing.AssistantTestFixture;
 import com.kingsrook.qbits.assistant.testing.BaseAssistantTest;
+import com.kingsrook.qbits.assistant.testing.UiApiTestServer;
 import com.kingsrook.qbits.assistant.tools.KnowledgeTool;
+import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
 import com.kingsrook.qbits.assistant.uiapi.UiApiCall;
 import com.kingsrook.qqq.backend.core.actions.ai.AiExposure;
@@ -54,6 +56,7 @@ import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInpu
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiCredentials;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -274,6 +277,25 @@ class RagTest extends BaseAssistantTest
       assertThat(vectors.chunks(source.getId())).noneMatch(v -> v.pk().equals("1"));
       new KnowledgeIndexProcess.Clear().runOnePage(input, new RunBackendStepOutput());
       assertThat(vectors.count(source.getId())).isZero();
+   }
+
+
+
+   /*******************************************************************************
+    ** Discovery and RAG record reads preserve turn details and request credentials.
+    *******************************************************************************/
+   @Test
+   void attributesKnowledgeRequestsToTurn()
+   {
+      QContext.init(qInstance, AssistantTestFixture.ownerSession(AssistantTestFixture.EDITOR, config));
+      UiApiTestServer.serve(qInstance, config);
+      UiApiTestServer.SCHEDULED_REQUESTS.clear();
+      config.getRuntime().getContextBuilder().build(QContext.getQSession(), "model", null, List.of(), "question", Map.of(), PolicyService.ToolPolicy.defaults(), null, "42");
+      UiApiToolbox.Context context = new UiApiToolbox.Context("invalid-session", null, config.getRuntime().getUiApiGateway(),
+         PolicyService.ToolPolicy.defaults(), null, UiApiCredentials.ofSessionUUID(AssistantTestFixture.EDITOR), "42");
+      assertThat(config.getRuntime().getRagService().read(context, "blog_post", "1").getResult().getOutcome()).isEqualTo(AiToolOutcome.OK);
+      assertThat(UiApiTestServer.SCHEDULED_REQUESTS).hasSizeGreaterThanOrEqualTo(2).allSatisfy(request ->
+         assertThat(request.get("client")).isEqualTo("assistant/42"));
    }
 
 

@@ -107,6 +107,16 @@ public class ContextBuilder
     *******************************************************************************/
    public List<ModelToolDefinition> tools(PolicyService.ToolPolicy policy)
    {
+      return (tools(policy, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Attribute tool-discovery requests to the turn that needs them.
+    *******************************************************************************/
+   private List<ModelToolDefinition> tools(PolicyService.ToolPolicy policy, String turnId)
+   {
       Map<String, ModelToolDefinition> byName = new TreeMap<>();
       for(ModelToolDefinition definition : toolbox.definitions(policy, toolbox.anyWritableTable()))
       {
@@ -123,7 +133,7 @@ public class ContextBuilder
                .withStrict(isStrict(definition.getName(), !Boolean.FALSE.equals(definition.getStrict()))));
          }
       }
-      if(knowledgeTool != null && knowledgeTool.offered(policy, QContext.getQSession()))
+      if(knowledgeTool != null && knowledgeTool.offered(policy, QContext.getQSession(), turnId))
       {
          byName.put(KnowledgeTool.NAME, knowledgeTool.definition());
       }
@@ -217,11 +227,22 @@ public class ContextBuilder
    public ModelRequest build(QSession session, String model, String effort, List<AssistantMessage> history, String userText, Map<String, Object> pageContext, PolicyService.ToolPolicy toolPolicy,
       String profileInstructions)
    {
+      return (build(session, model, effort, history, userText, pageContext, toolPolicy, profileInstructions, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Include the turn in any UI API calls needed to discover available tools.
+    *******************************************************************************/
+   public ModelRequest build(QSession session, String model, String effort, List<AssistantMessage> history, String userText, Map<String, Object> pageContext, PolicyService.ToolPolicy toolPolicy,
+      String profileInstructions, String turnId)
+   {
       ModelRequest request = new ModelRequest()
          .withModel(model)
          .withEffort(effort)
          .withMaxTokens(config.getModels().getMainMaxOutputTokens())
-         .withTools(tools(toolPolicy));
+         .withTools(tools(toolPolicy, turnId));
 
       request.getSystem().add(new SystemBlock(SystemPrompt.staticBlock(appDigest()), CacheHint.LONG));
       request.getSystem().add(new SystemBlock(userBlock(session) + (StringUtils.hasContent(profileInstructions) ? "\n" + profileInstructions : ""), CacheHint.SHORT));

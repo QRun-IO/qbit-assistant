@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased - X1/Y1
+
+- Add default-off `withRecordHistory(true)` host opt-in: remove only `audit*` on RC.6, or invoke core #1193 audit-read/write-deny support when available. Preserve user permissions and all other channel denials; kof22 does not opt in.
+
+- Register explicit assistant-channel denials on every assistant table, process,
+  report and widget, preserving core security patterns; fail runtime startup
+  when an assistant object is exposed.
+- Bump the assistant UI API extension to 1.1.0 for optional owned-turn attribution
+  on explain-access, and regenerate its OpenAPI contract.
+- Preserve turn attribution in knowledge discovery, RAG reads and explain-access
+  calls; confirm actions retain the original turn and scheduled runs retain the task.
+- Build audit links with the presentation filter-link builder, filtering by
+  record, table and channel, including deletes; widen audit link storage to TEXT.
+  Document the host audit migration and the QBit column widening.
+- Verify the admin denial matrix through the real invoker and Next UI, startup
+  failures, and confirmed-write human/channel attribution with decoded audit links.
 ## Unreleased - Email
 
 ### Changed
