@@ -61,7 +61,7 @@ import io.javalin.http.HttpStatus;
 public final class AssistantSpecs
 {
    public static final String EXTENSION_NAME    = "assistant";
-   public static final String EXTENSION_VERSION = "1.1.0";
+   public static final String EXTENSION_VERSION = "1.2.0";
    public static final String PREFIX            = "/assistant";
 
 
@@ -94,6 +94,7 @@ public final class AssistantSpecs
          .withSpec(StartTurnSpec.class)
          .withSpec(TurnEventsSpec.class)
          .withSpec(CancelTurnSpec.class)
+         .withSpec(ActiveTurnsSpec.class)
          .withSpec(FeedbackSpec.class)
          .withSpec(GetActionSpec.class)
          .withSpec(ConfirmActionSpec.class)
@@ -218,9 +219,14 @@ public final class AssistantSpecs
          "href", string("After a confirm: the written record's /app link.").withNullable(true)));
       rs.put("AssistantAccessResponseV1", object("Explain access: per table, the user's UI permissions, the assistant's data access, and each tool's verdict.",
          "tables", array(freeObject("table, label, dataAccess, dataAccessSource, ui {visible, read, insert, edit, delete}, operations [{tool, operation, allowed, reason}]."), null)));
-      rs.put("AssistantTurnEventV1", object("One server-sent event of a turn (event: <type>, id: <seq>, data: this object). Types: message.start, text.delta, tool.start, tool.result, ui.navigate, notice, usage, message.end, error, ping.",
+      rs.put("AssistantActiveTurnsResponseV1", object("The caller's active runs, newest first; stale leases are reaped.",
+         "turns", array(object("An active assistant run.", "turnId", integer(null), "conversationId", integer(null),
+            "assistantMessageId", integer(null), "userMessageId", integer(null), "status", string("RUNNING or CANCELLING."),
+            "phase", string(null), "startedAt", string("ISO-8601."), "heartbeatAt", string("ISO-8601."),
+            "elapsedMs", integer(null), "live", bool("Running on this replica."), "concurrencyMode", string("SUPERSEDE or CONCURRENT.")), null)));
+      rs.put("AssistantTurnEventV1", object("One server-sent event of a turn (event: <type>, id: <seq>, data: this object). Types: message.start, turn.phase, text.delta, tool.start, tool.result, ui.navigate, notice, usage, message.end, error, ping.",
          "seq", integer("Sequence number; resume with ?after=<seq>."), "type", string("The event type (also the SSE event name)."),
-         "data", freeObject("The event's fields, by type.")));
+         "data", freeObject("The event's fields, by type. message.start includes startedAt (ISO-8601). turn.phase includes phase (thinking, tool, writing), optional toolName and label.")));
       rs.put("AssistantErrorV1", object("An error.", "error", string("A message for the user."), "code", string("BUDGET, RATE_LIMIT, NOT_CONFIGURED, KILL_SWITCH, DISABLED, NO_PERMISSION...").withNullable(true)));
       return (rs);
    }
@@ -563,6 +569,67 @@ public final class AssistantSpecs
 
 
    /*******************************************************************************
+    ** GET /assistant/turns/active
+    *******************************************************************************/
+   public static class ActiveTurnsSpec extends AssistantJsonSpec
+   {
+      /*******************************************************************************
+       ** HTTP method.
+       *******************************************************************************/
+      @Override
+      protected HttpMethod method()
+      {
+         return (HttpMethod.GET);
+      }
+
+
+
+      /*******************************************************************************
+       ** Route path.
+       *******************************************************************************/
+      @Override
+      protected String path()
+      {
+         return (PREFIX + "/turns/active");
+      }
+
+
+
+      /*******************************************************************************
+       ** Operation summary.
+       *******************************************************************************/
+      @Override
+      protected String summary()
+      {
+         return ("Find the user's active assistant runs");
+      }
+
+
+
+      /*******************************************************************************
+       ** Response schema.
+       *******************************************************************************/
+      @Override
+      protected String getResponseSchemaName()
+      {
+         return ("AssistantActiveTurnsResponseV1");
+      }
+
+
+
+      /*******************************************************************************
+       ** Runs in the invoker's authenticated user session.
+       *******************************************************************************/
+      @Override
+      protected Object handle(AssistantApi api, JsonInput input) throws Exception
+      {
+         return (api.activeTurns());
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** POST /assistant/conversations
     *******************************************************************************/
    public static class CreateConversationSpec extends AssistantJsonSpec
@@ -844,7 +911,7 @@ public final class AssistantSpecs
       @Override
       protected Schema defineRequestBodySchema()
       {
-         return (object("The user's text and the page context hint.", "text", string("The user's message."), "pageContext", freeObject("Where the user is in the app.")));
+         return (object("The user's text and the page context hint.", "text", string("The user's message."), "pageContext", freeObject("Where the user is in the app."), "concurrency", string("supersede or concurrent (case-insensitive); defaults to the host configuration.")));
       }
 
 
@@ -1038,10 +1105,24 @@ public final class AssistantSpecs
 
 
 
+      /*******************************************************************************
+       ** Older replicas can still return 202 during a rolling upgrade. New
+       ** replicas return 200 for both active and already finished turns.
+       *******************************************************************************/
+      @Override
+      public List<BasicResponse> defineAdditionalBasicResponses()
+      {
+         List<BasicResponse> responses = new java.util.ArrayList<>(super.defineAdditionalBasicResponses());
+         responses.add(new BasicResponse(HttpStatus.ACCEPTED, "Legacy replica: cancellation accepted", "AssistantStatusResponseV1"));
+         return (responses);
+      }
+
+
+
       @Override
       protected HttpStatus successStatus()
       {
-         return (HttpStatus.ACCEPTED);
+         return (HttpStatus.OK);
       }
    }
 

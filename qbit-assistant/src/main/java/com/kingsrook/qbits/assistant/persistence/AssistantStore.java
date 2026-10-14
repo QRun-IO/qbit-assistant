@@ -31,6 +31,7 @@ import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
 import com.kingsrook.qbits.assistant.classification.Classifications;
 import com.kingsrook.qbits.assistant.engine.TurnClassification;
+import com.kingsrook.qbits.assistant.engine.TurnEvent;
 import com.kingsrook.qbits.assistant.model.AssistantBudget;
 import com.kingsrook.qbits.assistant.model.AssistantBudgetEvent;
 import com.kingsrook.qbits.assistant.model.AssistantBudgetOverride;
@@ -393,6 +394,27 @@ public class AssistantStore
 
 
    /*******************************************************************************
+    ** Re-read before a lifecycle update. A completed row is never reopened by
+    ** a late local Stop or overwritten by a second local finalizer. Every read
+    ** and update remains under the caller's own session and owner filter.
+    *******************************************************************************/
+   public boolean updateRunningTurn(String userId, QRecord changes) throws QException
+   {
+      synchronized(QContext.getQInstance())
+      {
+         AssistantTurn current = getTurn(userId, changes.getValueInteger("id"));
+         if(current == null || !("RUNNING".equals(current.getStatus()) || "CANCELLING".equals(current.getStatus())))
+         {
+            return (false);
+         }
+         updateFields(AssistantTurn.TABLE_NAME, changes);
+         return (true);
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** One of the user's own pending actions, or null.
     *******************************************************************************/
    public AssistantPendingAction getPendingAction(String userId, Integer id) throws QException
@@ -419,6 +441,51 @@ public class AssistantStore
     ** Persist one streamed event.
     *******************************************************************************/
    public void insertEvent(Integer turnId, String userId, int seq, String eventType, String dataJson) throws QException
+   {
+      if(TurnEvent.MESSAGE_END.equals(eventType) || TurnEvent.ERROR.equals(eventType))
+      {
+         // Serialize memory-backend callers. The Postgres partial unique index
+         // arbitrates this same race between independent replicas.
+         synchronized(QContext.getQInstance())
+         {
+            if(hasTerminalEvent(userId, turnId))
+            {
+               return;
+            }
+            try
+            {
+               insertStreamEvent(turnId, userId, seq, eventType, dataJson);
+            }
+            catch(QException e)
+            {
+               if(!hasTerminalEvent(userId, turnId))
+               {
+                  throw (e);
+               }
+            }
+         }
+         return;
+      }
+      insertStreamEvent(turnId, userId, seq, eventType, dataJson);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether a terminal replay frame has already been persisted by any owner.
+    *******************************************************************************/
+   private boolean hasTerminalEvent(String userId, Integer turnId) throws QException
+   {
+      return (!query(AssistantTurnEvent.TABLE_NAME, owned(userId).withCriteria("turnId", QCriteriaOperator.EQUALS, turnId)
+         .withCriteria("eventType", QCriteriaOperator.EQUALS, TurnEvent.MESSAGE_END).withLimit(1), AssistantTurnEvent.class).isEmpty());
+   }
+
+
+
+   /*******************************************************************************
+    ** Persist one frame through the normal encrypted, user-owned store path.
+    *******************************************************************************/
+   private void insertStreamEvent(Integer turnId, String userId, int seq, String eventType, String dataJson) throws QException
    {
       insert(new AssistantTurnEvent()
          .withTurnId(turnId)

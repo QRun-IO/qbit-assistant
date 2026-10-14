@@ -17,7 +17,10 @@
 package com.kingsrook.qbits.assistant.engine;
 
 
+import java.time.Instant;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import com.kingsrook.qbits.assistant.spi.StreamHandle;
 
 
@@ -30,6 +33,14 @@ public class RunningTurn
    private final String                        userId;
    private final TurnEventLog                  log          = new TurnEventLog();
    private final AtomicReference<String>       cancelReason = new AtomicReference<>();
+   private final AtomicBoolean finalized = new AtomicBoolean();
+   private Instant startedAt;
+   private volatile String phase = "starting";
+   private volatile String toolName;
+   private volatile Thread engineThread;
+   private volatile Consumer<String> forceFinalizer;
+   private volatile long cancelledNanos;
+   private volatile String trackingId;
    private volatile StreamHandle               currentHandle;
 
 
@@ -39,6 +50,7 @@ public class RunningTurn
     *******************************************************************************/
    public RunningTurn(Integer turnId, String userId)
    {
+      this.startedAt = Instant.now();
       this.turnId = turnId;
       this.userId = userId;
    }
@@ -50,12 +62,24 @@ public class RunningTurn
     *******************************************************************************/
    public void cancel(String reason)
    {
-      if(cancelReason.compareAndSet(null, reason))
+      if(!finalized.get() && cancelReason.compareAndSet(null, reason))
       {
-         StreamHandle handle = currentHandle;
-         if(handle != null)
+         cancelledNanos = System.nanoTime();
+         try
          {
-            handle.cancel();
+            StreamHandle handle = currentHandle;
+            if(handle != null)
+            {
+               handle.cancel();
+            }
+         }
+         finally
+         {
+            Thread thread = engineThread;
+            if(thread != null && thread != Thread.currentThread())
+            {
+               thread.interrupt();
+            }
          }
       }
    }
@@ -122,6 +146,142 @@ public class RunningTurn
    public TurnEventLog getLog()
    {
       return (log);
+   }
+
+
+
+
+   /*******************************************************************************
+    ** Claim terminal processing exactly once.
+    *******************************************************************************/
+   public boolean tryFinalize()
+   {
+      return (finalized.compareAndSet(false, true));
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether terminal processing has been claimed.
+    *******************************************************************************/
+   public boolean isFinalized()
+   {
+      return (finalized.get());
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for startedAt
+    *******************************************************************************/
+   public Instant getStartedAt()
+   {
+      return (startedAt);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for startedAt
+    *******************************************************************************/
+   public void setStartedAt(Instant startedAt)
+   {
+      this.startedAt = startedAt;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for phase
+    *******************************************************************************/
+   public String getPhase()
+   {
+      return (phase);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for toolName
+    *******************************************************************************/
+   public String getToolName()
+   {
+      return (toolName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Record the current phase and optional tool.
+    *******************************************************************************/
+   public void setPhase(String phase, String toolName)
+   {
+      this.phase = phase;
+      this.toolName = toolName;
+   }
+
+
+
+   /*******************************************************************************
+    ** Record the thread to interrupt when cancelling.
+    *******************************************************************************/
+   public void setEngineThread(Thread engineThread)
+   {
+      this.engineThread = engineThread;
+   }
+
+
+
+   /*******************************************************************************
+    ** Install the engine finalizer before registration.
+    *******************************************************************************/
+   public void setForceFinalizer(Consumer<String> forceFinalizer)
+   {
+      this.forceFinalizer = forceFinalizer;
+   }
+
+
+
+   /*******************************************************************************
+    ** Force terminal processing using the original user session.
+    *******************************************************************************/
+   public void forceFinalize(String reason)
+   {
+      Consumer<String> finalizer = forceFinalizer;
+      if(finalizer != null)
+      {
+         finalizer.accept(reason);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether cancellation has exceeded its bounded grace period.
+    *******************************************************************************/
+   public boolean cancelGraceElapsed(int seconds)
+   {
+      return (isCancelled() && cancelledNanos != 0 && System.nanoTime() - cancelledNanos >= seconds * 1_000_000_000L);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for trackingId
+    *******************************************************************************/
+   public String getTrackingId()
+   {
+      return (trackingId);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for trackingId
+    *******************************************************************************/
+   public void setTrackingId(String trackingId)
+   {
+      this.trackingId = trackingId;
    }
 
 }

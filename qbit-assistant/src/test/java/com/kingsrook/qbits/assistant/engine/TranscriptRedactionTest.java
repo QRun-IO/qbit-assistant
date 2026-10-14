@@ -38,7 +38,9 @@ import com.kingsrook.qbits.assistant.model.AssistantPendingAction;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
 import com.kingsrook.qbits.assistant.model.AssistantScheduledRun;
 import com.kingsrook.qbits.assistant.model.AssistantToolCall;
+import com.kingsrook.qbits.assistant.model.AssistantTurn;
 import com.kingsrook.qbits.assistant.model.AssistantTurnEvent;
+import com.kingsrook.qbits.assistant.model.AssistantUsage;
 import com.kingsrook.qbits.assistant.persistence.TranscriptRedactor;
 import com.kingsrook.qbits.assistant.spi.AssistantModelProvider;
 import com.kingsrook.qbits.assistant.spi.AssistantProviderType;
@@ -266,6 +268,39 @@ class TranscriptRedactionTest extends BaseAssistantTest
       provider.thenToolUse("query_records", Map.of("table", "patient", "filter", filter("AND", "email", "EQUALS", List.of(pii + "-absent"))))
          .thenText(pii + "-absent");
       runner.run(AssistantTestFixture.ADMIN, "Find missing patient");
+      scanStorage();
+   }
+
+
+
+   /*******************************************************************************
+    ** Metadata must not reject or clip tokens after the SQL columns are widened.
+    *******************************************************************************/
+   @Test
+   void expandedTokensSurviveMetadataValidation() throws Exception
+   {
+      admin();
+      var store = config.getRuntime().getStore();
+      String raw = phi.repeat(250);
+      try(TranscriptRedactor redactor = new TranscriptRedactor(qInstance, config.getClassificationSource()))
+      {
+         redactor.attach();
+         redactor.observe("patient", "diagnosis", 1, phi, phi);
+         var audit = store.insert(new AssistantDataAudit().withUserId(AssistantTestFixture.ADMIN).withReason(raw));
+         var turn = store.insert(new AssistantTurn().withUserId(AssistantTestFixture.ADMIN).withStatus("RUNNING").withStopReason(raw));
+         var call = store.insert(new AssistantToolCall().withUserId(AssistantTestFixture.ADMIN).withToolCallId(raw).withResultSummary(raw));
+         var usage = store.insert(new AssistantUsage().withUserId(AssistantTestFixture.ADMIN).withRequestId(raw));
+         redactor.flush(store);
+         String expected = "changed:v1".repeat(250);
+         assertThat(store.getTurn(AssistantTestFixture.ADMIN, turn.getId()).getStopReason()).isEqualTo(expected);
+         for(var check : List.of(Map.entry(audit, "reason"), Map.entry(call, "toolCallId"), Map.entry(call, "resultSummary"), Map.entry(usage, "requestId")))
+         {
+            var row = new QueryAction().execute(new QueryInput(check.getKey().tableName())
+               .withFilter(new QQueryFilter().withCriteria("id", com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator.EQUALS,
+                  check.getKey().toQRecord().getValue("id")))).getRecords().getFirst();
+            assertThat(row.getValueString(check.getValue())).isEqualTo(expected);
+         }
+      }
       scanStorage();
    }
 

@@ -1,5 +1,105 @@
 # Upgrading qbit-assistant
 
+## Transcript redaction (Unreleased)
+
+Apply the transcript-redaction column widening block in `docs/schema-postgres.sql`
+to existing databases. Stop reasons, request IDs, tool-call IDs, feedback/data-audit/
+budget-override reasons and scheduled-run summaries/errors now use `TEXT`; token
+expansion must not fail a write or truncate secured-data tokens. The corresponding
+entity field limits are removed, including pending-action and tool-result summaries.
+
+## Foreign keys (2026-10-14)
+
+Recommended: apply the "Foreign keys" block at the end of
+`docs/schema-postgres.sql` (after the index audit). It is guarded and safe to re-run.
+- Adds the missing foreign keys across the conversation tables, usage, data audit,
+  budget accounting and profile skills, with the indexes they need.
+- Detail rows of a conversation `CASCADE`; the message/turn cycle, usage and the data
+  audit use `SET NULL`, so usage keeps its cost rows when a conversation is deleted.
+- Usage, budget accounting and the data audit hold their provider (`NO ACTION`):
+  disable a provider with history instead of deleting it.
+- `assistant_model.provider_id` changes from `NO ACTION` to `CASCADE`
+  (constraint renamed `fk_assistant_model_provider`).
+- Rows that point at a missing parent are first copied to `qqq_fk_quarantine`
+  (created if absent), then nulled, or deleted for the `NOT NULL` profile-skill
+  links. Check that table after the upgrade.
+
+No code change.
+
+## Index audit (2026-10-14)
+
+Recommended, not required: apply the "Index audit" block at the end of
+`docs/schema-postgres.sql`. It adds six indexes, every one `IF NOT EXISTS`:
+- usage by turn (read on each scheduled run)
+- the three retention date filters (turn events, tool calls, inactive conversations)
+- the two `ON DELETE SET NULL` foreign keys on `assistant_scheduled_run`
+
+No code change.
+
+## Durable turns (Unreleased)
+
+Apply the **Durable turns** block at the end of `docs/schema-postgres.sql` before
+starting the new runtime. It adds nullable `heartbeat_at`, `lease_owner`,
+`cancel_requested_at`, `phase`, `concurrency_mode` and the `(user_id, status)`
+index. A partial unique index on terminal events also prevents two replicas from
+inserting separate `message.end` frames for the same turn. Check for historical
+duplicate terminal frames before applying it (resolve any duplicates through your
+normal migration process). Fresh installs run the full schema, including ALTERs.
+Existing rows with no heartbeat use `started_at` for lease expiry. During the
+first upgrade from a runtime without heartbeats, drain old replicas' turns first:
+a new replica cannot distinguish an old live turn from a dead owner after 45 s.
+
+Defaults: heartbeat 5 s, lease 45 s, hard duration 300 s, force-finalization grace
+20 s, shutdown grace 8 s. Configure these through the corresponding
+`AssistantQBitConfig` withers. Heartbeat must be shorter than the lease. The JVM
+shutdown hook is enabled by default; tests disable `registerShutdownHook` and
+managed hosts may call `runtime.shutdown(Duration)` themselves. Give the process
+termination budget enough time for the configured shutdown grace and persistence.
+
+`POST /conversations/{id}/turns` accepts `concurrency: "supersede" | "concurrent"`
+(case-insensitive). Default `SUPERSEDE` stops prior runs in that conversation;
+`CONCURRENT` permits them. The default per-user cap is now 3; reaching it stops
+the oldest run instead of returning the old in-progress 429. Per-minute and
+budget 429 responses still apply. Superseded turns record `cancelReason=SUPERSEDED`.
+
+Cancel now returns HTTP **200**, including for terminal turns, with the current
+`status`. The OpenAPI fragment retains the old 202 response for mixed-version
+rollouts. Active runs are discoverable through `GET /qqq/v1/assistant/turns/active`;
+reattach through the existing events route. Consumers should recognize
+`turn.phase` and `message.start.startedAt`. Starts during shutdown return
+503 `SHUTTING_DOWN`; clients may retry against a ready replica.
+
+Hosts may wire `AssistantRunTracker` for Jobs tray publication, progress, Stop,
+and terminal notification. It is a no-op by default and all callbacks are
+isolated from turn execution. Tracking ids are local to the owning runtime;
+reaping an already dead owner does not invent another tracking job. Hosts should
+associate their durable tracking row with the supplied turn id. The SPI is a
+stand-in for QQQ #1210.
+
+## Starter defaults, setup card and table help
+
+The jar now ships `db/liquibase/qbit-assistant/assistant-defaults.changelog.sql`.
+Include it from the host's master changelog **after** the changesets that create
+the `assistant_*` tables:
+
+```yaml
+- include: { file: db/liquibase/qbit-assistant/assistant-defaults.changelog.sql }
+```
+
+It is insert-only and never changes a host that already configured the
+assistant: the policy, the **$50/month instance budget** (warn 80%, downgrade
+100%, stop 120%) and the Anthropic list prices are seeded only into empty tables,
+and the `default` profile only when no default profile exists. Price rows take
+precedence over `AssistantQBitConfig.withPricing`, which is why they are seeded
+only when there are none. The four starter skills and a disabled example
+scheduled task are always added (by name); on a host with its own default
+profile the skills are not linked to it, and the Setup card says so. Requires
+Liquibase 4.x or later (preconditions are `sql-check`s).
+
+No DDL changes. New: the Assistant home's Setup card, the `assistant_data_access`
+table action **Add rows for every table** (`assistantDataAccessAddDefaults`,
+admin only) and bundle help on every assistant table (`help/qbit-assistant.yaml`).
+
 ## X1/Y1: channel wall and audit attribution
 
 Requires QQQ 4.1.0-RC.6. Every assistant table, process, report and widget is

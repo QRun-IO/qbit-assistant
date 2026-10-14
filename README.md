@@ -192,6 +192,15 @@ The key never goes in config, tables or logs. It lives in the application's secr
 
 The provider's `toString` never contains the key. Its errors carry only the HTTP status and the API error type.
 
+### Starter defaults
+
+Include `db/liquibase/qbit-assistant/assistant-defaults.changelog.sql` (shipped in
+the jar) after your assistant DDL. A new installation then has a policy row, a
+default profile with four starter skills, a $50/month instance budget, current
+Anthropic prices and a disabled example scheduled task. Every row is insert-only,
+so administrators can edit them freely. The home's **Setup** card shows what is
+set up and the next step for the rest (usually: add a provider).
+
 ## Provider settings (the Providers table)
 
 Admins set up providers on the **Providers** screen (`assistant_provider`), a standard QQQ table:
