@@ -24,16 +24,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
-import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
-import com.kingsrook.qbits.assistant.provider.CompletableStreamHandle;
-import com.kingsrook.qbits.assistant.provider.ModelCapabilities;
-import com.kingsrook.qbits.assistant.provider.ModelEventListener;
-import com.kingsrook.qbits.assistant.provider.ModelPart;
-import com.kingsrook.qbits.assistant.provider.ModelProviderException;
-import com.kingsrook.qbits.assistant.provider.ModelRequest;
-import com.kingsrook.qbits.assistant.provider.ModelResponse;
-import com.kingsrook.qbits.assistant.provider.ModelUsage;
-import com.kingsrook.qbits.assistant.provider.StreamHandle;
+import com.kingsrook.qbits.assistant.spi.AssistantModelProvider;
+import com.kingsrook.qbits.assistant.spi.CompletableStreamHandle;
+import com.kingsrook.qbits.assistant.spi.ModelCapabilities;
+import com.kingsrook.qbits.assistant.spi.ModelEventListener;
+import com.kingsrook.qbits.assistant.spi.ModelPart;
+import com.kingsrook.qbits.assistant.spi.ModelProviderException;
+import com.kingsrook.qbits.assistant.spi.ModelRequest;
+import com.kingsrook.qbits.assistant.spi.ModelResponse;
+import com.kingsrook.qbits.assistant.spi.ModelUsage;
+import com.kingsrook.qbits.assistant.spi.StreamHandle;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 
 

@@ -36,19 +36,19 @@ import java.util.concurrent.atomic.AtomicReference;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
-import com.kingsrook.qbits.assistant.provider.CompletableStreamHandle;
-import com.kingsrook.qbits.assistant.provider.EmbeddingRequest;
-import com.kingsrook.qbits.assistant.provider.EmbeddingResponse;
-import com.kingsrook.qbits.assistant.provider.ModelCapabilities;
-import com.kingsrook.qbits.assistant.provider.ModelEventListener;
-import com.kingsrook.qbits.assistant.provider.ModelPart;
-import com.kingsrook.qbits.assistant.provider.ModelProviderException;
-import com.kingsrook.qbits.assistant.provider.ModelRequest;
-import com.kingsrook.qbits.assistant.provider.ModelResponse;
-import com.kingsrook.qbits.assistant.provider.ModelUsage;
-import com.kingsrook.qbits.assistant.provider.ProviderSettings;
-import com.kingsrook.qbits.assistant.provider.StreamHandle;
+import com.kingsrook.qbits.assistant.spi.AssistantModelProvider;
+import com.kingsrook.qbits.assistant.spi.CompletableStreamHandle;
+import com.kingsrook.qbits.assistant.spi.EmbeddingRequest;
+import com.kingsrook.qbits.assistant.spi.EmbeddingResponse;
+import com.kingsrook.qbits.assistant.spi.ModelCapabilities;
+import com.kingsrook.qbits.assistant.spi.ModelEventListener;
+import com.kingsrook.qbits.assistant.spi.ModelPart;
+import com.kingsrook.qbits.assistant.spi.ModelProviderException;
+import com.kingsrook.qbits.assistant.spi.ModelRequest;
+import com.kingsrook.qbits.assistant.spi.ModelResponse;
+import com.kingsrook.qbits.assistant.spi.ModelUsage;
+import com.kingsrook.qbits.assistant.spi.ProviderSettings;
+import com.kingsrook.qbits.assistant.spi.StreamHandle;
 
 
 /*******************************************************************************

@@ -28,7 +28,7 @@ import com.kingsrook.qbits.assistant.engine.PhiRoutingGuard;
 import com.kingsrook.qbits.assistant.engine.TurnClassification;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
-import com.kingsrook.qbits.assistant.provider.ModelPart;
+import com.kingsrook.qbits.assistant.spi.ModelPart;
 import com.kingsrook.qbits.assistant.testing.AssistantTestFixture;
 import com.kingsrook.qbits.assistant.testing.BaseAssistantTest;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolResult;

@@ -14,18 +14,15 @@
  * limitations under the License.
  */
 
-package com.kingsrook.qbits.assistant.provider;
+package com.kingsrook.qbits.assistant.spi;
+
+
+import java.util.List;
 
 
 /*******************************************************************************
- ** A provider-neutral prompt-cache breakpoint after a block: LONG is the
- ** shared app prefix (Anthropic: 1 hour), SHORT the per-user / per-turn part
- ** (Anthropic: 5 minutes). Providers without caching ignore hints. Longer
- ** hints must come before shorter ones in the request.
+ ** Ordered vectors and billable usage. No input text is retained in the response.
  *******************************************************************************/
-public enum CacheHint
+public record EmbeddingResponse(List<float[]> vectors, ModelUsage usage, String requestId)
 {
-   NONE,
-   SHORT,
-   LONG
 }

@@ -18,12 +18,12 @@ package com.kingsrook.qbits.assistant.provider.openai;
 
 
 import java.util.List;
-import com.kingsrook.qbits.assistant.provider.AssistantModelProvider;
-import com.kingsrook.qbits.assistant.provider.AssistantProviderType;
-import com.kingsrook.qbits.assistant.provider.DiscoveredModel;
-import com.kingsrook.qbits.assistant.provider.HealthResult;
-import com.kingsrook.qbits.assistant.provider.ModelProviderException;
-import com.kingsrook.qbits.assistant.provider.ProviderSettings;
+import com.kingsrook.qbits.assistant.spi.AssistantModelProvider;
+import com.kingsrook.qbits.assistant.spi.AssistantProviderType;
+import com.kingsrook.qbits.assistant.spi.DiscoveredModel;
+import com.kingsrook.qbits.assistant.spi.HealthResult;
+import com.kingsrook.qbits.assistant.spi.ModelProviderException;
+import com.kingsrook.qbits.assistant.spi.ProviderSettings;
 
 
 /*******************************************************************************

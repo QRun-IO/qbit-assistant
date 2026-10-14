@@ -29,7 +29,7 @@ Always use the wrapper: Maven 3.10 cannot read the parent POM. The committed def
 
 ## Modules
 
-- `qbit-assistant-provider-api`: standalone provider SPI/value types and `engine.ModelPricing` (original package names); only Jackson annotations in production. Provider validation takes unresolved `ProviderSettings`, not an entity.
+- `qbit-assistant-provider-api`: standalone provider SPI/value types and `ModelPricing`, all exclusively in `com.kingsrook.qbits.assistant.spi`; only Jackson annotations in production. Provider validation takes unresolved `ProviderSettings`, not an entity.
 
 - `qbit-assistant` (`com.kingsrook.qbits.assistant`):
   - `AssistantQBitProducer`, `AssistantQBitConfig` (with `AssistantModelRouting` and `AssistantBudgets`), `AssistantRuntime`, `AssistantSecurity`.

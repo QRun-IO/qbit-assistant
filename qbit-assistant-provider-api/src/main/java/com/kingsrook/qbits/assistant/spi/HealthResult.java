@@ -14,15 +14,19 @@
  * limitations under the License.
  */
 
-package com.kingsrook.qbits.assistant.provider;
-
-
-import java.util.List;
+package com.kingsrook.qbits.assistant.spi;
 
 
 /*******************************************************************************
- ** Ordered vectors and billable usage. No input text is retained in the response.
+ ** A health probe result; null healthy means unsupported.
  *******************************************************************************/
-public record EmbeddingResponse(List<float[]> vectors, ModelUsage usage, String requestId)
+public record HealthResult(Boolean healthy, Long latencyMs, String message)
 {
+   /*******************************************************************************
+    ** Sanitize provider diagnostics.
+    *******************************************************************************/
+   public HealthResult
+   {
+      message = ModelProviderException.sanitizeProviderMessage(message, 300);
+   }
 }

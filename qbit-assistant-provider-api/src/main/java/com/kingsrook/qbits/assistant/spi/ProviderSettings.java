@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-package com.kingsrook.qbits.assistant.provider;
+package com.kingsrook.qbits.assistant.spi;
 
 
 import java.util.function.Supplier;
-import javax.net.ssl.SSLContext;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import javax.net.ssl.SSLContext;
 
 
 /*******************************************************************************

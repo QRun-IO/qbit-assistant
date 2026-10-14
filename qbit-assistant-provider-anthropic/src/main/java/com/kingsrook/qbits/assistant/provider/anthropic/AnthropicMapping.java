@@ -40,15 +40,15 @@ import com.anthropic.models.messages.ToolUseBlock;
 import com.anthropic.models.messages.ToolUseBlockParam;
 import com.anthropic.models.messages.Usage;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.kingsrook.qbits.assistant.provider.CacheHint;
-import com.kingsrook.qbits.assistant.provider.ModelMessage;
-import com.kingsrook.qbits.assistant.provider.ModelPart;
-import com.kingsrook.qbits.assistant.provider.ModelProviderException;
-import com.kingsrook.qbits.assistant.provider.ModelRequest;
-import com.kingsrook.qbits.assistant.provider.ModelResponse;
-import com.kingsrook.qbits.assistant.provider.ModelToolDefinition;
-import com.kingsrook.qbits.assistant.provider.ModelUsage;
-import com.kingsrook.qbits.assistant.provider.SystemBlock;
+import com.kingsrook.qbits.assistant.spi.CacheHint;
+import com.kingsrook.qbits.assistant.spi.ModelMessage;
+import com.kingsrook.qbits.assistant.spi.ModelPart;
+import com.kingsrook.qbits.assistant.spi.ModelProviderException;
+import com.kingsrook.qbits.assistant.spi.ModelRequest;
+import com.kingsrook.qbits.assistant.spi.ModelResponse;
+import com.kingsrook.qbits.assistant.spi.ModelToolDefinition;
+import com.kingsrook.qbits.assistant.spi.ModelUsage;
+import com.kingsrook.qbits.assistant.spi.SystemBlock;
 
 
 /*******************************************************************************
