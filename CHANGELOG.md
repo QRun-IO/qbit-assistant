@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased - Email
+
+### Changed
+
+- Add optional qbit-email 0.1.0-RC.1 delivery of a scheduled task's result (`AssistantEmail.sendScheduledResult`): template `assistant_scheduled_result`, link-only secure message for results above PUBLIC using core's `DataClassification`, owner-recipient hook, opt-in and `emailExternalApproved` gates. Scheduled-task wiring remains a separate integration step.
+
 ## Unreleased - Provider API extraction (#30)
 
 - Extract provider SPI/value types and `engine.ModelPricing` into `qbit-assistant-provider-api`, preserving package names. Its only production dependency is Jackson annotations.

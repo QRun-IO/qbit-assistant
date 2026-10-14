@@ -49,6 +49,15 @@
          <optional>true</optional>
       </dependency>
 
+      <!-- Optional email delivery of scheduled-task results. Every reference is in -->
+      <!-- the email package; without the jar nothing changes.                      -->
+      <dependency>
+         <groupId>com.kingsrook.qbits</groupId>
+         <artifactId>qbit-email</artifactId>
+         <version>${qbit-email.version}</version>
+         <optional>true</optional>
+      </dependency>
+
       <dependency>
          <groupId>org.junit.jupiter</groupId>
          <artifactId>junit-jupiter</artifactId>
