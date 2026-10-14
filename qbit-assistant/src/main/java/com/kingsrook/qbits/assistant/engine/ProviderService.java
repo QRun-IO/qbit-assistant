@@ -482,12 +482,22 @@ public class ProviderService
     *******************************************************************************/
    public long monthToDateCostMicros(Integer providerId) throws QException
    {
+      return (monthToDateCostMicros(providerId, false));
+   }
+
+
+
+   /*******************************************************************************
+    ** Shared accounting permits health-runner caps without granting owner access.
+    *******************************************************************************/
+   public long monthToDateCostMicros(Integer providerId, Boolean sharedAccounting) throws QException
+   {
       if(providerId == null)
       {
          return (0);
       }
       Instant monthStart = LocalDate.now(clock.withZone(ZoneOffset.UTC)).withDayOfMonth(1).atStartOfDay().toInstant(ZoneOffset.UTC);
-      return (store.sumUsageCostSince(providerId, monthStart));
+      return (store.sumUsageCostSince(providerId, monthStart, sharedAccounting));
    }
 
 

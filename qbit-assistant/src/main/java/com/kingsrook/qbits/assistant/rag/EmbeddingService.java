@@ -65,10 +65,20 @@ public class EmbeddingService
     *******************************************************************************/
    public List<float[]> embed(Integer modelId, List<String> texts, DataClassification classification, String tables, Integer conversationId, Integer turnId) throws QException
    {
+      return (embed(modelId, texts, classification, tables, conversationId, turnId, UsageRecorder.PURPOSE_EMBED));
+   }
+
+
+
+   /*******************************************************************************
+    ** Connection diagnostics use TEST accounting with the same embedding guards.
+    *******************************************************************************/
+   public List<float[]> embed(Integer modelId, List<String> texts, DataClassification classification, String tables, Integer conversationId, Integer turnId, String purpose) throws QException
+   {
       List<float[]> vectors = new ArrayList<>();
       for(Integer offset = 0; offset < texts.size(); offset += 64)
       {
-         vectors.addAll(batch(modelId, texts.subList(offset, Math.min(offset + 64, texts.size())), classification, tables, conversationId, turnId));
+         vectors.addAll(batch(modelId, texts.subList(offset, Math.min(offset + 64, texts.size())), classification, tables, conversationId, turnId, purpose));
       }
       return (vectors);
    }
@@ -104,7 +114,7 @@ public class EmbeddingService
    /*******************************************************************************
     ** Never downgrade an embedding call into a different vector space.
     *******************************************************************************/
-   private List<float[]> batch(Integer modelId, List<String> texts, DataClassification classification, String tables, Integer conversationId, Integer turnId) throws QException
+   private List<float[]> batch(Integer modelId, List<String> texts, DataClassification classification, String tables, Integer conversationId, Integer turnId, String purpose) throws QException
    {
       String userId = AssistantSecurity.userId(QContext.getQSession());
       ScheduledTurn.checkCost(runtime, conversationId, turnId);
@@ -140,6 +150,10 @@ public class EmbeddingService
       ModelProviderException error = null;
       try
       {
+         if(Thread.currentThread().isInterrupted())
+         {
+            throw (new ModelProviderException(ModelProviderException.Kind.TIMEOUT, null, "Embedding request interrupted."));
+         }
          EmbeddingResponse embedded = active.provider().embed(new EmbeddingRequest(active.model(), texts));
          response = new ModelResponse().withModel(active.model()).withRequestId(embedded.requestId()).withUsage(embedded.usage());
          if(embedded.vectors().size() != texts.size())
@@ -160,7 +174,7 @@ public class EmbeddingService
             gate.release();
          }
          var pricing = runtime.getProviderService().pricing(active, active.model());
-         runtime.getStore().insert(UsageRecorder.row(new UsageRecorder.Call(userId, conversationId, turnId, active, UsageRecorder.PURPOSE_EMBED),
+         runtime.getStore().insert(UsageRecorder.row(new UsageRecorder.Call(userId, conversationId, turnId, active, purpose),
             response, error, (System.nanoTime() - started) / 1_000_000, pricing));
          var usage = response == null ? (error == null ? null : error.getPartialUsage()) : response.getUsage();
          if(usage != null)
