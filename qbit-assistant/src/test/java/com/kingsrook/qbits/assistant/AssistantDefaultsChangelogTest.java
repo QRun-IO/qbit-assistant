@@ -345,6 +345,11 @@ class AssistantDefaultsChangelogTest extends BaseAssistantTest
       {
          for(String sql : statements(ddl))
          {
+            if(sql.startsWith("DO $$"))
+            {
+               // the foreign-key block is PL/pgSQL (Postgres only); SchemaForeignKeyPostgresTest runs it on real Postgres
+               continue;
+            }
             Matcher m = Pattern.compile("^(CREATE TABLE|ALTER TABLE) (assistant_[a-z_]+)\\b(.*)", Pattern.DOTALL).matcher(sql);
             if(m.find() && DDL_TABLES.contains(m.group(2)) && (m.group(1).startsWith("CREATE") || m.group(3).strip().startsWith("ADD COLUMN")))
             {
@@ -420,7 +425,8 @@ class AssistantDefaultsChangelogTest extends BaseAssistantTest
 
 
    /*******************************************************************************
-    ** SQL statements, without comment lines, split at a ';' that ends a line.
+    ** SQL statements, without comment lines, split at a ';' that ends a line;
+    ** a DO $$ ... $$ block stays one statement.
     *******************************************************************************/
    static List<String> statements(String sql)
    {
@@ -433,13 +439,35 @@ class AssistantDefaultsChangelogTest extends BaseAssistantTest
             text.append(stripped).append("\n");
          }
       }
-      List<String> rs = new ArrayList<>();
+      List<String>  rs    = new ArrayList<>();
+      StringBuilder block = null;
       for(String statement : text.toString().split(";\\s*\\n"))
       {
+         String stripped = statement.strip();
+         if(block == null && stripped.startsWith("DO $$") && !stripped.endsWith("$$"))
+         {
+            // a dollar-quoted block has its own semicolons: keep it whole up to its closing $$
+            block = new StringBuilder(stripped);
+            continue;
+         }
+         if(block != null)
+         {
+            block.append(";\n").append(stripped);
+            if(stripped.endsWith("$$"))
+            {
+               rs.add(block.toString());
+               block = null;
+            }
+            continue;
+         }
          if(!statement.isBlank())
          {
-            rs.add(statement.strip().replaceAll(";$", ""));
+            rs.add(stripped.replaceAll(";$", ""));
          }
+      }
+      if(block != null)
+      {
+         rs.add(block.toString());
       }
       return (rs);
    }
