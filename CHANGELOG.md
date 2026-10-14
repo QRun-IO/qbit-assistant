@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased - Starter defaults
+
+- Ship `db/liquibase/qbit-assistant/assistant-defaults.changelog.sql`: insert-only starter rows for the policy, a default profile, four starter skills offered through it, a monthly instance budget (warn, downgrade, stop), current Anthropic prices and a disabled example scheduled task.
+- Add the Setup card to the Assistant home: every configuration table with its state (set up, needs setup, using defaults, optional) and the next step.
+- Add the `assistant_data_access` table action "Add rows for every table", which writes the default access out as editable rows.
+- Add `help/qbit-assistant.yaml` (QQQ help-bundle format) for the app and every assistant table, saying what each table is for and how its rows get created; applied by `AssistantHelp` until core help bundles ship in a release.
+- Guardrail tests: every table is used at runtime, seeded or explained, and has empty-state help; the changelog seeds a fresh schema and the seeded rows change the assistant's behavior.
+
 ## Unreleased - X1/Y1
 
 - Add default-off `withRecordHistory(true)` host opt-in: remove only `audit*` on RC.6, or invoke core #1193 audit-read/write-deny support when available. Preserve user permissions and all other channel denials; kof22 does not opt in.
