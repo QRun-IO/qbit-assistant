@@ -17,6 +17,7 @@
 package com.kingsrook.qbits.assistant;
 
 
+import java.lang.ref.WeakReference;
 import java.net.InetAddress;
 import java.time.Clock;
 import java.time.Duration;
@@ -178,11 +179,22 @@ public class AssistantRuntime
       this.contextBuilder = new ContextBuilder(config, kernel, toolbox).withKnowledgeTool(knowledgeTool).withBulkLoadTools(bulkLoadTools);
       if(Boolean.TRUE.equals(config.getRegisterShutdownHook()))
       {
+         ///////////////////////////////////////////////////////////////////////
+         // the hook holds the runtime weakly: a runtime (and its QInstance)   //
+         // that is dropped without shutdown() - every test that builds an    //
+         // instance - must not stay reachable from the JVM's hooks           //
+         ///////////////////////////////////////////////////////////////////////
+         WeakReference<AssistantRuntime> self = new WeakReference<>(this);
+         Integer graceSeconds = config.getShutdownGraceSeconds();
          shutdownHook = new Thread(() ->
          {
             try
             {
-               shutdown(Duration.ofSeconds(config.getShutdownGraceSeconds()));
+               AssistantRuntime runtime = self.get();
+               if(runtime != null)
+               {
+                  runtime.shutdown(Duration.ofSeconds(graceSeconds));
+               }
             }
             catch(Throwable ignored)
             {
