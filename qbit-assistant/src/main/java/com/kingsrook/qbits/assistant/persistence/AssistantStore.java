@@ -815,10 +815,21 @@ public class AssistantStore
     *******************************************************************************/
    public long sumUsageCostSince(Integer providerId, Instant since) throws QException
    {
+      return (sumUsageCostSince(providerId, since, false));
+   }
+
+
+
+   /*******************************************************************************
+    ** Automated health uses the existing private accounting projection so a cap
+    ** includes all users, without reading their owner-locked usage records.
+    *******************************************************************************/
+   public long sumUsageCostSince(Integer providerId, Instant since, Boolean sharedAccounting) throws QException
+   {
       long total = 0;
-      for(QRecord record : queryRecords(AssistantUsage.TABLE_NAME, new QQueryFilter()
+      for(QRecord record : queryRecords(sharedAccounting ? AssistantBudgetUsage.TABLE_NAME : AssistantUsage.TABLE_NAME, new QQueryFilter()
          .withCriteria("providerId", QCriteriaOperator.EQUALS, providerId)
-         .withCriteria("createDate", QCriteriaOperator.GREATER_THAN_OR_EQUALS, since), MAX_SUM_ROWS))
+         .withCriteria(sharedAccounting ? "occurredAt" : "createDate", QCriteriaOperator.GREATER_THAN_OR_EQUALS, since), MAX_SUM_ROWS))
       {
          Long cost = record.getValueLong("costMicros");
          total += cost == null ? 0 : cost;

@@ -20,6 +20,7 @@ package com.kingsrook.qbits.assistant.metadata;
 import java.util.ArrayList;
 import java.util.List;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
+import com.kingsrook.qbits.assistant.health.AssistantHealthWidget;
 import com.kingsrook.qbits.assistant.home.AssistantAccessWidget;
 import com.kingsrook.qbits.assistant.home.AssistantHome;
 import com.kingsrook.qbits.assistant.model.AssistantBudget;
@@ -383,7 +384,7 @@ public class AssistantMetaDataBuilder
          .withLabel("Assistant")
          .withIcon(new QIcon("smart_toy"))
          .withPermissionRules(adminRules())
-         .withWidgets(List.of(AssistantHome.WIDGET_NAME, AssistantAccessWidget.WIDGET_NAME));
+         .withWidgets(List.of(AssistantHealthWidget.NAME, AssistantHome.WIDGET_NAME, AssistantAccessWidget.WIDGET_NAME));
       for(String name : NAV_TABLES)
       {
          tables.stream().filter(t -> t.getName().equals(name)).findFirst().ifPresent(app::withChild);

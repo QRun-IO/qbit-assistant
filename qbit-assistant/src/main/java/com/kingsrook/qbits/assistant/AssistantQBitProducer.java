@@ -23,6 +23,8 @@ import java.util.List;
 import java.util.Properties;
 import com.kingsrook.qbits.assistant.api.AssistantRoutes;
 import com.kingsrook.qbits.assistant.developer.AssistantDeveloperPanels;
+import com.kingsrook.qbits.assistant.health.AssistantHealthChecks;
+import com.kingsrook.qbits.assistant.health.AssistantHealthWidget;
 import com.kingsrook.qbits.assistant.home.AssistantAccessWidget;
 import com.kingsrook.qbits.assistant.home.AssistantHome;
 import com.kingsrook.qbits.assistant.metadata.AssistantChannelWall;
@@ -200,6 +202,7 @@ public class AssistantQBitProducer implements QBitMetaDataProducer<AssistantQBit
          qInstance.addProcess(process);
       }
       qInstance.addWidget(AssistantHome.widget());
+      qInstance.addWidget(AssistantHealthWidget.widget());
       qInstance.addWidget(AssistantAccessWidget.widget());
 
       QAppMetaData app = builder.buildAdminApp(tables);
@@ -217,6 +220,7 @@ public class AssistantQBitProducer implements QBitMetaDataProducer<AssistantQBit
          ClientChannelsMetaData.ofOrWithNew(qInstance).withDeniedPattern("assistant", "audit*");
       }
       postProduceActions(new MetaDataProducerMultiOutput(), qInstance);
+      AssistantHealthChecks.register(qInstance);
       return (new MetaDataProducerMultiOutput());
    }
 

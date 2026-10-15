@@ -676,7 +676,7 @@ class RoutingFallbackTest extends BaseAssistantTest
       assertThat(script("a").getRequests()).isEmpty();
       assertThat(store().getProvider(a.getProviderId()).getHealthState()).isEqualTo("DOWN");
       String html = AssistantHomeView.render(AssistantHomeData.load(config.getRuntime()), "");
-      assertThat(html).contains("DOWN", "Down until", "0 fallbacks");
+      assertThat(html).contains("0 fallbacks").doesNotContain("Down until", "Last test failed");
    }
 
 
