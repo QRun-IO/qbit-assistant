@@ -217,7 +217,7 @@
          <properties>
             <!-- RC.7 provides classified-value tokens, log redaction and native help bundles; -->
             <!-- RC.8 provides core job tracking (JobTracking, the Jobs tray).                   -->
-            <qqq.snapshot.version>4.1.0-RC.8</qqq.snapshot.version>
+            <qqq.snapshot.version>4.1.0-RC.15</qqq.snapshot.version>
          </properties>
          <dependencyManagement>
             <dependencies>

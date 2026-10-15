@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased - UI API 1.6.0
+
+- UI API extension assistant 1.3.0 (requires QQQ 4.1.0-RC.15, UI API 1.6.0): operationIds, standard error responses with BasicErrorResponseV1, extension tags and trace IDs. Preserve HTTP statuses and assistant-specific error codes.
+- Retain AssistantErrorV1 as a deprecated component for compatibility. Remove dangling `null` schema references from the two bodyless 204 responses (delete conversation and feedback), with an empty-content workaround for core schema traversal. Success payloads are unchanged; the contract test retains the release baseline with explicit exceptions for the error schema migration and these documentation corrections.
+
 ## Unreleased - Central health
 
 ### Added
