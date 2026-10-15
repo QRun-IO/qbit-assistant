@@ -30,6 +30,25 @@ Hosts register providers through `AssistantQBitConfig` in `qbit-assistant`.
 
 Data tools use the QQQ UI API (`/qqq/v1`) with the signed-in user's session. The UI API enforces permissions and record locks; assistant data-access policy and field exposure can only narrow access. Only record-free navigation and help use the core AI tool kernel. Every tool result reaches the model wrapped as untrusted data.
 
+## Transcript privacy
+
+QQQ **4.1.0-RC.7** supplies the secured-data tokens and log hook (`qqq#1182`).
+Stored transcripts never contain the raw PII/PHI values read by a turn or supplied
+in classified tool criteria/fields. Messages, tool logs, replay events, knowledge
+snippets and pending payloads store `ClassifiedValueTokens` tokens; scheduled
+summaries use the redacted message. The model and live user stream retain the
+values permitted by PHI routing. History and replay show tokens instead.
+
+Content is finalized at turn completion; interrupted servers leave value-free
+placeholders. Proposals requiring redacted parameters are rejected and must be
+completed in the application. Existing transcripts are not migrated. See
+[transcript redaction](docs/DESIGN.md#transcript-redaction-secured-data-15).
+The dependency upgrade stays draft until RC.7 is published; local verification:
+
+```powershell
+.\mvnw.cmd -q verify "-Dqqq.snapshot.version=4.1.0-RC7PRE-SNAPSHOT"
+```
+
 ## Host audit attribution (X1/Y1)
 
 Use QQQ **4.1.0-RC.6 or later**. The QBit explicitly denies every assistant
@@ -173,6 +192,15 @@ The key never goes in config, tables or logs. It lives in the application's secr
 
 The provider's `toString` never contains the key. Its errors carry only the HTTP status and the API error type.
 
+### Starter defaults
+
+Include `db/liquibase/qbit-assistant/assistant-defaults.changelog.sql` (shipped in
+the jar) after your assistant DDL. A new installation then has a policy row, a
+default profile with four starter skills, a $50/month instance budget, current
+Anthropic prices and a disabled example scheduled task. Every row is insert-only,
+so administrators can edit them freely. The home's **Setup** card shows what is
+set up and the next step for the rest (usually: add a provider).
+
 ## Provider settings (the Providers table)
 
 Admins set up providers on the **Providers** screen (`assistant_provider`), a standard QQQ table:
@@ -218,9 +246,8 @@ its lazy probe. UP/DEGRADED avoids a duplicate probe, DOWN rejects the call, and
 UNKNOWN or stale/missing results retain the existing probe fallback. The breaker
 and manual Test connection actions remain available.
 
-This integration requires the unreleased core health SPI. For local verification,
-use `./mvnw -o verify -Dqqq.snapshot.version=4.1.0-SNAPSHOT`; the POM's released QQQ
-version remains unchanged.
+This integration uses the core health SPI released in QQQ 4.1.0-RC.8.
+The POM pins that release; verify with `./mvnw -o verify`.
 
 ## The app home
 
@@ -727,3 +754,18 @@ remain untouched, as do explicit object and permission-rule denials.
 History visibility uses core's `isDenied` read/all-operation check. RC.6 has no
 operation argument; the later write-only deny patterns must remain separate
 from that check so they do not hide the read tool.
+
+## In-app help
+
+The QBit registers [`help/qbit-assistant.yaml`](qbit-assistant/src/main/resources/help/qbit-assistant.yaml)
+with QQQ's help-bundle registry during production. Hosts with help content storage use QQQ's
+startup bundle sync; registration is harmless when the host has no `helpContent` table.
+
+To customize the wording, register a separate bundle with `layer: HOST` using
+`HelpBundles.register(qInstance, "help/my-application.yaml")`. Entries with the same key and
+role override this QBIT bundle. User-edited help remains protected by core's sync.
+Keep live `{{...}}` references so labels and metadata values follow the host's configuration.
+
+`AssistantTablesGuardrailTest.everyOwnedTargetHasBundleHelp` checks coverage and live references
+against the produced test instance with `HelpBundleAssertions`; it runs in the normal Maven build.
+Update the bundle's literal version alongside the artifact version when releasing.

@@ -1,0 +1,1544 @@
+bundle: qbit-assistant
+version: 0.1.0-SNAPSHOT
+layer: QBIT
+entries:
+- key: app:assistantAdmin;slot:help
+  summary: 'Set up and watch the in-app AI assistant: its providers, models, limits, knowledge sources and every conversation.'
+  content: |
+    You use the assistant chat panel inside your application. It answers questions and reads data using **your own permissions and record locks**.
+
+    From here you can:
+    - connect and test AI providers, and choose which models they offer
+    - set spending limits and the kill switch in **{{label:assistant_policy}}**
+    - review every conversation, with its messages, turns, tool calls and feedback
+    - configure searchable knowledge in **{{label:assistant_rag_source}}** and control tool access through **{{label:assistant_data_access}}**
+
+    You need the assistant admin permission to see this app. Regular users only ever see their own conversations in the panel; admins can read all of them here.
+- key: table:assistant_conversation;slot:help
+  summary: One chat between a user and the assistant, with its running totals of tokens and cost.
+  content: |
+    A conversation is created when a user asks their first question in the assistant panel. Everything that follows (messages, turns, tool calls, feedback, model calls) hangs off it and is listed on its screen.
+
+    Most fields are filled in automatically and cannot be edited. You can only change the **{{label:assistant_conversation.title}}** and whether it is **{{label:assistant_conversation.pinned}}**.
+
+    Use this list to see who is using the assistant, how much it costs, and to open a conversation when you need to find out why an answer went wrong. Conversations are not kept forever: the **{{label:assistantRetention}}** action deletes conversations that have passed the configured inactivity period (90 days by default), together with their messages, turns, tool calls and feedback.
+
+    See also **{{label:assistant_policy}}** for limits and **{{label:assistant_provider}}** for where answers come from.
+- key: table:assistant_conversation;section:conversation
+  summary: Who the conversation belongs to, its title and state, and when it last had a new message.
+- key: table:assistant_conversation;section:usage
+  summary: Total tokens and cost for the whole conversation so far.
+- key: table:assistant_conversation;section:context
+  summary: Technical details about the screen the user was on when the conversation started.
+- key: table:assistant_conversation;section:details
+  summary: Other fields of the conversation that are not shown in the groups above.
+- key: table:assistant_conversation;section:dates
+  summary: When the conversation was created and last changed.
+- key: table:assistant_conversation;section:conversationMessages
+  summary: Every message in this conversation, both the user's questions and the assistant's answers, in order.
+- key: table:assistant_conversation;section:conversationTurns
+  summary: Each question and answer cycle in this conversation, with its model, cost and outcome.
+- key: table:assistant_conversation;section:conversationToolCalls
+  summary: The lookups the assistant made in this conversation, such as reading records or counting rows.
+- key: table:assistant_conversation;section:conversationPendingActions
+  summary: Changes the assistant proposed in this conversation that waited for the user to confirm.
+- key: table:assistant_conversation;section:conversationFeedback
+  summary: Thumbs up and thumbs down ratings the user gave to answers in this conversation.
+- key: table:assistant_conversation;section:conversationDataAudit
+  summary: A record of which data sensitivity level this conversation touched and which provider was allowed to see it.
+- key: table:assistant_conversation;section:conversationModelCalls
+  summary: Each individual request sent to an AI provider for this conversation, with tokens, cost and result.
+- key: table:assistant_conversation;field:status
+  summary: Whether the conversation is active or has been archived by the user.
+  content: |
+    The user sets this from the assistant panel. **ACTIVE** conversations show in their normal list. **ARCHIVED** conversations are tucked away but are not deleted. You cannot change it from this screen.
+- key: table:assistant_conversation;field:title
+  summary: A short name for the conversation, taken from the user's first question.
+  content: |
+    It is filled in from the first line of the first question and cut to a reasonable length. You may rename it. Titles longer than 255 characters are shortened with an ellipsis.
+- key: table:assistant_conversation;field:userId
+  summary: The user this conversation belongs to; only they and assistant admins can see it.
+- key: table:assistant_conversation;field:totalCostMicros
+  summary: What the conversation has cost so far, in millionths of a US dollar.
+  content: |
+    1,000,000 is $1.00, so 25,000 is 2.5 cents. The cost is calculated from tokens used and the model's price in **{{label:assistant_model}}** or **{{label:assistant_model_price}}**, and is added up after each answer finishes. Models without a configured price have no recorded cost.
+- key: table:assistant_conversation;field:contextJson
+  summary: Technical note of the screen and app the user had open when the conversation was started.
+  content: |
+    It is saved by the assistant panel and is only useful when you are tracing why the assistant answered the way it did. It is read-only.
+- key: table:assistant_conversation;field:lastMessageAt
+  summary: When the most recent answer in this conversation finished.
+- key: table:assistant_conversation;field:totalTokensIn
+  summary: Tokens sent to the model across the whole conversation, including cached ones.
+  content: |
+    Tokens are the small pieces of text the model reads and writes. This total adds normal input, cache reads and cache writes. It grows after every answer.
+- key: table:assistant_conversation;field:totalTokensOut
+  summary: Tokens the model has written back across the whole conversation.
+- key: table:assistant_conversation;field:unreadCount
+  summary: How many answers the user has not opened yet; it resets to 0 when they open the conversation.
+- key: table:assistant_conversation;field:pinned
+  summary: Keeps the conversation at the top of the user's list in the panel.
+- key: table:assistant_conversation;field:maxClassification
+  summary: 'The most sensitive kind of data the conversation has touched: PUBLIC, CONFIDENTIAL, PII or PHI.'
+  content: |
+    It only ever goes up. Levels run from PUBLIC (lowest) through CONFIDENTIAL and PII to PHI (health data, highest). It is set by the assistant and cannot be edited.
+- key: table:assistant_message;slot:help
+  summary: 'One message in a conversation: either the user''s question or the assistant''s answer.'
+  content: |
+    Messages are created by the assistant panel and cannot be edited. Each conversation holds them in order, numbered from 1. A question and the answer to it share a turn.
+
+    The visible content, including text, the lookups used and links to records, is stored in **{{label:assistant_message.partsJson}}**. Use this screen to review the saved transcript. Classified personal and health values may be replaced with protected tokens before storage, so saved text can differ from the live answer. Questions from users appear as USER messages, and answers as ASSISTANT messages.
+
+    See also **{{label:assistant_turn}}** for what happened while the answer was being produced.
+- key: table:assistant_message;section:message
+  summary: Which conversation and turn the message belongs to, who wrote it and what state it is in.
+- key: table:assistant_message;section:parts
+  summary: The saved message content, with storage protections applied.
+- key: table:assistant_message;section:dates
+  summary: When the message was created and last changed.
+- key: table:assistant_message;field:role
+  summary: 'Who wrote it: USER for the person''s question, ASSISTANT for the answer.'
+- key: table:assistant_message;field:status
+  summary: 'How far along the message is: COMPLETE, STREAMING while it is written, or ERROR or CANCELLED.'
+  content: |
+    A user message is always COMPLETE. An assistant message starts as STREAMING and takes the outcome of its turn when the answer ends.
+- key: table:assistant_message;field:userId
+  summary: The user whose conversation this message belongs to.
+- key: table:assistant_message;field:parentMessageId
+  summary: The message this one follows, when messages are linked in a chain.
+- key: table:assistant_message;field:conversationId
+  summary: The conversation this message is part of.
+- key: table:assistant_message;field:partsJson
+  summary: 'The message content in stored form: text, lookups used, record links and any charts or tables shown.'
+  content: |
+    It is long technical text and is read-only. Open it when you need to inspect the saved answer; sensitive values may have been replaced before storage.
+- key: table:assistant_message;field:seq
+  summary: The message's position in the conversation, starting at 1; a question and its answer are consecutive numbers.
+- key: table:assistant_message;field:turnId
+  summary: The question-and-answer cycle that produced this message.
+- key: table:assistant_message;field:model
+  summary: The AI model that wrote this answer; empty on the user's own questions.
+- key: table:assistant_turn;slot:help
+  summary: 'One question-and-answer cycle: what the assistant did to answer, what it cost and how it ended.'
+  content: |
+    A turn starts when a user sends a question and ends when the answer is finished, cancelled or failed. It records the model used, how many lookups and model requests it needed, the tokens and cost, and why it stopped.
+
+    Open a turn when an answer was slow, failed, was cut off or cost more than expected. Check **{{label:assistant_turn.status}}**, **Error code** and **Stop reason** first. The turn's step-by-step events are listed in **{{label:assistant_turn_event}}**, and the lookups in **{{label:assistant_tool_call}}**.
+
+    Turns are created by the assistant and cannot be edited. They are deleted with their conversation by **{{label:assistantRetention}}**.
+- key: table:assistant_turn;section:routing
+  summary: How the assistant chose a model for this question, and whether a backup provider had to be used.
+- key: table:assistant_turn;section:turn
+  summary: Which conversation and messages this turn belongs to, its status, the model and when it ran.
+- key: table:assistant_turn;section:outcome
+  summary: Why the turn stopped, and the error code if it failed.
+- key: table:assistant_turn;section:usage
+  summary: Tokens, cost and number of lookups and model requests the turn used.
+- key: table:assistant_turn;section:provider
+  summary: The request ids the AI provider returned; give them to the provider if you need support.
+- key: table:assistant_turn;section:details
+  summary: Other fields of the turn that are not shown in the groups above.
+- key: table:assistant_turn;section:dates
+  summary: When the turn was created and last changed.
+- key: table:assistant_turn;field:status
+  summary: 'Where the turn stands: RUNNING, CANCELLING, COMPLETE, CANCELLED or ERROR.'
+  content: |
+    - **RUNNING**: the answer is still being produced.
+    - **CANCELLING**: someone asked it to stop and it is winding down.
+    - **COMPLETE**: finished normally.
+    - **CANCELLED**: stopped by the user or by the kill switch.
+    - **ERROR**: failed; see **Error code**.
+- key: table:assistant_turn;field:errorCode
+  summary: "Why a failed turn failed."
+  content: |
+    Why a failed turn failed, such as BUDGET, TIMEOUT, PROVIDER, INTERNAL or KILL_SWITCH.
+
+    - **BUDGET**: a spending limit in **{{label:assistant_policy}}** was reached.
+    - **TIMEOUT**: the answer took longer than the time allowed (300 seconds by default) or the provider timed out.
+    - **PROVIDER**: the AI provider could not be reached or returned an error.
+    - **INTERNAL**: an unexpected fault inside the assistant.
+    - **KILL_SWITCH**: an admin turned the assistant off while it was working.
+
+    Empty when the turn succeeded.
+- key: table:assistant_turn;field:classification
+  summary: 'The most sensitive data level this question touched: PUBLIC, CONFIDENTIAL, PII or PHI.'
+  content: |
+    It decides which providers are allowed to see the question. The level depends on your application’s data classifications.
+- key: table:assistant_turn;field:startedAt
+  summary: When the assistant began working on the question.
+- key: table:assistant_turn;field:userId
+  summary: The user who asked the question.
+- key: table:assistant_turn;field:costMicros
+  summary: What this turn cost, in millionths of a US dollar.
+  content: |
+    1,000,000 is $1.00. It covers every model request made for the turn, including any routing check. Models without a configured price have no recorded cost.
+- key: table:assistant_turn;field:stopReason
+  summary: "Why the model stopped writing."
+  content: |
+    Why the model stopped writing, such as end_turn, tool_limit, max_tokens, refusal, timeout or cancelled.
+
+    - **end_turn**: it finished its answer normally.
+    - **tool_limit**: it hit the cap on lookups per question (25 by default) and stopped.
+    - **max_tokens**: the answer was cut off for being too long.
+    - **refusal**: the model declined to answer.
+    - **model_context_window_exceeded**: the conversation had grown too long for the model.
+    - **timeout** or **cancelled**: the turn ran out of time or was stopped.
+- key: table:assistant_turn;field:toolCallCount
+  summary: How many lookups the assistant made to answer, such as reading records or counting rows.
+- key: table:assistant_turn;field:fallbackCount
+  summary: How many times the assistant had to switch to a backup model because the first one was unavailable.
+- key: table:assistant_turn;field:userMessageId
+  summary: The user's question that started this turn.
+- key: table:assistant_turn;field:modelCallCount
+  summary: How many separate requests were sent to the AI model during this turn; more than one when it used lookups.
+- key: table:assistant_turn;field:cancelReason
+  summary: "Who or what cancelled the turn."
+  content: |
+    Who or what cancelled the turn: USER, KILL_SWITCH or SHUTDOWN.
+
+    **USER** means the person pressed stop. **KILL_SWITCH** means the kill switch in **{{label:assistant_policy}}** was turned on. **SHUTDOWN** means the server was stopping. Empty if the turn was not cancelled.
+- key: table:assistant_turn;field:routeSource
+  summary: 'How the model for this question was chosen: HEURISTIC (a quick rule) or CLASSIFIER (a small model decided).'
+  content: |
+    Empty when no routing applied. Routing is set up on an assistant profile. Without one, every question uses the main model.
+- key: table:assistant_turn;field:routeDecision
+  summary: Whether the question was judged SIMPLE or COMPLEX, which picks the cheaper or the stronger model.
+  content: |
+    It is OFF when routing is not in use. A question counts as complex when it is long, names several tables, uses words like "analyze", "compare" or "why", or follows a long conversation.
+- key: table:assistant_turn;field:providerId
+  summary: The provider that actually produced the answer; it may differ from the default if a backup was used.
+- key: table:assistant_turn;field:cacheReadTokens
+  summary: Tokens the provider read from its cache instead of processing again; these are billed at a lower price.
+- key: table:assistant_turn;field:inputTokens
+  summary: Tokens sent to the model that were not served from cache.
+- key: table:assistant_turn;field:outputTokens
+  summary: Tokens the model wrote in its answers during this turn.
+- key: table:assistant_turn;field:conversationId
+  summary: The conversation this turn is part of.
+- key: table:assistant_turn;field:model
+  summary: The model id that answered this turn, for example claude-sonnet-5-5.
+- key: table:assistant_turn;field:endedAt
+  summary: When the turn finished, was cancelled or failed; empty while it is still running.
+- key: table:assistant_turn;field:cacheWriteTokens
+  summary: Tokens the provider stored in its cache for later reuse; these cost somewhat more than normal input.
+- key: table:assistant_turn;field:assistantMessageId
+  summary: The assistant's answer produced by this turn.
+- key: table:assistant_turn;field:providerRequestIds
+  summary: The ids the AI provider gave to each request in this turn, for support questions.
+- key: table:assistant_turn;field:classificationTables
+  summary: The tables that raised the sensitivity level of this question, when it is above public.
+- key: table:assistant_turn_event;slot:help
+  summary: 'The step-by-step log of one answer as it was produced: text arriving, lookups starting and finishing, usage and the end.'
+  content: |
+    Each event is one small update the assistant panel received while an answer was being written. They are kept so that a panel that lost its connection can catch up, and so you can replay what happened during a turn.
+
+    Events are created automatically, are read-only, and are numbered in order within their turn. Most people never need this table: look at **{{label:assistant_turn}}** and **{{label:assistant_tool_call}}** first. Open the events only when you need the exact order of what happened.
+
+    Events are deleted together with their conversation by **{{label:assistantRetention}}**.
+- key: table:assistant_turn_event;section:event
+  summary: Which turn the event belongs to, its position in the sequence and what kind of event it is.
+- key: table:assistant_turn_event;section:data
+  summary: The content of the event in its stored form.
+- key: table:assistant_turn_event;section:dates
+  summary: When the event was recorded.
+- key: table:assistant_turn_event;field:eventType
+  summary: What kind of update this was, such as message.start, text.delta, tool.result, usage or error.
+  content: |
+    - **message.start** and **message.end**: the answer began and finished.
+    - **text.delta**: a piece of the answer text arrived.
+    - **tool.start** and **tool.result**: a lookup began and returned.
+    - **notice**: a warning shown to the user, such as nearing a limit.
+    - **usage**: token counts so far.
+    - **error**: the answer failed.
+    - **presentation** and **ui.navigate**: a table or chart was shown, or a screen was opened for the user.
+- key: table:assistant_turn_event;field:userId
+  summary: The user whose question produced this event.
+- key: table:assistant_turn_event;field:dataJson
+  summary: 'The event''s content in stored form: the text piece, lookup name, counts or error message.'
+- key: table:assistant_turn_event;field:seq
+  summary: The event's position within its turn, starting at 1.
+- key: table:assistant_turn_event;field:turnId
+  summary: The question-and-answer cycle this event belongs to.
+- key: table:assistant_tool_call;slot:help
+  summary: A record of one lookup or action the assistant ran while answering, with what it asked for and what came back.
+  content: |
+    Tool calls are how the assistant reads your data: listing tables, searching and counting records, reading one record, opening a screen or proposing a change. Each call is saved here as an audit trail.
+
+    Every call runs with the **asking user's own permissions and record locks**. So **Permission check**, **{{label:assistant_tool_call.outcome}}** and **{{label:assistant_tool_call.httpStatus}}** show whether that user was allowed to do it. Sensitive values such as keys and card numbers are redacted from results before the model sees them, and **{{label:assistant_tool_call.redactionsJson}}** notes what was hidden.
+
+    Use this table to check what the assistant actually looked at, or why an answer was wrong or refused. Stored results are cleared after 30 days by **{{label:assistantRetention}}**; the audit row itself stays until its conversation is purged. Tool calls are read-only and created automatically.
+- key: table:assistant_tool_call;section:call
+  summary: Which lookup was run, how it ended, and the conversation and turn it belongs to.
+- key: table:assistant_tool_call;section:target
+  summary: The table, action or widget the lookup targeted, and the permission check made for it.
+- key: table:assistant_tool_call;section:result
+  summary: A short summary of what came back, how many rows, how long it took and any related approval or audit link.
+- key: table:assistant_tool_call;section:payloads
+  summary: The full input, result and redaction notes, in stored form, for detailed troubleshooting.
+- key: table:assistant_tool_call;section:dates
+  summary: When the lookup was recorded.
+- key: table:assistant_tool_call;field:processName
+  summary: The action the lookup targeted, when it was about running an action rather than a table.
+- key: table:assistant_tool_call;field:tableName
+  summary: The table the lookup read or proposed a change to; empty when it was not about a table.
+- key: table:assistant_tool_call;field:outcome
+  summary: "How the lookup ended."
+  content: |
+    How the lookup ended: OK, TRUNCATED, DENIED, NOT_FOUND, INVALID_INPUT or ERROR.
+
+    - **OK**: it worked.
+    - **TRUNCATED**: it worked but the result was cut to fit the row limit.
+    - **DENIED**: the user's permissions or record locks did not allow it.
+    - **NOT_FOUND**: the record or table did not exist or was not visible to that user.
+    - **INVALID_INPUT**: the assistant asked for something malformed.
+    - **ERROR**: something failed unexpectedly.
+- key: table:assistant_tool_call;field:resultJson
+  summary: What the lookup returned to the model, in stored form, after redaction and cut to a size limit.
+  content: |
+    It is cleared after the configured retention period (30 days by default) by **{{label:assistantRetention}}** to limit how long data copies are kept. The summary and outcome stay.
+- key: table:assistant_tool_call;field:durationMs
+  summary: How long the lookup took, in milliseconds.
+- key: table:assistant_tool_call;field:userId
+  summary: The user whose permissions the lookup ran under.
+- key: table:assistant_tool_call;field:toolName
+  summary: "The name of the lookup the assistant ran."
+  content: |
+    The name of the lookup, such as query_records, count_records, get_record or search_knowledge.
+- key: table:assistant_tool_call;field:resultSummary
+  summary: A one-line description of what the lookup found, shown in the answer's steps.
+- key: table:assistant_tool_call;field:redactionsJson
+  summary: A note of which kinds of sensitive values were hidden from the model in this result; empty if none were.
+  content: |
+    Redaction covers things like API keys, tokens, private keys, card numbers and social security numbers, when the redaction setting in **{{label:assistant_policy}}** is on.
+- key: table:assistant_tool_call;field:inputJson
+  summary: 'What the assistant asked for, in stored form: the table, filters and fields it passed to the lookup.'
+- key: table:assistant_tool_call;field:toolCallId
+  summary: The identifier the model gave this lookup, used to match it to its result within the turn.
+- key: table:assistant_tool_call;field:pendingActionId
+  summary: The proposed change awaiting the user's confirmation, when this lookup was a create, update or delete.
+- key: table:assistant_tool_call;field:uiApiOperation
+  summary: The exact request the assistant made to the site's screen API for the user, e.g. GET /table/{table}/{id}.
+- key: table:assistant_tool_call;field:auditHref
+  summary: A link to the audit log entry, filled in when the lookup carried out a confirmed change.
+- key: table:assistant_tool_call;field:httpStatus
+  summary: The result code of the request the assistant made, for example 200 for success or 403 when the user was not allowed.
+- key: table:assistant_tool_call;field:conversationId
+  summary: The conversation this lookup was part of.
+- key: table:assistant_tool_call;field:turnId
+  summary: The question-and-answer cycle this lookup belongs to.
+- key: table:assistant_tool_call;field:permissionCheck
+  summary: A short note of the permission check made for the lookup on the asking user's behalf.
+- key: table:assistant_tool_call;field:rowCount
+  summary: How many rows the lookup returned to the model, capped by the row limit in Assistant Policy.
+- key: table:assistant_tool_call;field:widgetName
+  summary: The dashboard widget the lookup rendered, when it was about showing a widget.
+- key: table:assistant_feedback;slot:help
+  summary: Thumbs up or thumbs down ratings that users gave to the assistant's answers, with an optional reason.
+  content: |
+    Users rate an answer from the assistant panel. Use this list to spot answers people found unhelpful, then open the linked message and conversation to see what went wrong.
+
+    A rating is +1 for thumbs up and -1 for thumbs down. Users can add a short reason and a free-text comment. Feedback can only be given on assistant answers, never on a user's own question. Records here are read-only and are deleted with their conversation by **{{label:assistantRetention}}**.
+
+    See also **{{label:assistant_message}}** and **{{label:assistant_conversation}}**.
+- key: table:assistant_feedback;section:feedback
+  summary: The rating, the reason chosen and any comment the user wrote.
+- key: table:assistant_feedback;section:about
+  summary: The conversation and answer the feedback is about, and who gave it.
+- key: table:assistant_feedback;section:dates
+  summary: When the feedback was given.
+- key: table:assistant_feedback;field:reason
+  summary: A short reason the user picked for the rating, alongside their optional comment.
+- key: table:assistant_feedback;field:comment
+  summary: What the user wrote in their own words about the answer, up to 4,000 characters.
+- key: table:assistant_feedback;field:messageId
+  summary: The assistant answer that was rated.
+- key: table:assistant_feedback;field:userId
+  summary: The user who gave the rating.
+- key: table:assistant_feedback;field:conversationId
+  summary: The conversation the rated answer belongs to.
+- key: table:assistant_feedback;field:rating
+  summary: 1 for thumbs up, -1 for thumbs down.
+- key: table:assistant_policy;slot:help
+  summary: The one place to set the assistant's spending limits, the kill switch, and which tools and data it may use.
+  content: |
+    Policy changes take effect within about 30 seconds and apply to everyone. The assistant uses **one** policy: the row with the lowest id. Any other rows are ignored, so edit the existing row rather than adding a new one.
+
+    **Limits.** Each limit has a soft and a hard value. At the soft value the user sees a warning. At the hard value new questions are refused, and an answer already running stops after its current step. Daily limits reset at midnight UTC. Monthly limits cover the calendar month in UTC. A limit left empty uses your application’s configured budget defaults. Amounts are in micro-dollars, where 1,000,000 is $1.00.
+
+    **Kill switch.** Turn it on to stop the assistant for everyone at once, including answers in progress.
+
+    See also **{{label:assistant_provider}}** for a per-provider monthly cap.
+- key: table:assistant_policy;section:policy
+  summary: The policy's name, the kill switch and the message users see while it is on.
+- key: table:assistant_policy;section:model
+  summary: The default model and how hard it thinks before answering.
+- key: table:assistant_policy;section:tools
+  summary: 'Rules for what the assistant may do with tools: confirming changes, which tools, how many rows and redaction.'
+- key: table:assistant_policy;section:userDaily
+  summary: Soft and hard limits on what one user may use in a single day.
+- key: table:assistant_policy;section:instanceMonthly
+  summary: Soft and hard limits on what everyone together may use in a month.
+- key: table:assistant_policy;section:dates
+  summary: When the policy was created and last changed.
+- key: table:assistant_policy;field:name
+  summary: A name for this policy; the assistant only uses the row with the lowest id.
+- key: table:assistant_policy;field:instanceMonthlyCostMicrosHard
+  summary: The monthly cost for the whole site at which new questions are refused, in millionths of a dollar.
+  content: |
+    1,000,000 is $1.00, so 50,000,000 is $50. Empty uses your application’s configured hard monthly cost limit. Tokens and cost are both checked; reaching either limit counts.
+- key: table:assistant_policy;field:maxRowsPerCall
+  summary: The most rows one lookup may hand to the model; empty means 50, and the highest allowed is 200.
+  content: |
+    Keeping this low limits how much data leaves the system in a single step and keeps costs down.
+- key: table:assistant_policy;field:killSwitch
+  summary: Turn on to stop the assistant for everyone, including answers already in progress.
+  content: |
+    Running answers are cancelled with the error code KILL_SWITCH and new questions are refused with a message that the assistant has been turned off. If the policy cannot be read at all, the assistant treats the switch as on for safety. Turn it off again to resume.
+- key: table:assistant_policy;field:allowedTools
+  summary: Limits the assistant to the tools named here, separated by commas; leave empty to allow all of them.
+  content: |
+    Examples are list_tables, query_records and count_records. Names must match the tools exactly. Check **{{label:assistant_tool_call}}** to see the names the assistant has used.
+- key: table:assistant_policy;field:redactPii
+  summary: When on, or empty, keys, tokens, card numbers and social security numbers are hidden from the model's view of results.
+  content: |
+    Redaction happens before the model sees the data. Turning it off is rarely wise; see **Redactions** on a tool call to check what was hidden.
+- key: table:assistant_policy;field:mainModel
+  summary: The model id used when the default provider names no model and has none registered, such as claude-sonnet-5-5.
+  content: |
+    In practice the **Model** chosen on the default provider takes priority, or else the first enabled chat model registered for it. Up to {{maxLength:assistant_policy.mainModel}} characters.
+- key: table:assistant_policy;field:mainEffort
+  summary: How hard the main model thinks before answering; higher is slower and costs more.
+  content: |
+    Values, from least to most: **Low**, **Medium**, **High**, **Xhigh** and **Max**. Empty uses your application’s configured default effort. Models that do not support reasoning effort ignore it.
+- key: table:assistant_policy;field:writesRequireConfirmation
+  summary: When on, or empty, every change the assistant proposes waits for the user to confirm it in the panel.
+  content: |
+    Off lets proposed creates, updates and deletes run at once. They still use only the asking user's own permissions and record locks, and tables set to read only in data access rules stay read only. Leave this on unless you have a clear reason.
+- key: table:assistant_policy;field:instanceMonthlyTokensHard
+  summary: The monthly token total for the whole site at which new questions are refused; empty means no token limit.
+  content: |
+    Counts new input, cache writes and output tokens, not cache reads.
+- key: table:assistant_policy;field:instanceMonthlyTokensSoft
+  summary: The monthly token total for the whole site at which users see a warning; empty means no token warning.
+- key: table:assistant_policy;field:instanceMonthlyCostMicrosSoft
+  summary: The monthly cost for the whole site at which users are warned, in millionths of a dollar.
+  content: |
+    1,000,000 is $1.00, so 25,000,000 is $25. Empty uses your application’s configured soft monthly cost limit.
+- key: table:assistant_policy;field:userDailyCostMicrosSoft
+  summary: The daily cost for one user at which they are warned, in millionths of a dollar.
+  content: |
+    1,000,000 is $1.00, so 2,000,000 is $2. Empty uses your application’s configured soft daily cost limit.
+- key: table:assistant_policy;field:userDailyTokensSoft
+  summary: The daily token total for one user at which they are warned; empty means no token warning.
+- key: table:assistant_policy;field:userDailyTokensHard
+  summary: The daily token total for one user at which new questions are refused; empty means no token limit.
+  content: |
+    Counts new input, cache writes and output tokens, not cache reads. The count resets at midnight UTC.
+- key: table:assistant_policy;field:killSwitchReason
+  summary: "A short message added to the notice users see while the kill switch is on."
+  content: |
+    A short message added to the notice users see while the kill switch is on, up to {{maxLength:assistant_policy.killSwitchReason}} characters.
+- key: table:assistant_policy;field:userDailyCostMicrosHard
+  summary: The daily cost for one user at which new questions are refused, in millionths of a dollar.
+  content: |
+    1,000,000 is $1.00, so 5,000,000 is $5. Empty uses your application’s configured hard daily cost limit. The user sees that they have reached their daily limit and that it resets at midnight UTC.
+- key: table:assistant_usage_daily;slot:help
+  summary: Daily tokens, cost and questions, per user and site-wide, which the spending limits check against.
+  content: |
+    Each row is one day (in UTC). A **USER** row is one person's day; the **INSTANCE** row, with no user, is everyone's day together. Totals are added to after every answer finishes.
+
+    This is what **{{label:assistant_policy}}** compares against when it applies a daily limit per user or a monthly limit for the whole site (the monthly total is the sum of the site's daily rows). Use it to see who is using the assistant most and how cost builds up over time.
+
+    Rows are created and updated automatically and cannot be edited. Tokens counted toward limits are new input, cache writes and output; cache reads are shown but not counted. Cost is in millionths of a dollar.
+- key: table:assistant_usage_daily;section:usage
+  summary: Which day the totals are for, and whether they belong to one user or the whole site.
+- key: table:assistant_usage_daily;section:totals
+  summary: Questions, tokens and cost added up for that day.
+- key: table:assistant_usage_daily;section:dates
+  summary: When the row was first created and last updated.
+- key: table:assistant_usage_daily;field:scope
+  summary: USER for one person's day, or INSTANCE for the whole site's day.
+  content: |
+    The INSTANCE row has no user and adds up everyone's use.
+- key: table:assistant_usage_daily;field:userId
+  summary: The user these totals belong to; empty on the site-wide row.
+- key: table:assistant_usage_daily;field:costMicros
+  summary: The cost for the day, in millionths of a US dollar.
+  content: |
+    1,000,000 is $1.00. Compared with the cost limits in **{{label:assistant_policy}}**. Models without a configured price have no recorded cost.
+- key: table:assistant_usage_daily;field:turnCount
+  summary: How many questions were answered on this day.
+- key: table:assistant_usage_daily;field:usageDate
+  summary: The calendar day these totals cover, counted in UTC, so a day ends at midnight UTC rather than local time.
+- key: table:assistant_usage_daily;field:cacheReadTokens
+  summary: Tokens the providers served from their cache this day; shown for information and not counted toward token limits.
+- key: table:assistant_usage_daily;field:inputTokens
+  summary: New tokens sent to the models this day, not counting cached ones.
+- key: table:assistant_usage_daily;field:outputTokens
+  summary: Tokens the models wrote this day.
+- key: table:assistant_usage_daily;field:cacheWriteTokens
+  summary: Tokens the providers stored in their cache this day; these count toward token limits.
+- key: table:assistant_provider;slot:help
+  summary: A service the assistant sends questions to, such as Claude or a local model, with its settings and health.
+  content: |
+    A provider is where the AI answers actually come from. The assistant uses the **default** provider that is switched on (or, if none is marked default, the first one switched on). If it is unavailable, the assistant can fall back to a backup.
+
+    **The key never goes here.** The **{{label:assistant_provider.apiKeyEnvName}}** holds only the *name* of a setting on the server (for example the one for Claude); the key itself stays in the server's secret store. **{{label:assistant_provider.apiKeyStatus}}** just reports whether that setting is present.
+
+    The available provider types depend on the adapters installed by your application. Use the **Test connection** action to check a provider works, and **{{label:assistantProviderDiscoverModels}}** to list the models it offers. These actions contact the provider; connection tests make a short model request.
+
+    See also **{{label:assistant_model}}** for the models each provider offers, and **{{label:assistant_policy}}** for spending limits.
+- key: table:assistant_provider;section:provider
+  summary: The provider's name, type, model and whether it is switched on and the default.
+- key: table:assistant_provider;section:connection
+  summary: 'How the server reaches the provider: the key variable name, key status, address and security settings.'
+- key: table:assistant_provider;section:limits
+  summary: A monthly spending cap and limits on request size and parallel requests for this provider.
+- key: table:assistant_provider;section:registry
+  summary: 'Further settings: kind, whether it is local or cloud, region, API version and timeouts.'
+- key: table:assistant_provider;section:health
+  summary: Whether the provider has been answering, and when the assistant will try it again after a failure.
+- key: table:assistant_provider;section:discovery
+  summary: The result of the last Discover models run for this provider.
+- key: table:assistant_provider;section:lastTest
+  summary: The result of the last Test connection run for this provider.
+- key: table:assistant_provider;section:dates
+  summary: When the provider was created and last changed.
+- key: table:assistant_provider;section:providerModels
+  summary: The models this provider offers, with their capabilities and last test result.
+- key: table:assistant_provider;section:providerModelCalls
+  summary: The most recent individual requests sent to this provider, with tokens, cost and result.
+- key: table:assistant_provider;field:enabled
+  summary: Switch off to stop the assistant from ever using this provider; rows are kept.
+- key: table:assistant_provider;field:name
+  summary: A name you will recognise, such as Claude or a local server.
+- key: table:assistant_provider;field:location
+  summary: LOCAL for a server on your own network, or CLOUD for an outside service.
+  content: |
+    Local providers are probed for health before use. Empty uses the usual value for the kind: Ollama, LM Studio, vLLM and llama.cpp are local; everything else is cloud.
+- key: table:assistant_provider;field:region
+  summary: The cloud region to use; only needed for AWS Bedrock and Google Vertex AI.
+  content: |
+    Enter the region required by your cloud provider. Other adapters may leave it unused.
+- key: table:assistant_provider;field:baseUrl
+  summary: The web address of an alternative server for this provider; leave empty to use the provider's own.
+  content: |
+    It is needed for local and compatible servers, for example an Ollama server at a https address. Your application must allow the address and its connection security settings before you can save it. If the address is refused, ask whoever runs the site to allow it.
+- key: table:assistant_provider;field:kind
+  summary: The brand or product behind the provider, which sets sensible defaults such as local or cloud.
+  content: |
+    Choices are Anthropic, OpenAI, Azure OpenAI, OpenRouter, Ollama, LM Studio, vLLM, llama.cpp server, OpenAI-compatible (other), AWS Bedrock and Google Vertex AI. Empty is taken from the type. Only kinds supported by the installed type work.
+- key: table:assistant_provider;field:providerType
+  summary: Which kind of adapter talks to this provider; only types installed on this server are offered.
+  content: |
+    Choose an installed adapter. Available modules support **Anthropic**, **OpenAI-compatible**, **AWS Bedrock** and **Google Vertex AI** providers.
+- key: table:assistant_provider;field:isDefault
+  summary: Marks this as the provider the assistant uses; setting it clears the flag on all the others.
+  content: |
+    If no enabled provider is marked default, the first enabled one is used.
+- key: table:assistant_provider;field:apiKeyStatus
+  summary: Reports whether the key setting is present on the server, showing only the last four characters; never the key itself.
+  content: |
+    It is worked out each time you open the row, from the server's settings. If it says not set, ask whoever runs the site to add the secret, and change nothing here.
+- key: table:assistant_provider;field:hipaaEligible
+  summary: Marks this provider as approved for health data, such as a local server or a service under agreement.
+  content: |
+    It only states a fact you assert; it does not create any agreement. When health-data routing restrictions are enabled, this setting participates in provider eligibility checks.
+- key: table:assistant_provider;field:lastTestStatus
+  summary: 'Whether the last Test connection worked: OK or ERROR; empty if never tested.'
+- key: table:assistant_provider;field:lastTestModel
+  summary: The model that answered during the last connection test.
+- key: table:assistant_provider;field:lastTestError
+  summary: The error from the last connection test, if it failed; it never includes the key.
+- key: table:assistant_provider;field:lastTestAt
+  summary: When the connection was last tested.
+- key: table:assistant_provider;field:downUntil
+  summary: If set to a future time, the assistant skips this provider until then because it recently failed.
+  content: |
+    After a network failure or timeout the assistant marks the provider down for 60 seconds and uses a backup if one exists. It recovers by itself; you do not need to clear this.
+- key: table:assistant_provider;field:apiVersion
+  summary: The service version to request; only used by Azure OpenAI, and empty uses 2024-10-21.
+- key: table:assistant_provider;field:tlsCaBundle
+  summary: The name of a set of trusted certificates set up on the server, for a provider with a private certificate.
+  content: |
+    Leave empty to use the standard trust list. A name is only accepted if the server has one configured with that name, and it needs an HTTPS address.
+- key: table:assistant_provider;field:healthState
+  summary: UP when the last request worked, DOWN after a recent failure; empty if there is no record yet.
+  content: |
+    Updated automatically by use. Local providers are also checked at most once a minute before a question is sent.
+- key: table:assistant_provider;field:lastDiscoveryAt
+  summary: When Discover models last ran for this provider.
+- key: table:assistant_provider;field:healthCheckedAt
+  summary: When the health state was last updated.
+- key: table:assistant_provider;field:cloudProject
+  summary: The Google Cloud project id; only needed for Google Vertex AI. It is not a credential.
+- key: table:assistant_provider;field:model
+  summary: The model this provider answers with; empty uses its first enabled chat model.
+  content: |
+    Choose from the models offered by the provider's type or any priced model. If empty and the provider has no registered models, the model set in **{{label:assistant_policy}}** is used instead. See **{{label:assistant_model}}** for the registered list.
+- key: table:assistant_provider;field:maxOutputTokensPerRequest
+  summary: The most tokens the model may write in one request to this provider; empty uses the site default.
+  content: |
+    A token is roughly three quarters of an English word. Must be at least 1 when set.
+- key: table:assistant_provider;field:requestTimeoutSeconds
+  summary: How long to wait for the provider to finish a request, in seconds; between 1 and 600, default 120.
+  content: |
+    Slow local models may need more. A timeout marks the provider down for a minute.
+- key: table:assistant_provider;field:lastTestLatencyMs
+  summary: How long the last connection test took, in milliseconds.
+- key: table:assistant_provider;field:monthlyCostCapUsd
+  summary: The most this provider may cost in a calendar month (UTC), in US dollars; empty means no cap.
+  content: |
+    When it is reached, new requests to this provider are refused and a running answer stops before its next request. This is separate from the site-wide limits in **{{label:assistant_policy}}**. It cannot be negative.
+- key: table:assistant_provider;field:lastDiscoveryError
+  summary: The error from the last Discover models run, if it failed.
+- key: table:assistant_provider;field:lastDiscoveryStatus
+  summary: 'Whether the last Discover models run worked: OK or ERROR; empty if never run.'
+- key: table:assistant_provider;field:connectTimeoutSeconds
+  summary: How long to wait for a connection to the provider to open, in seconds; between 1 and 600, default 10.
+- key: table:assistant_provider;field:maxConcurrentRequests
+  summary: How many requests to this provider may run at the same moment on this server; empty means no limit.
+  content: |
+    Useful for a small local server. Must be at least 1 when set.
+- key: table:assistant_provider;field:apiKeyEnvName
+  summary: "The name of the server setting that holds the API key. Never type the key here."
+  content: |
+    The name of the server setting that holds the API key, such as ANTHROPIC_API_KEY. Never type the key here.
+
+    Capital letters, digits and underscores only. Only names the site allows are accepted: a pasted key or any other name is refused and nothing is saved. Empty uses the type's usual name. To replace a key, change it in the server's secret store, not here.
+- key: table:assistant_rag_source;slot:help
+  summary: A table whose text the assistant can search by meaning, to find relevant records before answering.
+  content: |
+    A knowledge source tells the assistant to index the text fields of one table, such as page or post text. When a user asks a question, the assistant can search by meaning and then re-read the matching records **as that user**, silently dropping any they may not see.
+
+    To set one up: choose the table, list the text fields, pick an enabled embedding model, and then run **{{label:assistantKnowledgeIndex}}**. Indexing sends the text to the embedding provider, so use a model you trust with that data. Search results are only as fresh as the last index run, although the records themselves are always read live.
+
+    Rules: the table must allow the assistant to read it, fields must be text fields the assistant may see, and assistant tables cannot be indexed. Changing the table, fields, filter, model or chunk sizes clears the existing index, so run **{{label:assistantKnowledgeIndex}}** again.
+
+    See also **{{label:assistant_model}}** for embedding models.
+- key: table:assistant_rag_source;section:source
+  summary: Which table, fields and filter this source indexes, and whether it is switched on.
+- key: table:assistant_rag_source;section:embedding
+  summary: The embedding model used and how the text is cut into chunks.
+- key: table:assistant_rag_source;section:status
+  summary: The result of the last indexing run and how much is currently indexed.
+- key: table:assistant_rag_source;section:dates
+  summary: When the source was created and last changed.
+- key: table:assistant_rag_source;field:enabled
+  summary: Switch off to stop the assistant searching this source; the index is kept.
+- key: table:assistant_rag_source;field:name
+  summary: A name for this source, such as Blog posts.
+- key: table:assistant_rag_source;field:fieldNames
+  summary: The text fields to index, separated by commas, using the field names of the chosen table.
+  content: |
+    At least one is required. Each must be a plain text field the assistant is allowed to see. Fields marked as masked are masked before indexing.
+- key: table:assistant_rag_source;field:tableName
+  summary: The table to index, by its name; it must allow the assistant to read it and cannot be an assistant table.
+  content: |
+    Tables set to no access in the data access rules are refused.
+- key: table:assistant_rag_source;field:lastIndexError
+  summary: What went wrong in the last indexing run, if it failed.
+- key: table:assistant_rag_source;field:lastIndexedAt
+  summary: When this source was last indexed.
+- key: table:assistant_rag_source;field:lastIndexStatus
+  summary: 'How the last run ended: OK, ERROR, or CLEARED after the index was emptied.'
+- key: table:assistant_rag_source;field:chunkChars
+  summary: How many characters each indexed piece of text holds; 100 to 16,000, default 1,500.
+  content: |
+    Longer text is split into pieces of about this size. Changing it clears the index.
+- key: table:assistant_rag_source;field:filterJson
+  summary: Optional filter, in the standard query filter format, so only some records are indexed.
+  content: |
+    Leave empty to index every record the person running the index can see. It is read as the administrator who runs **{{label:assistantKnowledgeIndex}}**. A filter that cannot be read is rejected when you save.
+- key: table:assistant_rag_source;field:titleFieldName
+  summary: Optional field whose text is used as each record's title in search results.
+  content: |
+    It must be a text field the assistant may see.
+- key: table:assistant_rag_source;field:indexedChunkCount
+  summary: How many pieces of text are currently in the index for this source; filled in by the indexing run.
+- key: table:assistant_rag_source;field:indexedRecordCount
+  summary: How many records are currently covered by the index; filled in by the indexing run.
+- key: table:assistant_rag_source;field:embeddingModelId
+  summary: The embedding model that turns text into searchable vectors; it must be an enabled model of kind Embedding.
+  content: |
+    Chat models are refused. The model must also have its embedding size set in **{{label:assistant_model}}**. Changing the model clears the index because old vectors no longer match.
+- key: table:assistant_rag_source;field:chunkOverlapChars
+  summary: How many characters neighbouring pieces share, so a sentence is not lost at a cut; default 200.
+  content: |
+    It must be zero or more and smaller than the chunk size. Changing it clears the index.
+- key: table:assistant_model;slot:help
+  summary: One model offered by a provider, with its capabilities, price and last test result.
+  content: |
+    Models are what you pick for answers and for knowledge search. Each belongs to a provider. You can add them yourself (source **Manual**) or run **{{label:assistantProviderDiscoverModels}}** on the provider, which adds what the server reports (source **Discovered**). Discovered models are switched on automatically for local providers, or for cloud providers that list 20 or fewer.
+
+    **Model kind.** A **Chat** model writes answers. An **Embedding** model turns text into vectors for **{{label:assistant_rag_source}}**. A model can be only one kind. Embedding models also need an embedding size.
+
+    **Cost.** If you enter input and output prices here, they are used to work out cost. Otherwise **{{label:assistant_model_price}}** is used, and local models cost 0.
+
+    A **fallback model** can take over if this one fails, up to four steps, and a chain must not loop. Use **{{label:assistantModelTestConnection}}** to check one model works.
+- key: table:assistant_model;section:model
+  summary: The model's id, which provider it belongs to, what kind it is and whether it is switched on.
+- key: table:assistant_model;section:capabilities
+  summary: What the model can do, such as using tools, seeing images, streaming and reasoning effort, plus its size limits.
+- key: table:assistant_model;section:prices
+  summary: The price per million tokens used to work out what this model costs.
+- key: table:assistant_model;section:lastTest
+  summary: The result of the last Test connection run for this model.
+- key: table:assistant_model;section:dates
+  summary: When the model was added and last changed.
+- key: table:assistant_model;field:enabled
+  summary: Switch off to stop the assistant from using this model.
+  content: |
+    If every model of a provider is off and the provider names none, questions to it fail until you enable one.
+- key: table:assistant_model;field:displayName
+  summary: A friendly name for the model in lists; optional.
+- key: table:assistant_model;field:source
+  summary: Whether the model row was found by Discover models or added by hand.
+  content: |
+    **Discovered** rows were created by the **{{label:assistantProviderDiscoverModels}}** action on a provider. **Manual** rows were typed in by an admin. New rows you create yourself are set to Manual automatically.
+- key: table:assistant_model;field:providerId
+  summary: The provider this model is served from; the model is called through that provider's connection.
+  content: |
+    Changing the provider or the **{{label:assistant_model.modelId}}** of a model that a knowledge source uses for embeddings clears that source's index, so it has to be rebuilt with **{{label:assistantKnowledgeIndex}}**.
+- key: table:assistant_model;field:lastTestStatus
+  summary: 'Result of the last Test connection on this model: OK or ERROR.'
+  content: |
+    It is filled in automatically each time you run **{{label:assistantModelTestConnection}}** on the model and cannot be edited.
+- key: table:assistant_model;field:lastTestError
+  summary: What went wrong in the last connection test, with the provider's own message when it sent one.
+  content: |
+    Empty when the test passed. Filled in automatically and cut to {{maxLength:assistant_model.lastTestError}} characters. Typical causes are a refused API key, a wrong model id, an unreachable base URL or a timeout.
+- key: table:assistant_model;field:lastTestAt
+  summary: When this model was last tested; set automatically by Test connection.
+- key: table:assistant_model;field:supportsVision
+  summary: Whether the model can read images. Leave empty to use the provider type's built-in default.
+- key: table:assistant_model;field:supportsTools
+  summary: Whether the model can call the assistant's lookup and change tools. Leave empty to use the provider type's default.
+  content: |
+    The assistant reads your data by calling tools, so a model that cannot use them is of little use for answering questions about your site.
+- key: table:assistant_model;field:inputUsdPerMTok
+  summary: Price in US dollars per million input tokens, used to work out what each answer costs.
+  content: |
+    When this or the output price is filled in, it is used instead of **{{label:assistant_model_price}}**. Leave both empty to fall back to the price list. Models on local providers cost 0 unless you enter a price.
+- key: table:assistant_model;field:modelId
+  summary: The exact model name as the provider knows it, for example claude-sonnet-5-5.
+  content: |
+    A wrong name makes every call fail; run **{{label:assistantModelTestConnection}}** after changing it. The same name can exist under different providers.
+- key: table:assistant_model;field:outputUsdPerMTok
+  summary: Price in US dollars per million output tokens, used to work out what each answer costs.
+  content: |
+    See **{{label:assistant_model.inputUsdPerMTok}}** for how this interacts with **{{label:assistant_model_price}}**.
+- key: table:assistant_model;field:supportsReasoningEffort
+  summary: Whether the model accepts an effort level (low to max). Leave empty to use the provider type's default.
+- key: table:assistant_model;field:lastTestLatencyMs
+  summary: How long the last connection test call took, in milliseconds; set automatically.
+- key: table:assistant_model;field:supportsStreaming
+  summary: Whether the model can send its answer as it is written. Leave empty to use the provider type's default.
+- key: table:assistant_model;field:contextWindowTokens
+  summary: How many tokens of conversation the model can read at once. Leave empty to use the provider type's default.
+  content: |
+    Tokens are small pieces of text, roughly three quarters of a word each.
+- key: table:assistant_model;field:embeddingDimensions
+  summary: Size of the vectors an embedding model produces; required before a knowledge source can use it.
+  content: |
+    Only matters when **{{label:assistant_model.modelKind}}** is Embedding. Must be a positive whole number. Discovery fills in 1024 for bge-m3 and 768 for nomic-embed-text; for any other embedding model you must enter it. If it changes, the indexes built with this model are cleared.
+- key: table:assistant_model;field:maxOutputTokens
+  summary: Upper limit on how many tokens the model may write in one request. Leave empty for no extra limit.
+  content: |
+    The lower of this value and what the assistant asks for is used.
+- key: table:assistant_model;field:fallbackModelId
+  summary: A backup model the assistant switches to when this one fails.
+  content: |
+    Pick another enabled model. Chains may be at most four steps long and must not loop; saving a longer or circular chain is refused. A backup is only tried when the failing model had not started to answer, and the budgets that applied to the first choice still apply. If you leave it empty, only a local provider's model may be used automatically as a backup.
+- key: table:assistant_model;field:modelKind
+  summary: Chat models answer questions; Embedding models turn text into vectors for knowledge sources.
+  content: |
+    **Chat** is the default for rows you add by hand. **Embedding** models are only offered when you set up a knowledge source. Discovery guesses Embedding when the name contains embed, bge, e5, gte or nomic; correct it here if it guessed wrong.
+- key: table:assistant_model;field:discoveredAt
+  summary: When Discover models first added this row; empty for rows added by hand.
+- key: table:assistant_model_price;slot:help
+  summary: The price list the assistant uses to turn tokens into dollars, per provider type and model.
+  content: |
+    Each row gives the price in US dollars per million tokens for one model. The assistant adds up the cost of every answer from these prices and shows it on conversations, the **Overview** and budgets.
+
+    The price for a model is found in this order: prices typed on the model itself in **{{label:assistant_model}}**, then a row here, then a free price for models on local providers. Cache read defaults to one tenth of the input price when left empty. If no price is known the cost shows as 0, so keep this list current whenever a provider changes its prices.
+- key: table:assistant_model_price;section:price
+  summary: Which provider type and model this price row is for.
+- key: table:assistant_model_price;section:prices
+  summary: The prices in US dollars per million tokens for input, output and the two cache write kinds.
+- key: table:assistant_model_price;section:notes
+  summary: Free text for your own reference, such as where the price came from.
+- key: table:assistant_model_price;section:dates
+  summary: When this price row was created and last changed.
+- key: table:assistant_model_price;field:providerType
+  summary: The kind of provider this price applies to, for example Anthropic.
+  content: |
+    Only provider types installed on this server are offered.
+- key: table:assistant_model_price;field:inputUsdPerMTok
+  summary: Price in US dollars per million input tokens.
+- key: table:assistant_model_price;field:model
+  summary: The exact model name the price is for, for example claude-sonnet-5-5.
+  content: |
+    The list shows models known to the installed provider types, but you may type any name.
+- key: table:assistant_model_price;field:notes
+  summary: Optional note for yourself, such as the pricing page you copied this from.
+- key: table:assistant_model_price;field:cacheWrite1hUsdPerMTok
+  summary: Price in US dollars per million tokens written to the one-hour prompt cache.
+  content: |
+    Leave empty if the provider has no such charge.
+- key: table:assistant_model_price;field:outputUsdPerMTok
+  summary: Price in US dollars per million output tokens.
+- key: table:assistant_model_price;field:cacheWrite5mUsdPerMTok
+  summary: Price in US dollars per million tokens written to the five-minute prompt cache.
+  content: |
+    Leave empty if the provider has no such charge.
+- key: table:assistant_model_price;field:cacheReadUsdPerMTok
+  summary: Price in US dollars per million tokens read back from the cache.
+  content: |
+    When empty, one tenth of the input price is used.
+- key: table:assistant_usage;slot:help
+  summary: One request the assistant sent to an AI provider, with its tokens, cost, speed and result.
+  content: |
+    A row is added automatically for every model request: each step of an answer, each routing check and each **Test connection**. Rows cannot be edited. They are the source of the cost figures on conversations, the **Overview** and budgets.
+
+    Use this list to find out which model answered, how long it took, what it cost, and why a request failed. Model calls are kept when old conversations are purged, so the cost history stays intact.
+- key: table:assistant_usage;section:call
+  summary: Which model and provider handled the request, who asked, and what it was for.
+- key: table:assistant_usage;section:result
+  summary: How long the request took, and the error details when it failed.
+- key: table:assistant_usage;section:usage
+  summary: Tokens used and the resulting cost for this request.
+- key: table:assistant_usage;section:dates
+  summary: When the request was made.
+- key: table:assistant_usage;field:status
+  summary: 'How the request ended: OK, ERROR or CANCELLED.'
+  content: |
+    Filled in automatically. When it is ERROR, see **{{label:assistant_usage.errorKind}}** and **{{label:assistant_usage.httpStatus}}**.
+- key: table:assistant_usage;field:userId
+  summary: The user the request was made for; empty for tests run by the system.
+- key: table:assistant_usage;field:providerType
+  summary: The kind of provider that handled the request, for example Anthropic.
+- key: table:assistant_usage;field:costMicros
+  summary: What this request cost, in millionths of a US dollar.
+  content: |
+    1,000,000 is $1.00, so 2,500 is a quarter of a cent. Worked out from the tokens and the model's price. Models without a configured price have no recorded cost.
+- key: table:assistant_usage;field:providerId
+  summary: The provider row that handled the request.
+- key: table:assistant_usage;field:cacheReadTokens
+  summary: Tokens the provider served from its prompt cache, which are billed at a lower price.
+- key: table:assistant_usage;field:requestId
+  summary: The provider's own id for the request; quote it when asking the provider for support.
+- key: table:assistant_usage;field:inputTokens
+  summary: Normal input tokens sent to the model, not counting cache reads and writes.
+- key: table:assistant_usage;field:outputTokens
+  summary: Tokens the model wrote back.
+- key: table:assistant_usage;field:httpStatus
+  summary: The HTTP status the provider returned when the request failed; empty on success.
+- key: table:assistant_usage;field:conversationId
+  summary: The conversation this request was made for; empty for connection tests.
+- key: table:assistant_usage;field:turnId
+  summary: The question and answer cycle this request belongs to; empty for connection tests.
+- key: table:assistant_usage;field:model
+  summary: The model that handled the request, as the provider reported it.
+- key: table:assistant_usage;field:purpose
+  summary: 'What the request was for: TURN, ROUTE, TEST or EMBED.'
+  content: |
+    **TURN** is a step of an answer. **ROUTE** is a routing check that decides between a simple and a complex model. **TEST** is a Test connection call. **EMBED** is an indexing call for a knowledge source.
+- key: table:assistant_usage;field:cacheWriteTokens
+  summary: Tokens the model was asked to store in the provider's prompt cache for reuse.
+- key: table:assistant_usage;field:latencyMs
+  summary: How long the request took from start to finish, in milliseconds.
+- key: table:assistant_usage;field:errorKind
+  summary: The category of failure when the request did not work; empty on success.
+  content: |
+    Values: AUTHENTICATION (the API key was refused), RATE_LIMITED, OVERLOADED, INVALID_REQUEST (often a wrong model name), TIMEOUT, NETWORK, SERVER and OTHER.
+- key: table:assistant_data_access;slot:help
+  summary: Narrows which tables and actions the assistant may use, on top of each user's own permissions.
+  content: |
+    Each row sets the assistant's access to one table or action. The setting can only restrict the assistant: it always acts with the signed-in user's own permissions and record locks, so a row can never give anyone more than they already have.
+
+    Without a row, a table defaults to **Read**, and an action defaults to **None**. Tables that are marked as never to be shown to an AI stay **None** whatever you enter. There can be one row per table or action. Changes take effect within about 30 seconds.
+
+    See the **Data access** card on the **Overview** to check what the assistant can do for you on a given table.
+- key: table:assistant_data_access;section:access
+  summary: Which table or action the rule is for, and what the assistant may do with it.
+- key: table:assistant_data_access;section:notes
+  summary: Your own note on why this rule exists.
+- key: table:assistant_data_access;section:dates
+  summary: When this rule was created and last changed.
+- key: table:assistant_data_access;field:objectName
+  summary: The name of the table or action the rule covers, as the application knows it.
+  content: |
+    Saving is refused when no table or action has that name. You cannot add two rules for the same name and type.
+- key: table:assistant_data_access;field:objectType
+  summary: Whether the rule is for a Table or an Action.
+  content: |
+    The default is {{default:assistant_data_access.objectType}}. Choose **Process** when the name is an action the assistant could run. Use the type that matches the name you enter.
+- key: table:assistant_data_access;field:mode
+  summary: 'What the assistant may do: {{values:assistant_data_access_mode}}.'
+  content: |
+    **None**: the assistant never sees it. **Read**: it may look up and count records. **Read and write**: it may also propose creating, changing or deleting records, and may run an action; by default each change still waits for the user to confirm it in the panel. Default for a new rule is {{default:assistant_data_access.mode}}.
+- key: table:assistant_data_access;field:notes
+  summary: Optional note about the rule, up to {{maxLength:assistant_data_access.notes}} characters.
+- key: table:assistant_profile;slot:help
+  summary: 'A persona for the assistant: its name, tone, greeting and which models it uses, for an app or a role.'
+  content: |
+    A profile changes how the assistant presents itself, never what it is allowed to do. It cannot change the rules, the tools or any permission.
+
+    The assistant picks one profile for each conversation:
+    - An enabled profile limited to the current app and a role beats one limited to the app only, which beats one limited to a role only.
+    - A profile with neither is used only when it is marked **Default**.
+    - If several match equally, the one created first wins.
+
+    Link skills to a profile from its own screen, under **Skills**. Changes take effect within about 30 seconds.
+- key: table:assistant_profile;section:profile
+  summary: The profile's name, how it appears in the panel, and whether it is switched on.
+- key: table:assistant_profile;section:routing
+  summary: How the assistant chooses between a simple and a complex model for this profile.
+- key: table:assistant_profile;section:voice
+  summary: The tone instructions, greeting and suggested questions shown to users.
+- key: table:assistant_profile;section:scope
+  summary: Limits the profile to one app or to users who hold one permission.
+- key: table:assistant_profile;section:dates
+  summary: When the profile was created and last changed.
+- key: table:assistant_profile;section:profileSkills
+  summary: The skills this profile uses; add or remove them here.
+- key: table:assistant_profile;field:permissionName
+  summary: 'Optional: use this profile only for users who hold this permission (a role).'
+  content: |
+    Leave empty to apply to every role. The name must match a permission exactly. Together with **{{label:assistant_profile.appName}}** it makes the profile more specific, so it wins over a more general one.
+- key: table:assistant_profile;field:enabled
+  summary: Turn off to stop using this profile without deleting it.
+- key: table:assistant_profile;field:name
+  summary: A short internal name for the profile, up to {{maxLength:assistant_profile.name}} characters.
+  content: |
+    Names must be unique. Users do not see it; they see **{{label:assistant_profile.displayName}}**.
+- key: table:assistant_profile;field:displayName
+  summary: The name users see in the panel header and on messages, for example Ada.
+  content: |
+    Up to {{maxLength:assistant_profile.displayName}} characters. The assistant also introduces itself with this name.
+- key: table:assistant_profile;field:icon
+  summary: "The name of a Material icon shown in the panel."
+  content: |
+    The name of a Material icon shown in the panel, for example auto_awesome or support_agent.
+- key: table:assistant_profile;field:appName
+  summary: 'Optional: use this profile only when the user is inside this app, using its configured name.'
+  content: |
+    Use the app's internal name, not its label. Leave empty to apply in every app.
+- key: table:assistant_profile;field:isDefault
+  summary: The profile used when no app-specific or role-specific profile applies.
+  content: |
+    Marking one profile as default unmarks the others. Without a default, users with no matching profile get the plain built-in assistant.
+- key: table:assistant_profile;field:classifierModelId
+  summary: The model that decides whether a question is simple or complex, when Routing mode is Classifier.
+  content: |
+    It is asked for a one-word answer within three seconds. If it fails, times out or answers anything else, the built-in rules decide instead. Choose a small, cheap model.
+- key: table:assistant_profile;field:simpleModelId
+  summary: The model used for questions judged simple. Leave empty to use the assistant's normal main model.
+- key: table:assistant_profile;field:starterPrompts
+  summary: Suggested first questions shown in a new conversation, one per line.
+  content: |
+    At most 6 are used and each is cut to 200 characters.
+- key: table:assistant_profile;field:complexModelId
+  summary: The model used for questions judged complex. Leave empty to use the assistant's normal main model.
+- key: table:assistant_profile;field:greeting
+  summary: A short welcome message shown when a new conversation opens, up to {{maxLength:assistant_profile.greeting}} characters.
+- key: table:assistant_profile;field:routingMode
+  summary: Whether and how the assistant picks a simple or complex model for each question.
+  content: |
+    **Off**: always the normal main model. **Heuristic**: built-in rules treat a question as complex when it is over 600 characters, mentions two or more tables, uses words like analyze, compare, why, trend, explain or plan, follows a change awaiting confirmation, comes late in a long conversation (over 8 earlier answers), or the last answer ran out of lookups. **Classifier**: the **{{label:assistant_profile.classifierModelId}}** decides, with the heuristic as a backup.
+- key: table:assistant_profile;field:personality
+  summary: Tone and style instructions for the assistant, up to 2,000 characters.
+  content: |
+    For example: Friendly and brief. Use the user's first name. It is added to the assistant's instructions as style guidance only. It cannot change the rules, the tools or what the user may see or do.
+- key: table:assistant_skill;slot:help
+  summary: A reusable set of written instructions that teaches the assistant how to do something your way.
+  content: |
+    A skill is guidance in Markdown, for example a blog style guide. It never gives the assistant new tools, data access or permissions.
+
+    A skill only has an effect once you link it to a profile, under **Skills** on that profile. Then it is added to the conversation when it is relevant: when a trigger keyword appears in the question, when the user is in one of the listed apps, or always if it has neither. Disabled skills are skipped. Each skill is cut at 6,000 characters and at most 12,000 characters of skills are used per question.
+- key: table:assistant_skill;section:skill
+  summary: The skill's name, a note on what it is for, and whether it is switched on.
+- key: table:assistant_skill;section:instructions
+  summary: The written instructions the assistant follows when the skill is relevant.
+- key: table:assistant_skill;section:relevance
+  summary: The keywords and apps that decide when the skill is used.
+- key: table:assistant_skill;section:dates
+  summary: When the skill was created and last changed.
+- key: table:assistant_skill;field:description
+  summary: A note for admins on what the skill is for; the assistant does not read it.
+  content: |
+    Up to {{maxLength:assistant_skill.description}} characters. Longer text is shortened with an ellipsis.
+- key: table:assistant_skill;field:enabled
+  summary: Turn off to stop using the skill without deleting it.
+- key: table:assistant_skill;field:name
+  summary: A short name for the skill, up to {{maxLength:assistant_skill.name}} characters, for example blog-style-guide.
+- key: table:assistant_skill;field:triggerKeywords
+  summary: Comma-separated words; the skill is used when one of them appears in the user's question.
+  content: |
+    Matching ignores capitals and finds the word anywhere in the question. With no keywords and no apps, the skill is used for every question.
+- key: table:assistant_skill;field:appNames
+  summary: Comma-separated app names; the skill is used while the user is working in one of these apps.
+  content: |
+    Use the internal app names configured in your application. If you also set keywords, either one is enough to trigger the skill.
+- key: table:assistant_skill;field:instructions
+  summary: The skill's instructions in Markdown, up to 6,000 characters.
+  content: |
+    Write only guidance: tone, steps, house rules. Only the first 6,000 characters are used.
+- key: table:assistant_profile_skill;slot:help
+  summary: Connects one skill to one profile so the profile's conversations can use it.
+  content: |
+    You normally add these from a profile's own **Skills** list rather than here. Removing the row stops that profile from using the skill but does not delete the skill.
+- key: table:assistant_profile_skill;section:link
+  summary: The profile and the skill that are connected.
+- key: table:assistant_profile_skill;section:dates
+  summary: When the link was created and last changed.
+- key: table:assistant_profile_skill;field:skillId
+  summary: The skill that the profile uses.
+- key: table:assistant_profile_skill;field:profileId
+  summary: The profile that uses the skill.
+- key: table:assistant_pending_action;slot:help
+  summary: A change the assistant proposed that waits for the user to confirm it, with what happened to it.
+  content: |
+    When the assistant wants to create, change or delete a record, it does not do it silently: it saves the proposal here and shows it in the panel. The user confirms or rejects it. If they confirm, the change runs with their own permissions and record locks and the outcome is saved here.
+
+    Rows are created and updated by the assistant and cannot be edited. An unanswered proposal expires after the configured time limit (15 minutes by default). Use this list to review what the assistant tried to change, for whom, and whether it worked.
+- key: table:assistant_pending_action;section:action
+  summary: What the assistant proposed, for which record and user, and where it stands.
+- key: table:assistant_pending_action;section:decision
+  summary: When the proposal expires, when it was decided and what the outcome was.
+- key: table:assistant_pending_action;section:payload
+  summary: The saved values the assistant proposed, with storage protections applied.
+- key: table:assistant_pending_action;section:dates
+  summary: When the proposal was created and last changed.
+- key: table:assistant_pending_action;field:tableName
+  summary: The table the proposed change is for, by its internal name.
+- key: table:assistant_pending_action;field:status
+  summary: 'Where the proposal stands: PENDING, EXECUTED, FAILED, REJECTED or EXPIRED.'
+  content: |
+    **PENDING**: waiting for the user. **EXECUTED**: the user confirmed and the change was made. **FAILED**: the user confirmed but the change was refused or errored. **REJECTED**: the user said no. **EXPIRED**: nobody answered in time. Set automatically.
+- key: table:assistant_pending_action;field:recordId
+  summary: The id of the record the change targets; empty when the proposal is to create a new record.
+- key: table:assistant_pending_action;field:summary
+  summary: A plain description of the change, as shown to the user in the confirmation card.
+- key: table:assistant_pending_action;field:userId
+  summary: The user who has to confirm the change; it runs with their permissions.
+- key: table:assistant_pending_action;field:toolName
+  summary: "Which of the assistant's tools proposed the change."
+  content: |
+    Which of the assistant's tools proposed the change, for example create_record, update_record or delete_record.
+- key: table:assistant_pending_action;field:resultSummary
+  summary: A short description of what happened after the user confirmed, including any error.
+  content: |
+    Empty while the proposal is still pending.
+- key: table:assistant_pending_action;field:toolCallId
+  summary: The id of the tool call that produced the proposal, for tracing it in the conversation.
+- key: table:assistant_pending_action;field:uiApiOperation
+  summary: The exact request that is made when the user confirms, for example creating a record in a table.
+- key: table:assistant_pending_action;field:httpStatus
+  summary: The status code the application returned when the confirmed change ran; empty if it never ran.
+  content: |
+    A code in the 200s means success; 400s mean the change was refused, for example by a permission or a record lock.
+- key: table:assistant_pending_action;field:conversationId
+  summary: The conversation in which the assistant made the proposal.
+- key: table:assistant_pending_action;field:turnId
+  summary: The question and answer cycle in which the proposal was made.
+- key: table:assistant_pending_action;field:expiresAt
+  summary: The time after which an unconfirmed proposal can no longer be confirmed.
+  content: |
+    Set to 15 minutes after the proposal was made, unless the server is configured otherwise.
+- key: table:assistant_pending_action;field:decidedAt
+  summary: When the user confirmed or rejected the proposal; empty while it is waiting.
+- key: table:assistant_pending_action;field:paramsJson
+  summary: The values the assistant proposed to save, in stored form.
+  content: |
+    Use these read-only details to review the proposed change. Sensitive values may be replaced before storage. A proposal whose parameters were redacted cannot be confirmed.
+- key: table:assistant_data_audit;slot:help
+  summary: A record of conversations that touched sensitive data or were blocked from reaching a provider.
+  content: |
+    A row is written only when a question involves data classified as personal (PII) or health (PHI) information, or when a provider is refused under the privacy rules. It records which user, conversation, tables, provider and model were involved and whether the request was allowed or blocked.
+
+    Rows are created automatically and cannot be edited. They are deleted together with their conversation.
+- key: table:assistant_data_audit;section:details
+  summary: What data was involved, which provider and model were considered, and whether it was allowed.
+- key: table:assistant_data_audit;section:dates
+  summary: When the audit entry was written.
+- key: table:assistant_data_audit;field:reason
+  summary: Why the request was allowed or blocked, in plain words.
+- key: table:assistant_data_audit;field:tables
+  summary: The tables whose data raised the sensitivity of the conversation.
+- key: table:assistant_data_audit;field:classification
+  summary: 'The sensitivity level at that moment: PUBLIC, CONFIDENTIAL, PII or PHI.'
+  content: |
+    Levels rise in that order. PHI means protected health information.
+- key: table:assistant_data_audit;field:userId
+  summary: The user whose conversation this entry is about.
+- key: table:assistant_data_audit;field:providerId
+  summary: The provider that was about to receive the request.
+- key: table:assistant_data_audit;field:hipaaEligible
+  summary: Whether that provider was marked HIPAA-eligible when the request was checked.
+- key: table:assistant_data_audit;field:conversationId
+  summary: The conversation this entry belongs to.
+- key: table:assistant_data_audit;field:turnId
+  summary: The question and answer cycle this entry belongs to.
+- key: table:assistant_data_audit;field:model
+  summary: The model that was about to receive the request.
+- key: table:assistant_data_audit;field:providerName
+  summary: The provider's name as it was when the request was checked.
+- key: table:assistant_data_audit;field:decision
+  summary: ALLOWED when the provider could receive the request, BLOCKED when it was refused.
+- key: table:assistant_budget_usage;slot:help
+  summary: A read-only copy of each model call's cost and tokens, kept so budgets can add up usage quickly.
+  content: |
+    One row is added automatically for every row in **{{label:assistant_usage}}**. It holds only who, which provider and model, when, and the token and cost figures, with no conversation content. Budgets for the whole site, a provider or a model add up these rows. You cannot edit or delete them; there is normally no reason to open this list.
+- key: table:assistant_budget_usage;field:occurredAt
+  summary: When the model call happened.
+- key: table:assistant_budget_usage;field:userId
+  summary: The user the model call was made for.
+- key: table:assistant_budget_usage;field:costMicros
+  summary: The call's cost in millionths of a US dollar; 1,000,000 is $1.00.
+- key: table:assistant_budget_usage;field:providerId
+  summary: The provider that handled the call.
+- key: table:assistant_budget_usage;field:cacheReadTokens
+  summary: Tokens served from the provider's prompt cache.
+- key: table:assistant_budget_usage;field:inputTokens
+  summary: Normal input tokens sent to the model.
+- key: table:assistant_budget_usage;field:outputTokens
+  summary: Tokens the model wrote back.
+- key: table:assistant_budget_usage;field:model
+  summary: The model that handled the call.
+- key: table:assistant_budget_usage;field:usageId
+  summary: The model call this row is a copy of.
+- key: table:assistant_budget_usage;field:cacheWriteTokens
+  summary: Tokens stored in the provider's prompt cache for reuse.
+- key: table:assistant_budget;slot:help
+  summary: Spending or token limits for a day or a month, for the whole site, a user, a role, a provider or a model.
+  content: |
+    A budget watches how much the assistant has used in the current UTC day or month. As use grows it warns, then either switches to a cheaper model or stops new answers, depending on the settings:
+
+    1. At **Warn at percent** the user sees a notice and an alert is raised.
+    2. At 100 percent the action in **At limit** applies: **Downgrade** switches to another model for the rest of the period, **Stop** refuses new questions.
+    3. At **Hard ceiling percent** answers stop whatever the action is.
+
+    When several budgets apply, the strictest wins. To let someone carry on after a limit is reached, add an **Overrides** row. The limits in **{{label:assistant_policy}}** are checked as well. Each warning, downgrade or stop is logged once per period under **{{label:assistant_budget_event}}**.
+- key: table:assistant_budget;section:budget
+  summary: What the budget covers, what it measures and how large the limit is.
+- key: table:assistant_budget;section:thresholds
+  summary: When the budget warns, what it does at the limit and where it stops for good.
+- key: table:assistant_budget;section:dates
+  summary: When the budget was created and last changed.
+- key: table:assistant_budget;section:budgetOverrides
+  summary: Temporary extra allowance granted on this budget by an admin.
+- key: table:assistant_budget;section:budgetEvents
+  summary: The warnings, downgrades and stops this budget has triggered.
+- key: table:assistant_budget;field:enabled
+  summary: Turn off to stop applying the budget without deleting it. New budgets start turned on.
+- key: table:assistant_budget;field:name
+  summary: A name for the budget; it is shown to users in warning and stop messages.
+- key: table:assistant_budget;field:metric
+  summary: 'What is counted: dollars of cost or tokens.'
+  content: |
+    **COST_USD**: the money the model calls cost. **TOKENS**: input, output and cache tokens added together. The limit is then in whole tokens.
+- key: table:assistant_budget;field:period
+  summary: How long the count runs before it starts again at zero, in UTC.
+  content: |
+    **DAY** starts at midnight UTC. **MONTH** starts at midnight UTC on the first of the month. UTC may differ from your local calendar day.
+- key: table:assistant_budget;field:notes
+  summary: Optional note about why the budget exists, up to {{maxLength:assistant_budget.notes}} characters.
+- key: table:assistant_budget;field:hardCeilingPercent
+  summary: The percent of the limit at which answers stop for good; at least 100, default 120.
+  content: |
+    Reaching it stops requests even when **At limit** is Downgrade. Use it to stop a cheaper model from running up a bill.
+- key: table:assistant_budget;field:downgradeModelId
+  summary: The model to switch to when the limit is reached and the action is Downgrade.
+  content: |
+    Leave empty to let the assistant choose the cheapest enabled model that is allowed for the conversation, preferring local providers. If none can be used, the budget stops requests instead.
+- key: table:assistant_budget;field:scopeValue
+  summary: Who or what the budget applies to, matching the scope; empty for the whole site.
+  content: |
+    Leave empty for **INSTANCE**. For **USER** enter the user id. For **ROLE** enter the permission name; each person who holds it gets their own allowance. For **PROVIDER** or **MODEL** enter the id number of that provider or model row. Saving is refused when it does not fit the scope.
+- key: table:assistant_budget;field:warnPercent
+  summary: The percent of the limit at which users get a warning; 0 to 99, default 80.
+- key: table:assistant_budget;field:scopeType
+  summary: 'What the budget applies to: the whole site, one user, a role, a provider or a model.'
+  content: |
+    **INSTANCE**: all use together. **USER**: one named user. **ROLE**: each user holding a permission, counted separately. **PROVIDER**: all calls to one provider. **MODEL**: all calls to one model.
+- key: table:assistant_budget;field:atLimitAction
+  summary: 'What happens when use reaches 100 percent: Downgrade to another model, or Stop.'
+  content: |
+    **DOWNGRADE** is the default. It switches to the downgrade model for the rest of the period and tells the user. **STOP** refuses new questions until the period ends or an override is added.
+- key: table:assistant_budget;field:limitValue
+  summary: 'The size of the limit: US dollars for cost budgets, whole tokens for token budgets.'
+  content: |
+    Must be greater than zero. Overrides add to this number.
+- key: table:assistant_budget_override;slot:help
+  summary: A temporary extra allowance or lifted limit on one budget, granted by an assistant admin.
+  content: |
+    Use it when someone has a good reason to carry on after a limit was reached. Choose either **Extra value**, which is added to the budget's limit, or **Unlimited until**, which removes the limit until that time, never both. A **{{label:assistant_budget_override.reason}}** and an **Expires at** time are required, and the override stops working at that time.
+
+    Only users with the assistant admin permission can create or change overrides. Who granted it is recorded automatically. Leave **Scope value** empty to cover everyone the budget covers, or enter one user id to help just that person.
+- key: table:assistant_budget_override;section:details
+  summary: Which budget, how much extra allowance or until when, who it is for, why and when it ends.
+- key: table:assistant_budget_override;section:dates
+  summary: When the override was created and last changed.
+- key: table:assistant_budget_override;field:reason
+  summary: Why you granted this override; a reason is required.
+- key: table:assistant_budget_override;field:expiresAt
+  summary: When the override stops applying; required. After this time the normal limit is back.
+- key: table:assistant_budget_override;field:scopeValue
+  summary: Optional user id to limit the override to one person; empty applies it to everyone the budget covers.
+- key: table:assistant_budget_override;field:budgetId
+  summary: The budget this override changes.
+- key: table:assistant_budget_override;field:grantedBy
+  summary: The admin who created the override; filled in automatically and cannot be changed.
+- key: table:assistant_budget_override;field:extraValue
+  summary: Extra allowance added to the limit, in dollars or whole tokens like the budget; leave empty if using Unlimited until.
+  content: |
+    Must be positive. Fill in this or **Unlimited until**, not both.
+- key: table:assistant_budget_override;field:unlimitedUntil
+  summary: Removes the limit until this time; leave empty if using Extra value.
+  content: |
+    It cannot be later than **Expires at**. Fill in this or **Extra value**, not both.
+- key: table:assistant_budget_event;slot:help
+  summary: A log entry made when a budget warned, switched models or stopped requests in a given period.
+  content: |
+    Entries are written automatically and cannot be edited. Each budget, user or scope and period gets one entry for each state, so you see a warning once rather than on every question. Each entry also raises an alert for admins. Use the list to see who is reaching limits and how often.
+- key: table:assistant_budget_event;section:details
+  summary: Which budget and scope it was, the state reached, and the usage against the limit at that moment.
+- key: table:assistant_budget_event;section:dates
+  summary: When the entry was logged.
+- key: table:assistant_budget_event;field:state
+  summary: 'What happened: WARNED, DOWNGRADED or STOPPED.'
+  content: |
+    **WARNED**: the warning percent was reached. **DOWNGRADED**: the limit was reached and a different model took over. **STOPPED**: new questions were refused.
+- key: table:assistant_budget_event;field:userId
+  summary: The user whose question triggered the entry.
+- key: table:assistant_budget_event;field:budgetId
+  summary: The budget that triggered the entry.
+- key: table:assistant_budget_event;field:scopeKey
+  summary: Identifies exactly what was counted, such as the scope type followed by its value.
+  content: |
+    For a role budget it also names the user, because each person has their own allowance.
+- key: table:assistant_budget_event;field:periodStart
+  summary: The start of the day or month this entry belongs to, in UTC.
+- key: table:assistant_budget_event;field:usedValue
+  summary: How much had been used when it happened, in dollars or tokens like the budget.
+- key: table:assistant_budget_event;field:limitValue
+  summary: The limit in force at that moment, including any override that was active.
+- key: process:assistantRetention;slot:help
+  summary: Permanently deletes old assistant conversations and clears old stored lookup results to keep the data small.
+  content: |
+    You can run this action from the conversation list. Automatic execution depends on your application configuring a retention scheduler. It cannot be undone. Only users with the assistant admin permission can run it. By default it does the following:
+
+    - Deletes conversations with no change for 90 days, together with their messages, turns, tool calls, feedback, proposed changes and data audit entries.
+    - Clears the stored results of lookups older than 30 days.
+    - Deletes the saved replay events of answers older than 30 days.
+    - Removes record data from the stored text of messages older than 30 days.
+
+    Conversations that touched protected health information use a separate retention period (2,190 days by default). Your application can configure these retention periods. Model calls and cost history are not deleted, so budgets and the **Overview** keep their figures.
+- key: process:assistantProviderTestConnection;slot:help
+  summary: Sends one tiny live request to each selected provider to check that its key, address and model work.
+  content: |
+    Select one or more providers, review, then run. Each provider is asked a very short question (a few tokens, so a tiny cost) using its own model. The result is saved on the provider under **Last connection test** (OK or ERROR, how long it took, and the error when it failed) and shown on the **Overview**. The call also appears as a TEST row in **{{label:assistant_usage}}**.
+
+    The review step lists setup problems such as a missing API key before anything is sent. Providers that are turned off are tested anyway, so you can check one before enabling it. Only assistant admins can run it.
+- key: process:assistantProviderDiscoverModels;slot:help
+  summary: Asks each selected provider which models it offers and adds the new ones to the model list.
+  content: |
+    It adds rows to **{{label:assistant_model}}** only; models already listed are left exactly as they are, so your prices and settings are safe. New models are turned on when the provider is local or lists 20 models or fewer; otherwise they start turned off so you can pick the ones you want. Models on local providers get a price of 0. Names that look like embedding models are marked as Embedding.
+
+    The result reads like "3 models added, 5 already present". The time and outcome are saved on the provider under **Last discovery**. Only assistant admins can run it.
+- key: process:assistantModelTestConnection;slot:help
+  summary: Sends one tiny live request to each selected model to check it works before you rely on it.
+  content: |
+    Works even on models that are turned off, so you can test one before enabling it. It uses the provider's connection and the model's name, asks a very short question (a few tokens, so a tiny cost) and saves the result on the model under **Last connection test**. The call also appears as a TEST row in **{{label:assistant_usage}}**. The review step reports a missing key or provider first. Only assistant admins can run it.
+- key: process:assistantKnowledgeIndex;slot:help
+  summary: Reads the content of the selected knowledge sources and stores it so the assistant can search it.
+  content: |
+    It reads the records as you, so you only index what you are allowed to see, and sends the text to the source's embedding model, which counts toward budgets and costs a little. Only chunks that changed are sent again. The review step checks the source's setup first and sends nothing. The outcome is saved on the source under **Last index**.
+
+    Use it after you create a source or when its content has changed a lot. Only assistant admins can run it.
+- key: process:assistantKnowledgeClear;slot:help
+  summary: Removes the stored search index of the selected knowledge sources; the source settings stay.
+  content: |
+    No model is called and nothing is sent anywhere. The assistant can no longer search that source until you run **{{label:assistantKnowledgeIndex}}** again. It works even when the source's setup is broken. Only assistant admins can run it.
+- key: widget:assistant_conversationJoinAssistant_message;slot:label
+  summary: Every message of this conversation in order, the user's questions and the assistant's answers.
+- key: widget:assistant_conversationJoinAssistant_turn;slot:label
+  summary: Each question and answer cycle of this conversation, with its model, cost and outcome.
+- key: widget:assistant_conversationJoinAssistant_tool_call;slot:label
+  summary: The lookups the assistant made for this conversation, such as reading or counting records.
+- key: widget:assistant_conversationJoinAssistant_pending_action;slot:label
+  summary: Changes the assistant proposed in this conversation, waiting for or having had the user's decision.
+- key: widget:assistant_conversationJoinAssistant_feedback;slot:label
+  summary: The thumbs up and thumbs down ratings the user gave to answers in this conversation.
+- key: widget:assistant_conversationJoinAssistant_data_audit;slot:label
+  summary: Entries recording sensitive data or blocked providers in this conversation.
+- key: widget:assistant_conversationJoinAssistant_usage;slot:label
+  summary: Each request sent to an AI provider for this conversation, with tokens, cost and result.
+- key: widget:assistant_profileJoinAssistant_profile_skill;slot:label
+  summary: The skills linked to this profile; admins can add more from here.
+- key: widget:assistant_budgetJoinAssistant_budget_override;slot:label
+  summary: The temporary extra allowances or lifted limits granted on this budget, and when they expire.
+- key: widget:assistant_budgetJoinAssistant_budget_event;slot:label
+  summary: The warnings, downgrades and stops this budget has triggered, once per period.
+- key: widget:assistant_providerJoinAssistant_model;slot:label
+  summary: The models this provider offers, with whether each is turned on and how its last test went.
+- key: widget:assistant_providerJoinAssistant_usage;slot:label
+  summary: Recent requests sent to this provider, with model, tokens, cost and result.
+- key: widget:assistantHome;slot:label
+  summary: 'The assistant''s setup, providers, cost this month, use over the last 30 days, denials and failures.'
+- key: widget:assistantHealth;slot:label
+  summary: Central health status for assistant providers and models, with a link to filtered System Health.
+- key: widget:assistantAccess;slot:label
+  summary: Shows, for your own login, what the assistant may do on each table, and why an action is not allowed.
+- key: possibleValueSource:assistant_budget_scopeType;slot:help
+  summary: What a budget applies to.
+  content: |
+    - **INSTANCE**: all assistant use on the site together.
+    - **USER**: one named user.
+    - **ROLE**: each user who holds a given permission, each with their own allowance.
+    - **PROVIDER**: all requests to one provider.
+    - **MODEL**: all requests to one model.
+- key: possibleValueSource:assistant_budget_period;slot:help
+  summary: How long a budget counts before it resets.
+  content: |
+    - **DAY**: resets at midnight UTC.
+    - **MONTH**: resets at midnight UTC on the first of the month.
+- key: possibleValueSource:assistant_budget_metric;slot:help
+  summary: What a budget counts.
+  content: |
+    - **COST_USD**: the cost of model calls in US dollars.
+    - **TOKENS**: input, output and cache tokens added together, as whole numbers.
+- key: possibleValueSource:assistant_budget_atLimitAction;slot:help
+  summary: What a budget does when use reaches 100 percent of its limit.
+  content: |
+    - **DOWNGRADE**: switch to the downgrade model for the rest of the period, or stop if none is available.
+    - **STOP**: refuse new questions until the period ends or an override is added.
+- key: possibleValueSource:assistant_effort;slot:help
+  summary: How much thinking effort the assistant asks a model to put into an answer.
+  content: |
+    From lightest to heaviest: **Low**, **Medium**, **High**, **Xhigh** and **Max**. Higher effort can give better answers on hard questions but is slower and uses more tokens, so it costs more. Models that do not support an effort setting ignore it.
+- key: possibleValueSource:assistant_object_type;slot:help
+  summary: Whether a data access rule is for a table or for an action.
+  content: |
+    - **Table**: a data table, such as pages or posts.
+    - **Process**: an action the assistant could run.
+- key: possibleValueSource:assistant_data_access_mode;slot:help
+  summary: How far the assistant may go with a table or action, never beyond the user's own permissions.
+  content: |
+    - **None**: the assistant cannot see or use it.
+    - **Read**: it may look up and count records.
+    - **Read and write**: it may also propose changes, which the user confirms, and run actions.
+- key: possibleValueSource:assistant_provider_type;slot:help
+  summary: The kind of AI provider connection installed on this server, for example Anthropic or an OpenAI-compatible server.
+  content: |
+    Only the types installed on this server are listed. The type decides which models and settings a provider can use.
+- key: possibleValueSource:assistant_model;slot:help
+  summary: The model names known to the installed provider types, plus any model that has a price.
+  content: |
+    The list is a convenience for picking a name. The models offered depend on the provider type chosen; you can still type another exact name if your provider offers it.
+- key: possibleValueSource:assistant_price_model;slot:help
+  summary: The model names known to the installed provider types or that already have a price, for choosing a price row's model.
+  content: |
+    Pick a name from the list or type the exact model name your provider uses.
+- key: possibleValueSource:assistant_provider_kind;slot:help
+  summary: The specific service behind a provider, which fine-tunes defaults and how it is reached.
+  content: |
+    Anthropic, OpenAI, Azure OpenAI, OpenRouter, Ollama, LM Studio, vLLM, llama.cpp server, OpenAI-compatible (other), AWS Bedrock and Google Vertex AI are built in. Other kinds can be added by the server's setup.
+- key: possibleValueSource:assistant_provider_location;slot:help
+  summary: Whether a provider runs on your own hardware or in someone else's cloud.
+  content: |
+    - **Local**: runs on your network. Its models cost 0 unless priced, and it is the preferred automatic backup.
+    - **Cloud**: a hosted service. Costs follow the price list and the monthly cost cap.
+- key: possibleValueSource:assistant_routing_mode;slot:help
+  summary: How a profile chooses between its simple and complex model for each question.
+  content: |
+    - **Off**: always use the normal main model.
+    - **Heuristic**: built-in rules judge the question, such as length, number of tables mentioned and words like compare or analyze.
+    - **Classifier**: a small model decides, with the heuristic as a backup if it fails.
+- key: possibleValueSource:assistant_model_kind;slot:help
+  summary: What a model is used for.
+  content: |
+    - **Chat**: answers questions in the assistant panel.
+    - **Embedding**: turns text into vectors so a knowledge source can be searched. Cannot answer questions.
+- key: possibleValueSource:assistant_model_source;slot:help
+  summary: How a model row got into the list.
+  content: |
+    - **Discovered**: found by the Discover models action on a provider.
+    - **Manual**: typed in by an admin.
+- key: table:assistant_conversation;field:channel
+  summary: 'The channel through which this conversation was started.'
+- key: table:assistant_conversation;field:scheduledTaskId
+  summary: 'The scheduled task that created this conversation, when applicable.'
+- key: table:assistant_tool_call;field:clientChannel
+  summary: 'The assistant client channel that initiated this tool call.'
+- key: table:assistant_scheduled_task;slot:help
+  summary: 'A saved assistant prompt that runs on a schedule under a specified user’s access.'
+  content: |
+    Use **Scheduled Tasks** for recurring assistant work. Set the prompt, run-as user, allowed credential reference and schedule. Each execution creates a conversation and a **Scheduled Run**, so you can inspect the answer and any errors afterward.
+
+    Write mode needs a separate administrator approval bound to the task’s security settings. Changing the prompt, user, credential, profile or write request invalidates that approval. Review the task before enabling it, and use **Run now** to check a result without waiting for the next scheduled time.
+- key: table:assistant_scheduled_task;field:name
+  summary: 'The name used to identify this recurring assistant task.'
+- key: table:assistant_scheduled_task;field:enabled
+  summary: 'Whether the scheduler should run this task when it becomes due.'
+- key: table:assistant_scheduled_task;field:cronExpression
+  summary: 'The Quartz schedule expression determining when this task becomes due.'
+  content: |
+    The schedule uses a Quartz cron expression interpreted in the configured time zone. Use a valid named time zone so daylight-saving behavior follows that zone’s rules. Saving relevant schedule changes recalculates the next run time. Check **{{label:assistant_scheduled_task.nextRunAt}}** and the task’s enabled state together, then inspect **Scheduled Runs** to confirm actual executions.
+- key: table:assistant_scheduled_task;field:credentialEnvName
+  summary: 'The allowed environment variable name holding this task’s login credential.'
+  content: |
+    The task authenticates using a server-side credential reference and checks that it represents the configured run-as user. Enter an allowed environment variable name, never a token value. **{{label:assistant_scheduled_task.credentialStatus}}** reports reference availability without displaying the credential. Changing the user or credential reference invalidates write approval, so review and approve the new task definition when write mode is needed.
+- key: table:assistant_scheduled_task;field:maxCostUsdPerRun
+  summary: 'The spending limit for one execution, in US dollars.'
+  content: |
+    Set the maximum cost permitted for one execution in US dollars. This is a per-run control in addition to other assistant budget and policy checks. Review **Scheduled Runs** for the recorded cost and any blocked result. A spending limit does not expand provider access or authorize writes; those remain governed by the task’s identity and approval.
+- key: table:assistant_scheduled_task;field:writeModeApprovedBy
+  summary: 'The administrator who approved write mode for the current task definition.'
+  content: |
+    Requesting write mode does not approve it. An assistant administrator must review and use **Approve write mode**, which binds approval to the prompt, user, credential reference, profile and write request. Changing those settings invalidates approval. The run-as user’s permissions and assistant policy still apply. Use **Revoke write mode** to clear approval without deleting the task’s history.
+- key: table:assistant_scheduled_task;field:credentialStatus
+  summary: 'Whether the configured credential reference can currently be resolved.'
+  content: |
+    The task authenticates using a server-side credential reference and checks that it represents the configured run-as user. Enter an allowed environment variable name, never a token value. **{{label:assistant_scheduled_task.credentialStatus}}** reports reference availability without displaying the credential. Changing the user or credential reference invalidates write approval, so review and approve the new task definition when write mode is needed.
+- key: table:assistant_scheduled_task;field:writeModeApprovalHash
+  summary: 'A fingerprint binding write approval to the reviewed task settings.'
+  content: |
+    Requesting write mode does not approve it. An assistant administrator must review and use **Approve write mode**, which binds approval to the prompt, user, credential reference, profile and write request. Changing those settings invalidates approval. The run-as user’s permissions and assistant policy still apply. Use **Revoke write mode** to clear approval without deleting the task’s history.
+- key: table:assistant_scheduled_task;field:writeModeRequested
+  summary: 'Whether this task requests permission to perform approved write operations.'
+  content: |
+    Requesting write mode does not approve it. An assistant administrator must review and use **Approve write mode**, which binds approval to the prompt, user, credential reference, profile and write request. Changing those settings invalidates approval. The run-as user’s permissions and assistant policy still apply. Use **Revoke write mode** to clear approval without deleting the task’s history.
+- key: table:assistant_scheduled_task;field:writeModeApprovedAt
+  summary: 'When write mode was approved for this task definition.'
+  content: |
+    Requesting write mode does not approve it. An assistant administrator must review and use **Approve write mode**, which binds approval to the prompt, user, credential reference, profile and write request. Changing those settings invalidates approval. The run-as user’s permissions and assistant policy still apply. Use **Revoke write mode** to clear approval without deleting the task’s history.
+- key: table:assistant_scheduled_task;field:timezone
+  summary: 'The time zone used to interpret the task’s schedule.'
+  content: |
+    The schedule uses a Quartz cron expression interpreted in the configured time zone. Use a valid named time zone so daylight-saving behavior follows that zone’s rules. Saving relevant schedule changes recalculates the next run time. Check **{{label:assistant_scheduled_task.nextRunAt}}** and the task’s enabled state together, then inspect **Scheduled Runs** to confirm actual executions.
+- key: table:assistant_scheduled_task;field:profileId
+  summary: 'The assistant profile selected for this task.'
+- key: table:assistant_scheduled_task;field:nextRunAt
+  summary: 'The next scheduled execution time calculated for this task.'
+  content: |
+    The schedule uses a Quartz cron expression interpreted in the configured time zone. Use a valid named time zone so daylight-saving behavior follows that zone’s rules. Saving relevant schedule changes recalculates the next run time. Check **{{label:assistant_scheduled_task.nextRunAt}}** and the task’s enabled state together, then inspect **Scheduled Runs** to confirm actual executions.
+- key: table:assistant_scheduled_task;field:runAsUserId
+  summary: 'The user whose identity and permissions apply to each execution.'
+  content: |
+    The task authenticates using a server-side credential reference and checks that it represents the configured run-as user. Enter an allowed environment variable name, never a token value. **{{label:assistant_scheduled_task.credentialStatus}}** reports reference availability without displaying the credential. Changing the user or credential reference invalidates write approval, so review and approve the new task definition when write mode is needed.
+- key: table:assistant_scheduled_task;field:outputMode
+  summary: 'Whether results are recorded only or also passed to the scheduled-task alert integration.'
+  content: |
+    Every execution records a **Scheduled Run** and links to its conversation. Record-only output keeps the result there; other configured modes also invoke the scheduled-task alert integration. Availability of notifications depends on that integration. Check the run’s status and full conversation for the result rather than relying on receiving a notification as proof that the task completed.
+- key: table:assistant_scheduled_task;field:lastRunAt
+  summary: 'When the most recent execution started.'
+- key: table:assistant_scheduled_task;field:lastRunStatus
+  summary: 'The recorded result of the most recent execution.'
+- key: table:assistant_scheduled_task;field:lastRunError
+  summary: 'The error recorded for the most recent execution.'
+- key: table:assistant_scheduled_task;field:prompt
+  summary: 'The instructions sent to the assistant for each execution.'
+- key: table:assistant_scheduled_run;slot:help
+  summary: 'The result of one scheduled assistant execution, linked to its conversation and turn.'
+  content: |
+    Use **Scheduled Runs** to check what happened when a saved task ran. Each record includes its scheduled time, actual start and end, status, cost and a short result summary. Open the linked conversation for the complete answer and any actions awaiting confirmation.
+
+    A blocked result can indicate a policy or budget restriction; a failed result can indicate an execution problem. Review the error alongside the parent **Scheduled Task**. Runs are execution history, not editable definitions of future work.
+- key: table:assistant_scheduled_run;field:status
+  summary: 'Whether the execution succeeded, was blocked or failed.'
+- key: table:assistant_scheduled_run;field:summary
+  summary: 'A shortened result directing you to the conversation for full details.'
+- key: table:assistant_scheduled_run;field:userId
+  summary: 'The user under whose access this execution ran.'
+- key: table:assistant_scheduled_run;field:conversationId
+  summary: 'The conversation containing this execution’s complete answer.'
+- key: table:assistant_scheduled_run;field:startedAt
+  summary: 'When execution actually started.'
+- key: table:assistant_scheduled_run;field:costMicros
+  summary: 'The execution cost in millionths of a US dollar.'
+  content: |
+    Cost is recorded in millionths of a US dollar: one million represents one dollar. Use it to compare completed executions with the task’s per-run spending limit and other assistant budgets. The linked conversation and turn provide context for what the assistant did. A failed or blocked execution may still need inspection alongside its recorded cost.
+- key: table:assistant_scheduled_run;field:scheduledFor
+  summary: 'The scheduled time associated with this execution.'
+- key: table:assistant_scheduled_run;field:endedAt
+  summary: 'When execution ended.'
+- key: table:assistant_scheduled_run;field:turnId
+  summary: 'The question-and-answer turn performed by this execution.'
+- key: table:assistant_scheduled_run;field:taskId
+  summary: 'The saved task that produced this execution.'
+- key: table:assistant_scheduled_run;field:error
+  summary: 'The recorded reason this execution could not complete successfully.'
+- key: process:assistantScheduledTasksRunner;slot:help
+  summary: 'Run enabled assistant tasks whose next execution time has arrived.'
+  content: |
+    This background action finds enabled tasks that are due, claims each execution and authenticates as the configured run-as user. Each successful start creates a conversation and a **Scheduled Run**. Use those records to inspect the answer, spending and any policy or execution failure. The task’s permissions, credential checks and write approval still apply to scheduled work.
+- key: process:assistantScheduledTaskApprove;slot:help
+  summary: 'Approve write mode for the reviewed scheduled-task definition.'
+  content: |
+    Use **Approve write mode** after reviewing the task’s prompt, run-as user, credential reference and profile. The action requires assistant administrator access and binds approval to those settings and the write request. If the task changes after review, review it again. Approval does not grant the run-as user additional permissions or remove other assistant policy checks.
+- key: process:assistantScheduledTaskRevoke;slot:help
+  summary: 'Remove the recorded write approval from a scheduled assistant task.'
+  content: |
+    Use **Revoke write mode** when a task should no longer carry approval for unattended writes. Review the selected task before continuing. The action clears the approval identity, time and fingerprint; it does not delete the task or its earlier runs. Review **Scheduled Runs** separately for any work already performed and disable the task if it should stop running altogether.
+- key: process:assistantScheduledTaskRunNow;slot:help
+  summary: 'Start a scheduled assistant task manually after reviewing its settings.'
+  content: |
+    Use **Run now** to execute a saved task without waiting for its next due time. Review its prompt and execution identity before continuing. The runner uses the task’s configured credential, permissions, profile and write approval, and records the result in **Scheduled Runs**. Open the linked conversation to inspect the full answer and any pending confirmation.
+- key: widget:assistant_scheduled_taskJoinAssistant_scheduled_run;slot:label
+  summary: 'Execution history and results for this scheduled assistant task.'
+
+- key: table:assistant_turn;field:phase
+  summary: The current stage of the answer, such as waiting for a model or running a tool.
+- key: table:assistant_turn;field:leaseOwner
+  summary: The server worker responsible for keeping this answer running.
+- key: table:assistant_turn;field:concurrencyMode
+  summary: Whether this question replaces an earlier answer or may run alongside it.
+- key: table:assistant_turn;field:heartbeatAt
+  summary: When the worker last reported that this answer was still running.
+- key: table:assistant_turn;field:cancelRequestedAt
+  summary: When a request to stop this answer was recorded.
+- key: process:assistantDataAccessAddDefaults;slot:help
+  summary: Add missing data access rules for application tables using their current effective access.
+  content: |
+    Use **Add rows for every table** from **{{label:assistant_data_access}}** to make the current table access rules visible as records. Review the proposed rows before continuing.
+
+    You add one rule for each application table that has no rule yet. Existing rules stay unchanged, and the assistant's own tables are skipped. The new rules preserve the access already in effect; review individual rules afterward if you want to change that access. Only assistant administrators can run this action.
+
+- key: possibleValueSource:assistant_scheduled_task;slot:help
+  summary: Choose the saved task associated with this execution.
+
+- key: possibleValueSource:assistant_scheduled_output;slot:help
+  summary: Choose whether a scheduled task records its result, requests a notification, or does both.
+
+- key: possibleValueSource:assistant_budget;slot:help
+  summary: Choose the budget associated with this allowance or event.
+
+- key: possibleValueSource:assistant_registry_model;slot:help
+  summary: Choose a registered model for this assistant configuration.
+
+- key: possibleValueSource:assistant_budget_model;slot:help
+  summary: Choose a registered model to use when a budget downgrades requests.
+
+- key: possibleValueSource:assistant_turn;slot:help
+  summary: Choose the question-and-answer cycle associated with this record.
+
+- key: possibleValueSource:assistant_message;slot:help
+  summary: Choose the conversation message associated with this record.
+
+- key: possibleValueSource:assistant_pending_action;slot:help
+  summary: Choose the proposed change associated with this tool call.
+
+- key: possibleValueSource:assistant_profile;slot:help
+  summary: Choose the assistant profile associated with this configuration.
+
+- key: possibleValueSource:assistant_skill;slot:help
+  summary: Choose the skill to link to an assistant profile.
+
+- key: possibleValueSource:assistant_conversation;slot:help
+  summary: Choose the conversation associated with this record.
+
+- key: possibleValueSource:assistant_provider;slot:help
+  summary: Choose the provider associated with this model or request.

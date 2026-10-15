@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import com.kingsrook.qbits.assistant.engine.TurnEvent;
 import com.kingsrook.qbits.assistant.engine.TurnEventLog;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -101,7 +102,7 @@ public final class TurnStreams
          OutputStream out       = startStream(context);
          int          last      = after;
          long         lastWrite = System.currentTimeMillis();
-         long         giveUpAt  = System.currentTimeMillis() + (api.maxTurnSeconds() + 60L) * 1000L;
+         long         giveUpAt  = System.currentTimeMillis() + api.maxStreamSeconds() * 1000L;
          AssistantApi.TurnEvents current = first;
          while(true)
          {
@@ -113,8 +114,14 @@ public final class TurnStreams
                lastWrite = System.currentTimeMillis();
                ended |= event.isTerminal();
             }
-            if(ended || (current.finished() && !current.more()) || System.currentTimeMillis() > giveUpAt)
+            if(ended || (current.finished() && !current.more()))
             {
+               return;
+            }
+            if(System.currentTimeMillis() > giveUpAt)
+            {
+               write(out, new TurnEvent(last + 1, TurnEvent.ERROR, Map.of("code", "TIMEOUT", "message", "The event stream timed out. Reconnect to check this answer.")).toSseFrame());
+               write(out, new TurnEvent(last + 2, TurnEvent.MESSAGE_END, Map.of("status", "ERROR", "stopReason", "stream_timeout")).toSseFrame());
                return;
             }
             if(!current.more())
@@ -153,7 +160,7 @@ public final class TurnStreams
    /*******************************************************************************
     **
     *******************************************************************************/
-   private static void writeLive(OutputStream out, TurnEventLog log, int after) throws IOException, InterruptedException
+   static void writeLive(OutputStream out, TurnEventLog log, int after) throws IOException, InterruptedException
    {
       int last = after;
       while(true)
@@ -163,7 +170,12 @@ public final class TurnStreams
          {
             if(log.isClosed())
             {
-               return;
+               // The terminal event may have arrived after the empty poll.
+               if(log.size() <= last)
+               {
+                  return;
+               }
+               continue;
             }
             write(out, ping());
             continue;

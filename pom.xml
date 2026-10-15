@@ -202,7 +202,7 @@
    </build>
 
    <profiles>
-      <!-- The assistant needs QQQ 4.1.0-RC.6: the AI tool kernel (qqq#1078), the  -->
+      <!-- The assistant needs QQQ 4.1.0-RC.7: the AI tool kernel (qqq#1078), the  -->
       <!-- developer panels (qqq#1076) and the UI API extension point, invoker   -->
       <!-- and credentials (qqq#1128). Until                                      -->
       <!-- qbit-build-parent imports the 4.1 BOM, this                              -->
@@ -215,7 +215,8 @@
             <activeByDefault>true</activeByDefault>
          </activation>
          <properties>
-            <qqq.snapshot.version>4.1.0-RC.6</qqq.snapshot.version>
+            <!-- RC.7 provides classified-value tokens, log redaction and native help bundles. -->
+            <qqq.snapshot.version>4.1.0-RC.8</qqq.snapshot.version>
          </properties>
          <dependencyManagement>
             <dependencies>

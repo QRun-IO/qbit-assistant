@@ -17,8 +17,11 @@
 package com.kingsrook.qbits.assistant;
 
 
+import java.net.InetAddress;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -50,6 +53,7 @@ import com.kingsrook.qqq.backend.core.actions.ai.AiToolKernelSettings;
 import com.kingsrook.qqq.backend.core.actions.ai.exposure.AiExposurePolicy;
 import com.kingsrook.qqq.backend.core.actions.ai.output.AiRedactor;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitMetaData;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
@@ -62,6 +66,11 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
  *******************************************************************************/
 public class AssistantRuntime
 {
+   private static final QLogger LOG = QLogger.getLogger(AssistantRuntime.class);
+   private final String instanceId = instanceId();
+   private volatile boolean shuttingDown;
+   private Thread shutdownHook;
+
    private final ScheduledTurn scheduledTurn = new ScheduledTurn();
 
    private final RagService ragService;
@@ -104,11 +113,21 @@ public class AssistantRuntime
     *******************************************************************************/
    public AssistantRuntime(QInstance qInstance, AssistantQBitConfig config, Clock clock)
    {
+      this(qInstance, config, clock, new AssistantStore(config));
+   }
+
+
+
+   /*******************************************************************************
+    ** Explicit persistence collaborator for embedded runtimes and fault tests.
+    *******************************************************************************/
+   public AssistantRuntime(QInstance qInstance, AssistantQBitConfig config, Clock clock, AssistantStore store)
+   {
       AssistantChannelWall.validate(qInstance);
       this.qInstance = qInstance;
       this.config = config;
       this.clock = clock;
-      this.store = new AssistantStore(config);
+      this.store = store;
       this.policyService = new PolicyService(config, store, clock);
       this.providerService = new ProviderService(config, store, clock);
       this.budgetService = new BudgetService(store, providerService, clock);
@@ -157,6 +176,21 @@ public class AssistantRuntime
       this.knowledgeTool = new KnowledgeTool(this, ragService, vectors);
       this.bulkLoadTools = new BulkLoadTools(qInstance, dataAccessService, config.getBulkLoadRunner());
       this.contextBuilder = new ContextBuilder(config, kernel, toolbox).withKnowledgeTool(knowledgeTool).withBulkLoadTools(bulkLoadTools);
+      if(Boolean.TRUE.equals(config.getRegisterShutdownHook()))
+      {
+         shutdownHook = new Thread(() ->
+         {
+            try
+            {
+               shutdown(Duration.ofSeconds(config.getShutdownGraceSeconds()));
+            }
+            catch(Throwable ignored)
+            {
+               // Shutdown must never fail the JVM hook.
+            }
+         }, "assistant-shutdown-" + instanceId);
+         Runtime.getRuntime().addShutdownHook(shutdownHook);
+      }
    }
 
 
@@ -312,8 +346,13 @@ public class AssistantRuntime
    /*******************************************************************************
     ** Track a turn running here.
     *******************************************************************************/
-   public RunningTurn register(RunningTurn turn)
+   public synchronized RunningTurn register(RunningTurn turn)
    {
+      if(shuttingDown)
+      {
+         turn.forceFinalize("SHUTDOWN");
+         return (turn);
+      }
       runningTurns.put(turn.getTurnId(), turn);
       return (turn);
    }
@@ -345,7 +384,17 @@ public class AssistantRuntime
     *******************************************************************************/
    public void cancelAll(String reason)
    {
-      runningTurns.values().forEach(t -> t.cancel(reason));
+      runningTurns.values().forEach(t ->
+      {
+         try
+         {
+            t.cancel(reason);
+         }
+         catch(Exception e)
+         {
+            LOG.warn("Assistant cancellation failed; finalization will still run");
+         }
+      });
    }
 
 
@@ -355,8 +404,7 @@ public class AssistantRuntime
     *******************************************************************************/
    public void close()
    {
-      runningTurns.values().forEach(t -> t.cancel("SHUTDOWN"));
-      executor.shutdownNow();
+      shutdown(Duration.ZERO);
    }
 
 
@@ -502,6 +550,99 @@ public class AssistantRuntime
    public BulkLoadTools getBulkLoadTools()
    {
       return (bulkLoadTools);
+   }
+
+
+
+
+   /*******************************************************************************
+    ** Stop accepting work, cancel, wait a bounded grace, then force finalization.
+    *******************************************************************************/
+   public void shutdown(Duration grace)
+   {
+      synchronized(this)
+      {
+         shuttingDown = true;
+      }
+      cancelAll("SHUTDOWN");
+      long until = System.nanoTime() + Math.max(0, grace.toNanos());
+      while(!runningTurns.isEmpty() && System.nanoTime() < until)
+      {
+         try
+         {
+            Thread.sleep(10);
+         }
+         catch(InterruptedException e)
+         {
+            Thread.currentThread().interrupt();
+            break;
+         }
+      }
+      runningTurns.values().forEach(t ->
+      {
+         try
+         {
+            t.forceFinalize("SHUTDOWN");
+         }
+         catch(Exception e)
+         {
+            LOG.warn("Assistant shutdown finalization failed");
+         }
+      });
+      executor.shutdownNow();
+      if(shutdownHook != null && Thread.currentThread() != shutdownHook)
+      {
+         try
+         {
+            Runtime.getRuntime().removeShutdownHook(shutdownHook);
+         }
+         catch(IllegalStateException ignored)
+         {
+            // The JVM is already shutting down.
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for shuttingDown
+    *******************************************************************************/
+   public boolean isShuttingDown()
+   {
+      return (shuttingDown);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for instanceId
+    *******************************************************************************/
+   public String getInstanceId()
+   {
+      return (instanceId);
+   }
+
+
+
+   /*******************************************************************************
+    ** A stable, bounded hostname plus a per-runtime random suffix.
+    *******************************************************************************/
+   private static String instanceId()
+   {
+      String host = System.getenv("HOSTNAME");
+      if(!StringUtils.hasContent(host))
+      {
+         try
+         {
+            host = InetAddress.getLocalHost().getHostName();
+         }
+         catch(Exception ignored)
+         {
+            host = "unknown";
+         }
+      }
+      return (host.substring(0, Math.min(87, host.length())) + ":" + UUID.randomUUID().toString().substring(0, 8));
    }
 
 }

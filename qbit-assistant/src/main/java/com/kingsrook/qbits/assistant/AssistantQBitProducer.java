@@ -32,6 +32,7 @@ import com.kingsrook.qbits.assistant.metadata.AssistantInstanceMetaData;
 import com.kingsrook.qbits.assistant.metadata.AssistantMetaDataBuilder;
 import com.kingsrook.qbits.assistant.metadata.AssistantRecordScreens;
 import com.kingsrook.qbits.assistant.model.AssistantBudget;
+import com.kingsrook.qbits.assistant.processes.DataAccessDefaultsProcess;
 import com.kingsrook.qbits.assistant.processes.DiscoverModelsProcess;
 import com.kingsrook.qbits.assistant.processes.KnowledgeIndexProcess;
 import com.kingsrook.qbits.assistant.processes.ScheduledTaskProcess;
@@ -43,6 +44,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducerMultiOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.help.bundles.HelpBundles;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.ClientChannelsMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
@@ -182,7 +184,7 @@ public class AssistantQBitProducer implements QBitMetaDataProducer<AssistantQBit
       QProcessMetaData testConnection = TestConnectionProcess.process();
       testConnection.setSourceQBitName(qBitMetaData.getName());
       qInstance.addProcess(testConnection);
-      for(QProcessMetaData process : List.of(DiscoverModelsProcess.process(), TestModelConnectionProcess.process()))
+      for(QProcessMetaData process : List.of(DiscoverModelsProcess.process(), TestModelConnectionProcess.process(), DataAccessDefaultsProcess.process()))
       {
          process.setSourceQBitName(qBitMetaData.getName());
          qInstance.addProcess(process);
@@ -205,11 +207,17 @@ public class AssistantQBitProducer implements QBitMetaDataProducer<AssistantQBit
 
       QAppMetaData app = builder.buildAdminApp(tables);
       qInstance.addApp(app);
+      // Registration is metadata-only; core startup sync guards hosts without helpContent.
+      HelpBundles.register(qInstance, "help/qbit-assistant.yaml");
 
       AssistantChannelWall.register(qInstance);
       if(Boolean.TRUE.equals(qBitConfig.getRecordHistory()))
       {
          enableRecordHistory(ClientChannelsMetaData.ofOrWithNew(qInstance));
+      }
+      else
+      {
+         ClientChannelsMetaData.ofOrWithNew(qInstance).withDeniedPattern("assistant", "audit*");
       }
       postProduceActions(new MetaDataProducerMultiOutput(), qInstance);
       AssistantHealthChecks.register(qInstance);

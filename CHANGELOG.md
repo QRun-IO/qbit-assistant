@@ -14,6 +14,60 @@
 
 - The home's independent answering/last-test health indicators and per-provider health/down-until display. Central health owns status and history. Manual Test connection actions, `lastTest*` fields and the circuit breaker remain.
 
+## Unreleased - In-app help
+
+- Ship the host-neutral Assistant help bundle through QQQ's native registry, replacing the temporary loader.
+- Cover Assistant tables, fields, actions, widgets and selectors; retain live metadata references and add a bundle coverage gate.
+- Document HOST bundle overrides and remove deployment-specific provider, classification, retention and backup guidance.
+
+## Unreleased - Transcript redaction
+
+- Tokenize classified PII/PHI in stored messages, tool inputs/results, replay events, pending actions and derived summaries using QQQ secured-data tokens. Preserve eligible model requests and live SSE.
+- Stage content until turn completion, redact split deltas and classify criteria even when no records match; protect assistant logs with a scoped core redactor.
+- Reject proposals whose parameters were redacted; prevent confirmation before turn completion.
+- Read core table-level classification metadata and add secured-data canary tests for storage, audits, logs and in-memory model access.
+- Preserve durable-turn watchdog, supersede, shutdown and restart recovery with turn-scoped transcript redaction; widen token-bearing columns and entity limits, with H2-safe upgrade SQL.
+- Require QQQ 4.1.0-RC.7 (qqq#1182); retain the default audit-history opt-in and avoid duplicated routing headers against current core. RC.7 is released.
+## Unreleased - Foreign keys
+
+- Reference DDL: add the missing foreign keys (conversation tree, usage, data audit,
+  budget accounting, profile skills) with orphan quarantine and their indexes; make
+  `assistant_model.provider_id` `ON DELETE CASCADE`. A Postgres guardrail test fails
+  any declared relation without a foreign key.
+
+## Unreleased - Durable turns
+
+- Renew user-owned run leases with heartbeats, poll cross-replica Stop, enforce
+  hard deadlines, and finalize active runs during graceful shutdown. Recover
+  abandoned runs on replay, active discovery, or the next question.
+- Default to superseding a prior answer in the same conversation. Accept explicit
+  concurrent questions; the per-user cap supersedes the oldest run instead of
+  refusing another question. Per-minute limits and budgets still apply.
+- Add `GET /qqq/v1/assistant/turns/active`, `turn.phase` progress and `startedAt`
+  on `message.start`. Cancel is idempotent and returns HTTP 200.
+- Add the optional `AssistantRunTracker` Jobs tray SPI (no-op by default),
+  pending QQQ core job tracking (#1210).
+- Add the durable-turn schema upgrade; apply it before deploying this runtime.
+  A partial unique index fences duplicate terminal events from concurrent reapers.
+- UI API extension `assistant` 1.2.0 (additive): `turns/active`, the optional
+  `concurrency` on a new turn, 503 `SHUTTING_DOWN`, `turn.phase`,
+  `message.start.startedAt`, cancelReason `SUPERSEDED`. The 429 response stays
+  documented for budgets and per-minute limits; the "answer already in progress"
+  refusal is no longer returned. Cancel keeps 202 documented for older replicas.
+
+## Unreleased - Starter defaults
+
+- Every seed changeset's rollback is empty: a seeded row cannot be told apart from a host's own row with the same name, and Liquibase also rolls back changesets it marked ran, so a name-based undo would delete host data.
+
+- Fix the defaults changelog: every precondition is a portable `sql-check` (the formatted-SQL `table-exists` form failed to parse); the policy, budget and prices are seeded only into empty tables and the profile only when no default exists, so an existing host never changes on deploy. The test now runs the changelog through Liquibase 4.33, including an already configured host and a missing table.
+- The Setup card prices the default model the way calls are costed (registry, price rows, configured prices); "Add rows for every table" reads fresh data-access rows.
+
+- Ship `db/liquibase/qbit-assistant/assistant-defaults.changelog.sql`: insert-only starter rows for the policy, a default profile, four starter skills offered through it, a monthly instance budget (warn, downgrade, stop), current Anthropic prices and a disabled example scheduled task.
+- Add the Setup card to the Assistant home: every configuration table with its state (set up, needs setup, using defaults, optional) and the next step.
+- Add the `assistant_data_access` table action "Add rows for every table", which writes the default access out as editable rows.
+- Add `help/qbit-assistant.yaml` (QQQ help-bundle format) for the app and every assistant table, saying what each table is for and how its rows get created; applied by `AssistantHelp` until core help bundles ship in a release.
+- Guardrail tests: every table is used at runtime, seeded or explained, and has empty-state help; the changelog seeds a fresh schema and the seeded rows change the assistant's behavior.
+
 ## Unreleased - X1/Y1
 
 - Add default-off `withRecordHistory(true)` host opt-in: remove only `audit*` on RC.6, or invoke core #1193 audit-read/write-deny support when available. Preserve user permissions and all other channel denials; kof22 does not opt in.

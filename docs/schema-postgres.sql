@@ -49,7 +49,7 @@ CREATE TABLE assistant_turn
    status VARCHAR(16),
    classification VARCHAR(16),
    classification_tables VARCHAR(500),
-   stop_reason VARCHAR(64),
+   stop_reason TEXT,
    error_code VARCHAR(32),
    cancel_reason VARCHAR(64),
    model VARCHAR(200),
@@ -88,7 +88,7 @@ CREATE TABLE assistant_tool_call
    turn_id INTEGER,
    conversation_id INTEGER,
    user_id VARCHAR(255),
-   tool_call_id VARCHAR(128),
+   tool_call_id TEXT,
    tool_name VARCHAR(64),
    input_json TEXT,
    outcome VARCHAR(16),
@@ -118,7 +118,7 @@ CREATE TABLE assistant_feedback
    conversation_id INTEGER,
    user_id VARCHAR(255),
    rating INTEGER,
-   reason VARCHAR(64),
+   reason TEXT,
    comment TEXT,
    create_date TIMESTAMP WITH TIME ZONE
 );
@@ -267,7 +267,7 @@ CREATE TABLE assistant_usage
    cache_read_tokens BIGINT,
    cache_write_tokens BIGINT,
    cost_micros BIGINT,
-   request_id VARCHAR(100),
+   request_id TEXT,
    create_date TIMESTAMP WITH TIME ZONE
 );
 CREATE INDEX assistant_usage_create_date ON assistant_usage (create_date);
@@ -310,7 +310,7 @@ CREATE TABLE assistant_pending_action
    conversation_id INTEGER,
    turn_id INTEGER,
    user_id VARCHAR(255),
-   tool_call_id VARCHAR(128),
+   tool_call_id TEXT,
    tool_name VARCHAR(64),
    ui_api_operation VARCHAR(255),
    table_name VARCHAR(128),
@@ -382,7 +382,7 @@ CREATE TABLE assistant_data_audit
    classification VARCHAR(16),
    tables VARCHAR(500),
    decision VARCHAR(16),
-   reason VARCHAR(1000),
+   reason TEXT,
    create_date TIMESTAMP WITH TIME ZONE
 );
 CREATE INDEX assistant_data_audit_user_id ON assistant_data_audit (user_id);
@@ -415,7 +415,7 @@ CREATE TABLE assistant_budget_override
    scope_value VARCHAR(200),
    extra_value NUMERIC,
    unlimited_until TIMESTAMP WITH TIME ZONE,
-   reason VARCHAR(1000) NOT NULL,
+   reason TEXT NOT NULL,
    granted_by VARCHAR(200),
    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
    create_date TIMESTAMP WITH TIME ZONE,
@@ -566,9 +566,9 @@ CREATE TABLE assistant_scheduled_run (
    status VARCHAR(20) NOT NULL CHECK (status IN ('RUNNING', 'OK', 'FAILED', 'SKIPPED', 'BLOCKED')),
    conversation_id INTEGER REFERENCES assistant_conversation(id) ON DELETE SET NULL,
    turn_id INTEGER REFERENCES assistant_turn(id) ON DELETE SET NULL,
-   summary VARCHAR(2000),
+   summary TEXT,
    cost_micros BIGINT,
-   error VARCHAR(500),
+   error TEXT,
    create_date TIMESTAMPTZ,
    modify_date TIMESTAMPTZ,
    UNIQUE (task_id, scheduled_for)
@@ -577,3 +577,139 @@ CREATE INDEX assistant_scheduled_run_owner ON assistant_scheduled_run(user_id, s
 
 -- X1/Y1: encoded audit filters can exceed the old 500-character record links.
 ALTER TABLE assistant_tool_call ALTER COLUMN audit_href TYPE TEXT;
+
+
+-- Durable turns: apply this additive block before deploying the new runtime.
+-- Like earlier additions, fresh installs run the CREATEs followed by ALTERs.
+ALTER TABLE assistant_turn ADD COLUMN heartbeat_at TIMESTAMP;
+ALTER TABLE assistant_turn ADD COLUMN lease_owner VARCHAR(100);
+ALTER TABLE assistant_turn ADD COLUMN cancel_requested_at TIMESTAMP;
+ALTER TABLE assistant_turn ADD COLUMN phase VARCHAR(64);
+ALTER TABLE assistant_turn ADD COLUMN concurrency_mode VARCHAR(16);
+CREATE INDEX assistant_turn_user_status ON assistant_turn (user_id, status);
+
+-- Fence concurrent orphan reapers at the database boundary. A turn ends once.
+-- Check for pre-existing duplicate message.end rows before applying this index.
+CREATE UNIQUE INDEX assistant_turn_event_terminal ON assistant_turn_event (turn_id)
+   WHERE event_type = 'message.end';
+
+-- Index audit (2026-10-14): lookup, retention and FK paths with no leading index.
+-- ScheduledTurn.cost reads usage by turn on every scheduled run.
+CREATE INDEX IF NOT EXISTS assistant_usage_turn ON assistant_usage (turn_id);
+-- Retention: deleteTurnEventsBefore, clearToolResultsBefore and listConversationsInactiveSince filter by date.
+CREATE INDEX IF NOT EXISTS assistant_turn_event_create_date ON assistant_turn_event (create_date);
+CREATE INDEX IF NOT EXISTS assistant_tool_call_create_date ON assistant_tool_call (create_date);
+CREATE INDEX IF NOT EXISTS assistant_conversation_modify_date ON assistant_conversation (modify_date);
+-- ON DELETE SET NULL children: deleting a conversation or turn would scan scheduled runs without these.
+CREATE INDEX IF NOT EXISTS assistant_scheduled_run_conversation ON assistant_scheduled_run (conversation_id);
+CREATE INDEX IF NOT EXISTS assistant_scheduled_run_turn ON assistant_scheduled_run (turn_id);
+
+-- Foreign keys (2026-10-14). Run on new and existing databases; every step is guarded
+-- and re-runnable. The rules follow how the qbit deletes:
+-- * AssistantStore.deleteConversation (also the retention purge) deletes turn events,
+--   tool calls, feedback, messages, turns, data audit and pending actions, then the
+--   conversation. The conversation's own detail rows CASCADE, so an admin delete of a
+--   conversation cleans up the same way.
+-- * The message <-> turn cycle (turn.user_message_id / assistant_message_id and
+--   message.turn_id) and the other optional pointers are SET NULL. Rows are inserted
+--   parent first, so nothing is deferred.
+-- * assistant_usage keeps its cost rows when a conversation goes (SET NULL), and the
+--   data audit trail is never cascaded into (SET NULL).
+-- * Provider references from usage, budget accounting and the data audit are NO ACTION
+--   (like assistant_turn.provider_id): disable a provider with history, do not delete
+--   it. A provider's model rows are its own (CASCADE).
+-- * assistant_budget_usage.usage_id has no foreign key on purpose: the projection
+--   outlives its usage row so budgets keep counting the spend.
+-- Rows that already point at a missing parent are recorded in qqq_fk_quarantine first,
+-- then nulled (nullable columns) or deleted with the full row recorded (NOT NULL).
+CREATE INDEX IF NOT EXISTS assistant_message_parent_message ON assistant_message (parent_message_id);
+CREATE INDEX IF NOT EXISTS assistant_message_turn ON assistant_message (turn_id);
+CREATE INDEX IF NOT EXISTS assistant_turn_user_message ON assistant_turn (user_message_id);
+CREATE INDEX IF NOT EXISTS assistant_turn_assistant_message ON assistant_turn (assistant_message_id);
+CREATE INDEX IF NOT EXISTS assistant_turn_provider ON assistant_turn (provider_id);
+CREATE INDEX IF NOT EXISTS assistant_tool_call_pending_action ON assistant_tool_call (pending_action_id);
+CREATE INDEX IF NOT EXISTS assistant_feedback_message ON assistant_feedback (message_id);
+CREATE INDEX IF NOT EXISTS assistant_pending_action_turn ON assistant_pending_action (turn_id);
+CREATE INDEX IF NOT EXISTS assistant_data_audit_provider ON assistant_data_audit (provider_id);
+CREATE INDEX IF NOT EXISTS assistant_budget_usage_provider ON assistant_budget_usage (provider_id);
+CREATE INDEX IF NOT EXISTS assistant_profile_skill_skill ON assistant_profile_skill (skill_id);
+CREATE INDEX IF NOT EXISTS assistant_budget_downgrade_model ON assistant_budget (downgrade_model_id);
+CREATE INDEX IF NOT EXISTS assistant_conversation_scheduled_task ON assistant_conversation (scheduled_task_id);
+CREATE INDEX IF NOT EXISTS assistant_model_fallback_model ON assistant_model (fallback_model_id);
+CREATE INDEX IF NOT EXISTS assistant_profile_simple_model ON assistant_profile (simple_model_id);
+CREATE INDEX IF NOT EXISTS assistant_profile_complex_model ON assistant_profile (complex_model_id);
+CREATE INDEX IF NOT EXISTS assistant_profile_classifier_model ON assistant_profile (classifier_model_id);
+CREATE INDEX IF NOT EXISTS assistant_rag_source_embedding_model ON assistant_rag_source (embedding_model_id);
+CREATE INDEX IF NOT EXISTS assistant_scheduled_task_profile ON assistant_scheduled_task (profile_id);
+
+CREATE TABLE IF NOT EXISTS qqq_fk_quarantine (id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY, table_name VARCHAR(100) NOT NULL, column_name VARCHAR(100) NOT NULL, row_id VARCHAR(100), missing_parent_id VARCHAR(100), action VARCHAR(20) NOT NULL, row_data TEXT, changeset VARCHAR(200), quarantined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+
+DO $$
+DECLARE
+   r   RECORD;
+   old TEXT;
+BEGIN
+   FOR r IN SELECT * FROM (VALUES
+      ('assistant_message',        'conversation_id',      'assistant_conversation',   'CASCADE',   TRUE),
+      ('assistant_message',        'parent_message_id',    'assistant_message',        'SET NULL',  TRUE),
+      ('assistant_message',        'turn_id',              'assistant_turn',           'SET NULL',  TRUE),
+      ('assistant_turn',           'conversation_id',      'assistant_conversation',   'CASCADE',   TRUE),
+      ('assistant_turn',           'user_message_id',      'assistant_message',        'SET NULL',  TRUE),
+      ('assistant_turn',           'assistant_message_id', 'assistant_message',        'SET NULL',  TRUE),
+      ('assistant_turn_event',     'turn_id',              'assistant_turn',           'CASCADE',   TRUE),
+      ('assistant_tool_call',      'conversation_id',      'assistant_conversation',   'CASCADE',   TRUE),
+      ('assistant_tool_call',      'turn_id',              'assistant_turn',           'CASCADE',   TRUE),
+      ('assistant_tool_call',      'pending_action_id',    'assistant_pending_action', 'SET NULL',  TRUE),
+      ('assistant_feedback',       'conversation_id',      'assistant_conversation',   'CASCADE',   TRUE),
+      ('assistant_feedback',       'message_id',           'assistant_message',        'CASCADE',   TRUE),
+      ('assistant_pending_action', 'conversation_id',      'assistant_conversation',   'CASCADE',   TRUE),
+      ('assistant_pending_action', 'turn_id',              'assistant_turn',           'SET NULL',  TRUE),
+      ('assistant_data_audit',     'conversation_id',      'assistant_conversation',   'SET NULL',  TRUE),
+      ('assistant_data_audit',     'turn_id',              'assistant_turn',           'SET NULL',  TRUE),
+      ('assistant_usage',          'conversation_id',      'assistant_conversation',   'SET NULL',  TRUE),
+      ('assistant_usage',          'turn_id',              'assistant_turn',           'SET NULL',  TRUE),
+      ('assistant_usage',          'provider_id',          'assistant_provider',       'NO ACTION', TRUE),
+      ('assistant_data_audit',     'provider_id',          'assistant_provider',       'NO ACTION', TRUE),
+      ('assistant_budget_usage',   'provider_id',          'assistant_provider',       'NO ACTION', TRUE),
+      ('assistant_profile_skill',  'profile_id',           'assistant_profile',        'CASCADE',   FALSE),
+      ('assistant_profile_skill',  'skill_id',             'assistant_skill',          'CASCADE',   FALSE)
+   ) AS v(child, col, parent, rule, nullable)
+   LOOP
+      IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_schema = current_schema() AND LOWER(constraint_name) = 'fk_' || r.child || '_' || r.col) THEN
+         IF r.nullable THEN
+            EXECUTE format('INSERT INTO qqq_fk_quarantine (table_name, column_name, row_id, missing_parent_id, action, changeset) '
+               || 'SELECT %L, %L, c.id::text, c.%I::text, ''NULLED'', ''qbit-assistant 2026-10-14 foreign keys'' FROM %I c '
+               || 'WHERE c.%I IS NOT NULL AND NOT EXISTS (SELECT 1 FROM %I p WHERE p.id = c.%I)', r.child, r.col, r.col, r.child, r.col, r.parent, r.col);
+            EXECUTE format('UPDATE %I c SET %I = NULL WHERE c.%I IS NOT NULL AND NOT EXISTS (SELECT 1 FROM %I p WHERE p.id = c.%I)', r.child, r.col, r.col, r.parent, r.col);
+         ELSE
+            EXECUTE format('INSERT INTO qqq_fk_quarantine (table_name, column_name, row_id, missing_parent_id, action, row_data, changeset) '
+               || 'SELECT %L, %L, c.id::text, c.%I::text, ''DELETED'', row_to_json(c)::text, ''qbit-assistant 2026-10-14 foreign keys'' FROM %I c '
+               || 'WHERE NOT EXISTS (SELECT 1 FROM %I p WHERE p.id = c.%I)', r.child, r.col, r.col, r.child, r.parent, r.col);
+            EXECUTE format('DELETE FROM %I c WHERE NOT EXISTS (SELECT 1 FROM %I p WHERE p.id = c.%I)', r.child, r.parent, r.col);
+         END IF;
+         EXECUTE format('ALTER TABLE %I ADD CONSTRAINT %I FOREIGN KEY (%I) REFERENCES %I (id) ON DELETE %s', r.child, 'fk_' || r.child || '_' || r.col, r.col, r.parent, r.rule);
+      END IF;
+   END LOOP;
+
+   -- assistant_model.provider_id: the inline NO ACTION key becomes CASCADE, named as on kof22.
+   IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_schema = current_schema() AND LOWER(constraint_name) = 'fk_assistant_model_provider') THEN
+      FOR old IN SELECT conname FROM pg_constraint
+         WHERE contype = 'f' AND conrelid = 'assistant_model'::regclass AND confrelid = 'assistant_provider'::regclass
+      LOOP
+         EXECUTE format('ALTER TABLE assistant_model DROP CONSTRAINT %I', old);
+      END LOOP;
+      ALTER TABLE assistant_model ADD CONSTRAINT fk_assistant_model_provider FOREIGN KEY (provider_id) REFERENCES assistant_provider (id) ON DELETE CASCADE;
+   END IF;
+END $$;
+
+-- Transcript redaction: tokens can expand beyond the original payload bounds.
+-- Apply to existing databases as well; SET DATA TYPE is also valid in H2.
+ALTER TABLE assistant_turn ALTER COLUMN stop_reason SET DATA TYPE TEXT;
+ALTER TABLE assistant_tool_call ALTER COLUMN tool_call_id SET DATA TYPE TEXT;
+ALTER TABLE assistant_feedback ALTER COLUMN reason SET DATA TYPE TEXT;
+ALTER TABLE assistant_usage ALTER COLUMN request_id SET DATA TYPE TEXT;
+ALTER TABLE assistant_pending_action ALTER COLUMN tool_call_id SET DATA TYPE TEXT;
+ALTER TABLE assistant_data_audit ALTER COLUMN reason SET DATA TYPE TEXT;
+ALTER TABLE assistant_budget_override ALTER COLUMN reason SET DATA TYPE TEXT;
+ALTER TABLE assistant_scheduled_run ALTER COLUMN summary SET DATA TYPE TEXT;
+ALTER TABLE assistant_scheduled_run ALTER COLUMN error SET DATA TYPE TEXT;

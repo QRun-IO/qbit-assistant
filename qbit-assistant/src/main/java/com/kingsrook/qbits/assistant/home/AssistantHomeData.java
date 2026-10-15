@@ -75,6 +75,7 @@ public class AssistantHomeData
    private final List<Totals> byProvider = new ArrayList<>();
 
    private Long fallbackCount = 0L;
+   private List<AssistantSetupStatus.Item> setup = List.of();
    private Boolean hipaaMode;
    private Integer hipaaRetentionDays;
    private LocalDate today;
@@ -313,6 +314,7 @@ public class AssistantHomeData
          data.providers.add(new ProviderHealth(row, type == null ? row.getProviderType() : type.getLabel(), status, (status.startsWith("Set") || status.startsWith("Not needed")), service.validate(row), active != null && active.getId().equals(row.getId()),
             providerMonth.getOrDefault(row.getId(), 0L), ProviderService.capMicros(row), service.kind(row), service.location(row), service.models(row.getId()).stream().filter(m -> Boolean.TRUE.equals(m.getEnabled())).count()));
       }
+      data.setup = AssistantSetupStatus.load(runtime, data.providers);
       return (data);
    }
 
@@ -578,4 +580,15 @@ public class AssistantHomeData
    {
       return (fallbackCount);
    }
+
+
+
+   /*******************************************************************************
+    ** The Setup card: each configuration table, its state and the next step.
+    *******************************************************************************/
+   public List<AssistantSetupStatus.Item> getSetup()
+   {
+      return (setup);
+   }
+
 }

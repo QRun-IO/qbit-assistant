@@ -22,7 +22,6 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.data.QField;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.data.QRecordEntity;
-import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueTooLongBehavior;
 
 
 /*******************************************************************************
@@ -49,7 +48,7 @@ public class AssistantPendingAction extends QRecordEntity
    @QField(isEditable = false, maxLength = 255)
    private String userId;
 
-   @QField(isEditable = false, maxLength = 128)
+   @QField(isEditable = false)
    private String toolCallId;
 
    @QField(isEditable = false, maxLength = 64)
@@ -67,7 +66,7 @@ public class AssistantPendingAction extends QRecordEntity
    @QField(isEditable = false)
    private String paramsJson;
 
-   @QField(isEditable = false, maxLength = 500, valueTooLongBehavior = ValueTooLongBehavior.TRUNCATE_ELLIPSIS)
+   @QField(isEditable = false)
    private String summary;
 
    @QField(isEditable = false, maxLength = 16)
@@ -76,7 +75,7 @@ public class AssistantPendingAction extends QRecordEntity
    @QField(isEditable = false)
    private Integer httpStatus;
 
-   @QField(isEditable = false, maxLength = 500, valueTooLongBehavior = ValueTooLongBehavior.TRUNCATE_ELLIPSIS)
+   @QField(isEditable = false)
    private String resultSummary;
 
    @QField(isEditable = false)
