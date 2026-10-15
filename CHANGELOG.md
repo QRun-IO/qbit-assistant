@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased - Jobs tray
+
+- Track assistant answers in the core Jobs tray through `JobTracking`, with thinking, tool and writing progress and Stop support.
+- Require QQQ 4.1.0-RC.8 and the host's durable jobs runtime and jobs tables; answers remain untracked when the runtime is absent.
+- Default to `JobTrackingRunTracker`; opt out with `withRunTracker(AssistantRunTracker.NOOP)`.
+
 ## Unreleased - In-app help
 
 - Ship the host-neutral Assistant help bundle through QQQ's native registry, replacing the temporary loader.
