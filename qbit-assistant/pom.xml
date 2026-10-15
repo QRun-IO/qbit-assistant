@@ -114,6 +114,7 @@
             <directory>src/main/resources</directory>
             <filtering>true</filtering>
             <includes>
+               <include>help/*.yaml</include>
                <include>qbit-assistant.properties</include>
             </includes>
          </resource>
@@ -121,6 +122,7 @@
             <directory>src/main/resources</directory>
             <filtering>false</filtering>
             <excludes>
+               <exclude>help/*.yaml</exclude>
                <exclude>qbit-assistant.properties</exclude>
             </excludes>
          </resource>
