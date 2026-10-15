@@ -26,7 +26,6 @@ import com.kingsrook.qbits.assistant.developer.AssistantDeveloperPanels;
 import com.kingsrook.qbits.assistant.home.AssistantAccessWidget;
 import com.kingsrook.qbits.assistant.home.AssistantHome;
 import com.kingsrook.qbits.assistant.metadata.AssistantChannelWall;
-import com.kingsrook.qbits.assistant.metadata.AssistantHelp;
 import com.kingsrook.qbits.assistant.metadata.AssistantInstanceMetaData;
 import com.kingsrook.qbits.assistant.metadata.AssistantMetaDataBuilder;
 import com.kingsrook.qbits.assistant.metadata.AssistantRecordScreens;
@@ -43,6 +42,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducerMultiOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.help.bundles.HelpBundles;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.ClientChannelsMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
@@ -204,7 +204,8 @@ public class AssistantQBitProducer implements QBitMetaDataProducer<AssistantQBit
 
       QAppMetaData app = builder.buildAdminApp(tables);
       qInstance.addApp(app);
-      AssistantHelp.apply(qInstance);
+      // Registration is metadata-only; core startup sync guards hosts without helpContent.
+      HelpBundles.register(qInstance, "help/qbit-assistant.yaml");
 
       AssistantChannelWall.register(qInstance);
       if(Boolean.TRUE.equals(qBitConfig.getRecordHistory()))

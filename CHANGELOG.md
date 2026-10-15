@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased - In-app help
+
+- Ship the host-neutral Assistant help bundle through QQQ's native registry, replacing the temporary loader.
+- Cover Assistant tables, fields, actions, widgets and selectors; retain live metadata references and add a bundle coverage gate.
+- Document HOST bundle overrides and remove deployment-specific provider, classification, retention and backup guidance.
+
 ## Unreleased - Transcript redaction
 
 - Tokenize classified PII/PHI in stored messages, tool inputs/results, replay events, pending actions and derived summaries using QQQ secured-data tokens. Preserve eligible model requests and live SSE.
