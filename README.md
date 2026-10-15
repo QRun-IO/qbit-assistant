@@ -220,12 +220,41 @@ Admins set up providers on the **Providers** screen (`assistant_provider`), a st
 
 **Test connection** is a record action on a provider (select one or more). It is a standard streamed ETL: Review lists what will be called and anything wrong with the row (missing key, disallowed variable or URL) before any call. Result has one line per provider: `connected to claude-sonnet-5-5 in 812 ms`, or the error with its kind and HTTP status. It makes one short live call (a 1-sentence prompt, at most 32 output tokens, effort low), saves the result on the row, and records the call in `assistant_usage` with purpose `TEST`.
 
+## Health checks
+
+The producer registers dynamic central checks in component `assistant`, category `AI`:
+
+| Name | Kind | Interval | Timeout |
+| --- | --- | --- | --- |
+| `assistant.provider.<id>` | DEPENDENCY | 300s; 60s for LOCAL providers | 10s |
+| `assistant.model.<id>` | DEPENDENCY | 21600s (6 hours) | 30s |
+
+Suppliers include enabled provider/model rows and refresh with the central registry.
+Provider checks reuse `AssistantProviderType.checkHealth`. Unsupported probes use
+circuit-breaker state only when less than ten minutes old, otherwise return UNKNOWN.
+Model checks reuse `ConnectionTest` (embeddings for embedding models), respect the
+provider's monthly cost cap and the kill switch, and leave manual `lastTest*` fields
+unchanged. A capped check returns UNKNOWN, `skipped: cost cap`, even on demand.
+The automated runner records usage under its own owner key. Provider caps use the
+existing shared accounting projection without access to other users' usage records.
+Usage purpose is a string, so health diagnostics reuse `TEST` (not a new `HEALTH` enum).
+All checks honor their deadlines; messages and details omit provider error text,
+credentials, endpoints, prompts and completions.
+
+The LOCAL circuit breaker consults central results less than 60 seconds old before
+its lazy probe. UP/DEGRADED avoids a duplicate probe, DOWN rejects the call, and
+UNKNOWN or stale/missing results retain the existing probe fallback. The breaker
+and manual Test connection actions remain available.
+
+This integration uses the core health SPI released in QQQ 4.1.0-RC.8.
+The POM pins that release; verify with `./mvnw -o verify`.
+
 ## The app home
 
-The **Assistant** app's home is the one place for the assistant's health, usage and cost (no other dashboard repeats it). All of it comes from the tables below, read as the viewing admin; an empty table gives an empty state, never sample data.
+The **Assistant** app's home shows configuration, usage and cost read as the viewing admin. A generic status card summarizes the central runner's latest results and links to System Health filtered to `assistant`; it shows UNKNOWN before results are available. Health history and check lists live in System Health.
 
-- **Health:** is it answering (kill switch, default provider, key present, last test), the 7-day error rate of model calls, cost and requests this month against the instance's monthly limit.
-- **Providers:** one row per provider: type, model, masked key status, last test, cost this month against its cap, limits, and any problem with its settings.
+- **Configuration and usage:** default provider, key status, the 7-day error rate of model calls, cost and requests this month against the instance's monthly limit.
+- **Providers:** one row per provider: type, model, masked key status, cost this month against its cap, limits, and any problem with its settings.
 - **Usage, last 30 days:** bars of model requests per day, totals (conversations, requests, tokens in and out, cost) and the last 7 days in words.
 - **Costs this month:** month to date against the policy limit and each provider cap, then by model. Cost is tokens times the model's price from **Model prices**.
 - **By user, this month**, **Top tools** (calls, failures, average time) and **Recent failures** (model calls and tool calls, linked).
@@ -644,8 +673,8 @@ never automatically move to cloud. Provider state/signatures are removed when
 switching, preserving neutral tool history. Each attempted call is audited as usage.
 
 NETWORK/TIMEOUT marks a provider DOWN for 60 seconds; success marks it UP. Local
-health is probed when unknown/stale with a two-second timeout. Provider cards show
-health and down-until, failures show fallback totals, and turn records show the
+health uses recent central results or a lazy probe with a two-second timeout. The
+central health card links to System Health; failures show fallback totals, and turn records show the
 route and final destination. See [UPGRADE.md](UPGRADE.md) for the additive schema.
 
 ## Scheduled tasks

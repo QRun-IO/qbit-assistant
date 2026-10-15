@@ -18,9 +18,11 @@ package com.kingsrook.qbits.assistant.engine;
 
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
+import com.kingsrook.qbits.assistant.AssistantSecurity;
 import com.kingsrook.qbits.assistant.model.AssistantModel;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
 import com.kingsrook.qbits.assistant.provider.RegistryModelProvider;
@@ -34,6 +36,7 @@ import com.kingsrook.qbits.assistant.spi.ModelRequest;
 import com.kingsrook.qbits.assistant.spi.ModelResponse;
 import com.kingsrook.qbits.assistant.spi.StreamHandle;
 import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 
@@ -125,6 +128,16 @@ public final class ConnectionTest
     *******************************************************************************/
    private static Result call(AssistantRuntime runtime, ProviderService.Active active, String userId)
    {
+      return (call(runtime, active, userId, Instant.now().plusSeconds(runtime.getConfig().getProviderTestTimeoutSeconds()), true));
+   }
+
+
+
+   /*******************************************************************************
+    ** Share the minimal call and TEST accounting with central model health.
+    *******************************************************************************/
+   private static Result call(AssistantRuntime runtime, ProviderService.Active active, String userId, Instant deadline, Boolean probe)
+   {
       List<ModelMessage> messages = new ArrayList<>();
       messages.add(ModelMessage.user(PING_PROMPT));
       ModelRequest request = new ModelRequest()
@@ -136,19 +149,27 @@ public final class ConnectionTest
       UsageRecorder.Call usageCall = new UsageRecorder.Call(userId, null, null, active, UsageRecorder.PURPOSE_TEST);
       ModelPricing       pricing   = runtime.getProviderService().pricing(active, active.model());
       long               started   = System.nanoTime();
+      StreamHandle handle = null;
       try
       {
-         AssistantProviderType type = runtime.getConfig().getProviderTypes().get(active.providerType());
-         HealthResult health = type.checkHealth(runtime.getProviderService().settings(active.row()));
-         if(Boolean.FALSE.equals(health.healthy()))
+         if(probe)
          {
-            throw (new ModelProviderException(ModelProviderException.Kind.NETWORK, null, health.message()));
+            AssistantProviderType type = runtime.getConfig().getProviderTypes().get(active.providerType());
+            HealthResult health = type.checkHealth(runtime.getProviderService().settings(active.row()));
+            if(Boolean.FALSE.equals(health.healthy()))
+            {
+               throw (new ModelProviderException(ModelProviderException.Kind.NETWORK, null, health.message()));
+            }
          }
-         StreamHandle  handle   = active.provider().stream(request, text ->
+         if(!Instant.now().isBefore(deadline) || Thread.currentThread().isInterrupted())
+         {
+            return (new Result(STATUS_ERROR, null, null, "The test deadline passed."));
+         }
+         handle = active.provider().stream(request, text ->
          {
             // the reply text is not used
          });
-         ModelResponse response = handle.await(Duration.ofSeconds(runtime.getConfig().getProviderTestTimeoutSeconds()));
+         ModelResponse response = handle.await(Duration.between(Instant.now(), deadline));
          long          latency  = (System.nanoTime() - started) / 1_000_000;
          UsageRecorder.save(runtime.getStore(), UsageRecorder.row(usageCall, response, null, latency, pricing));
          if(ModelResponse.STOP_CANCELLED.equals(response.getStopReason()))
@@ -170,8 +191,45 @@ public final class ConnectionTest
       catch(InterruptedException e)
       {
          Thread.currentThread().interrupt();
+         UsageRecorder.save(runtime.getStore(), UsageRecorder.row(usageCall, null,
+            new ModelProviderException(ModelProviderException.Kind.TIMEOUT, null, "The test was interrupted."),
+            (System.nanoTime() - started) / 1_000_000, pricing));
          return (new Result(STATUS_ERROR, null, null, "The test was interrupted."));
       }
+      finally
+      {
+         if(handle != null)
+         {
+            handle.cancel();
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Central health uses the same probe without changing manual lastTest fields.
+    ** Purpose is a string, so health calls reuse TEST rather than adding an enum.
+    *******************************************************************************/
+   public static Result checkModel(AssistantRuntime runtime, AssistantModel model, Instant deadline) throws QException
+   {
+      if(!Instant.now().isBefore(deadline) || Thread.currentThread().isInterrupted())
+      {
+         return (new Result(STATUS_ERROR, null, null, "The test deadline passed."));
+      }
+      if(!model.isChat())
+      {
+         return (testEmbedding(runtime, model));
+      }
+      AssistantProvider row = runtime.getStore().getProvider(model.getProviderId());
+      var type = runtime.getConfig().getProviderTypes().get(row.getProviderType());
+      var settings = runtime.getProviderService().settings(row);
+      int seconds = (int) Math.max(1, Math.min(30, Duration.between(Instant.now(), deadline).toSeconds()));
+      settings.withConnectTimeoutSeconds(Math.min(settings.getConnectTimeoutSeconds(), seconds))
+         .withRequestTimeoutSeconds(Math.min(settings.getRequestTimeoutSeconds(), seconds));
+      var provider = new RegistryModelProvider(type.create(settings), model);
+      return (call(runtime, new ProviderService.Active(row, row.getProviderType(), model.getModelId(), provider),
+         AssistantSecurity.userId(QContext.getQSession()), deadline, false));
    }
 
 
@@ -246,7 +304,7 @@ public final class ConnectionTest
       try
       {
          new EmbeddingService(runtime).embed(model.getId(), List.of("Connection test."),
-            DataClassification.PUBLIC, "", null, null);
+            DataClassification.PUBLIC, "", null, null, UsageRecorder.PURPOSE_TEST);
          return (new Result(STATUS_OK, (int) ((System.nanoTime() - started) / 1_000_000), model.getModelId(), null));
       }
       catch(QException e)

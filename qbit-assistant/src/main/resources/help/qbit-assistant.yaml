@@ -1287,7 +1287,9 @@ entries:
 - key: widget:assistant_providerJoinAssistant_usage;slot:label
   summary: Recent requests sent to this provider, with model, tokens, cost and result.
 - key: widget:assistantHome;slot:label
-  summary: 'The assistant''s health at a glance: providers, cost this month, use over the last 30 days, denials and failures.'
+  summary: 'The assistant''s setup, providers, cost this month, use over the last 30 days, denials and failures.'
+- key: widget:assistantHealth;slot:label
+  summary: Central health status for assistant providers and models, with a link to filtered System Health.
 - key: widget:assistantAccess;slot:label
   summary: Shows, for your own login, what the assistant may do on each table, and why an action is not allowed.
 - key: possibleValueSource:assistant_budget_scopeType;slot:help

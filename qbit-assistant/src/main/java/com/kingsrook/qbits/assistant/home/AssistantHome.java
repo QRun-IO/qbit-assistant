@@ -32,7 +32,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaData;
 
 /*******************************************************************************
  ** The Assistant app home: one full-width HTML widget, the single owner of the
- ** assistant's health, usage and cost data (no other dashboard repeats it).
+ ** assistant's configuration, usage and cost data. Health lives in System Health.
  *******************************************************************************/
 public final class AssistantHome
 {

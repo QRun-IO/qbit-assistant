@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased - Central health
+
+### Added
+
+- Dynamic `assistant.provider.<id>` and `assistant.model.<id>` dependency checks in component `assistant`, category AI, reusing provider diagnostics and minimal connection calls with deadlines, cost-cap/kill-switch skips and TEST usage accounting.
+- LOCAL breaker reuse of central provider outcomes younger than 60 seconds, with its existing lazy probe as fallback.
+- Generic Assistant health status card linking to filtered System Health; registration, status, accounting, deadline and sentinel-secret tests.
+- QQQ 4.1 compatibility for the header shim: setting extra headers avoids duplicates now that core forwards them too.
+
+### Removed
+
+- The home's independent answering/last-test health indicators and per-provider health/down-until display. Central health owns status and history. Manual Test connection actions, `lastTest*` fields and the circuit breaker remain.
+
 ## Unreleased - Jobs tray
 
 - Track assistant answers in the core Jobs tray through `JobTracking`, with thinking, tool and writing progress and Stop support.

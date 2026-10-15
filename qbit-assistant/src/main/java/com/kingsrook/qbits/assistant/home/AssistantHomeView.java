@@ -17,16 +17,6 @@
 package com.kingsrook.qbits.assistant.home;
 
 
-import com.kingsrook.qbits.assistant.engine.BudgetService;
-import com.kingsrook.qbits.assistant.metadata.AssistantRecordScreens;
-import com.kingsrook.qbits.assistant.model.AssistantBudget;
-import com.kingsrook.qbits.assistant.model.AssistantBudgetOverride;
-import com.kingsrook.qbits.assistant.model.AssistantConversation;
-import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
-import com.kingsrook.qbits.assistant.model.AssistantProvider;
-import com.kingsrook.qbits.assistant.model.AssistantToolCall;
-import com.kingsrook.qbits.assistant.model.AssistantUsage;
-import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.NumberFormat;
@@ -38,6 +28,16 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import com.kingsrook.qbits.assistant.engine.BudgetService;
+import com.kingsrook.qbits.assistant.metadata.AssistantRecordScreens;
+import com.kingsrook.qbits.assistant.model.AssistantBudget;
+import com.kingsrook.qbits.assistant.model.AssistantBudgetOverride;
+import com.kingsrook.qbits.assistant.model.AssistantConversation;
+import com.kingsrook.qbits.assistant.model.AssistantModelPrice;
+import com.kingsrook.qbits.assistant.model.AssistantProvider;
+import com.kingsrook.qbits.assistant.model.AssistantToolCall;
+import com.kingsrook.qbits.assistant.model.AssistantUsage;
+import com.kingsrook.qqq.backend.core.model.data.QRecord;
 
 
 /*******************************************************************************
@@ -159,44 +159,17 @@ public final class AssistantHomeView
 
 
    /*******************************************************************************
-    ** The status row: is the assistant answering, with what, at what cost.
+    ** Configuration and usage; health status belongs to the central card.
     *******************************************************************************/
    private static void status(StringBuilder html, AssistantHomeData data, String prefix)
    {
-      open(html, "Health");
+      open(html, "Configuration and usage");
       AssistantHomeData.ProviderHealth active = data.getProviders().stream().filter(AssistantHomeData.ProviderHealth::active).findFirst().orElse(null);
-
-      html.append("<div style=\"display:flex;flex-wrap:wrap;gap:.5rem .75rem;align-items:center;\">");
-      if(data.isKillSwitch())
-      {
-         html.append(chip(RED, "Turned off by the kill switch"));
-      }
-      else if(data.getProviders().isEmpty())
-      {
-         html.append(chip(GREY, "No provider configured here (the application's built-in provider is used, if any)"));
-      }
-      else if(active == null)
-      {
-         html.append(chip(RED, "No provider is turned on"));
-      }
-      else if(!active.keyPresent() || !active.problems().isEmpty())
-      {
-         html.append(chip(RED, "Default provider cannot be used"));
-      }
-      else if("ERROR".equals(active.row().getLastTestStatus()))
-      {
-         html.append(chip(AMBER, "Last connection test failed"));
-      }
-      else
-      {
-         html.append(chip(GREEN, "Answering"));
-      }
-      html.append("</div><div style=\"").append(CELLS).append("\">");
+      html.append("<div style=\"").append(CELLS).append("\">");
       cell(html, "Provider", active == null ? "None" : active.row().getName() + " (" + nvl(active.row().getModel(), "default model") + ")");
       cell(html, "HIPAA mode", Boolean.TRUE.equals(data.getHipaaMode()) ? "On" : "Off");
       cell(html, "PHI retention", data.getHipaaRetentionDays() == null ? "Normal retention" : data.getHipaaRetentionDays() + " days");
       cell(html, "API key", active == null ? "Not applicable" : active.keyStatus());
-      cell(html, "Last test", active == null ? "Not applicable" : lastTest(active.row()));
       Integer rate = data.errorRatePercent7d();
       cell(html, "Error rate, 7 days", rate == null ? "No requests yet" : rate + "% of " + number(data.getCalls7d()) + " requests");
       cell(html, "Cost this month", money(data.getMonthCostMicros()) + (data.getInstanceMonthlyCapMicros() == null ? "" : " of " + money(data.getInstanceMonthlyCapMicros()) + " limit"));
@@ -234,17 +207,8 @@ public final class AssistantHomeView
          {
             html.append(chip(GREY, "Off"));
          }
-         if(row.getLastTestStatus() != null)
-         {
-            html.append(chip("OK".equals(row.getLastTestStatus()) ? GREEN : RED, "OK".equals(row.getLastTestStatus()) ? "Last test passed" : "Last test failed"));
-         }
          html.append("</div><div style=\"").append(CELLS).append("\">");
          cell(html, "Type", nvl(p.typeLabel(), "Not set"));
-         cell(html, "Health", nvl(row.getHealthState(), "Unknown"));
-         if(row.getDownUntil() != null)
-         {
-            cell(html, "Down until", when(row.getDownUntil()));
-         }
          cell(html, "Kind", AssistantRecordScreens.providerKindLabel(p.kind()));
          cell(html, "Location", "LOCAL".equals(p.location()) ? "Local" : "Cloud");
          if(Boolean.TRUE.equals(row.getHipaaEligible()))
@@ -254,7 +218,6 @@ public final class AssistantHomeView
          cell(html, "Enabled models", String.valueOf(p.enabledModels()));
          cell(html, "Model", nvl(row.getModel(), "Default model"));
          cell(html, "API key", p.keyStatus());
-         cell(html, "Last test", lastTest(row));
          cell(html, "Cost this month", money(p.monthCostMicros()) + (p.capMicros() == null ? ", no cap" : " of " + money(p.capMicros()) + " cap"));
          List<String> limits = new ArrayList<>();
          if(row.getMaxOutputTokensPerRequest() != null)
@@ -498,24 +461,6 @@ public final class AssistantHomeView
          html.append("</ul>");
       }
       close(html);
-   }
-
-
-
-   /*******************************************************************************
-    ** A provider's last test in words.
-    *******************************************************************************/
-   static String lastTest(AssistantProvider row)
-   {
-      if(row.getLastTestAt() == null)
-      {
-         return ("Not tested yet: run Test connection");
-      }
-      if("OK".equals(row.getLastTestStatus()))
-      {
-         return ("Passed " + WHEN.format(row.getLastTestAt()) + ", " + nvl(row.getLastTestModel(), "model") + " in " + row.getLastTestLatencyMs() + " ms");
-      }
-      return ("Failed " + WHEN.format(row.getLastTestAt()) + ": " + nvl(row.getLastTestError(), "no detail"));
    }
 
 
