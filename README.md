@@ -725,3 +725,18 @@ remain untouched, as do explicit object and permission-rule denials.
 History visibility uses core's `isDenied` read/all-operation check. RC.6 has no
 operation argument; the later write-only deny patterns must remain separate
 from that check so they do not hide the read tool.
+
+## In-app help
+
+The QBit registers [`help/qbit-assistant.yaml`](qbit-assistant/src/main/resources/help/qbit-assistant.yaml)
+with QQQ's help-bundle registry during production. Hosts with help content storage use QQQ's
+startup bundle sync; registration is harmless when the host has no `helpContent` table.
+
+To customize the wording, register a separate bundle with `layer: HOST` using
+`HelpBundles.register(qInstance, "help/my-application.yaml")`. Entries with the same key and
+role override this QBIT bundle. User-edited help remains protected by core's sync.
+Keep live `{{...}}` references so labels and metadata values follow the host's configuration.
+
+`AssistantTablesGuardrailTest.everyOwnedTargetHasBundleHelp` checks coverage and live references
+against the produced test instance with `HelpBundleAssertions`; it runs in the normal Maven build.
+Update the bundle's literal version alongside the artifact version when releasing.

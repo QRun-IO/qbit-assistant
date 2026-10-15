@@ -26,11 +26,13 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
-import com.kingsrook.qbits.assistant.metadata.AssistantHelp;
 import com.kingsrook.qbits.assistant.metadata.AssistantMetaDataBuilder;
 import com.kingsrook.qbits.assistant.testing.BaseAssistantTest;
-import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
+import com.kingsrook.qqq.backend.core.actions.help.HelpTargetCatalog;
+import com.kingsrook.qqq.backend.core.model.metadata.help.bundles.HelpBundles;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
+import com.kingsrook.qqq.backend.core.testing.HelpBundleAssertions;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -121,21 +123,45 @@ class AssistantTablesGuardrailTest extends BaseAssistantTest
 
 
    /*******************************************************************************
-    ** Every table and the app have bundle help that says how rows get created.
+    ** Every owned target has valid bundle help, even on a host without help storage.
     *******************************************************************************/
    @Test
-   void everyTableHasEmptyStateHelp() throws Exception
+   void everyOwnedTargetHasBundleHelp()
    {
-      assertThat(AssistantHelp.entries()).allSatisfy((key, entry) -> assertThat(entry.path("summary").asText().length()).as(key).isLessThanOrEqualTo(120));
+      assertThat(qInstance.getTable("helpContent")).isNull();
+      var bundles = HelpBundles.of(qInstance).getBundles();
+      assertThat(bundles).hasSize(1);
+      assertThat(bundles.get(0).getId()).isEqualTo("qbit-assistant");
+      HelpBundleAssertions.forInstance(qInstance)
+         .bundles("help/qbit-assistant.yaml")
+         // Core-generated bulk actions belong to core's bundle, not this QBit.
+         .owning(target -> target.owner() instanceof QProcessMetaData process
+            ? qInstance.getTable("assistant_conversation").getSourceQBitName().equals(process.getSourceQBitName())
+            : target.name() != null && target.name().startsWith("assistant"))
+         .assertComplete();
+      // RC.7's gate requires tables, fields, apps and processes; also cover our selectors and widgets.
+      for(var target : HelpTargetCatalog.collect(qInstance))
+      {
+         if(List.of("widget", "possibleValueSource").contains(target.kind()) && target.name().startsWith("assistant"))
+         {
+            assertThat(bundles.get(0).getEntries()).as(target.key())
+               .anyMatch(entry -> entry.getKey().equals(target.key()) && entry.getSummary() != null && !entry.getSummary().isBlank());
+         }
+      }
       for(String table : assistantTables())
       {
-         List<QHelpContent> help = qInstance.getTable(table).getHelpContent() == null ? null : qInstance.getTable(table).getHelpContent().get(AssistantHelp.SLOT);
-         assertThat(help).as(table + " table help").isNotEmpty();
-         assertThat(help.get(0).getContent()).as(table + " help says how rows get created").contains("How rows get created");
+         assertThat(bundles.get(0).getEntries())
+            .anySatisfy(entry ->
+            {
+               assertThat(entry.getKey()).isEqualTo("table:" + table + ";slot:help");
+               assertThat(entry.getContent()).isNotBlank();
+            });
       }
-      assertThat(qInstance.getApp(AssistantMetaDataBuilder.APP_NAME).getHelpContent()).containsKey(AssistantHelp.SLOT);
-      assertThat(AssistantHelp.entries().keySet()).allMatch(key -> !key.startsWith("table:") || qInstance.getTable(key.substring(6, key.indexOf(';'))) != null,
-         "help names only real tables");
+      assertThat(bundles.get(0).getEntries()).anySatisfy(entry ->
+      {
+         assertThat(entry.getKey()).isEqualTo("app:" + AssistantMetaDataBuilder.APP_NAME + ";slot:help");
+         assertThat(entry.getContent()).isNotBlank();
+      });
    }
 
 
