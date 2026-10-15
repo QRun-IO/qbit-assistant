@@ -69,12 +69,18 @@ reattach through the existing events route. Consumers should recognize
 `turn.phase` and `message.start.startedAt`. Starts during shutdown return
 503 `SHUTTING_DOWN`; clients may retry against a ready replica.
 
-Hosts may wire `AssistantRunTracker` for Jobs tray publication, progress, Stop,
-and terminal notification. It is a no-op by default and all callbacks are
-isolated from turn execution. Tracking ids are local to the owning runtime;
-reaping an already dead owner does not invent another tracking job. Hosts should
-associate their durable tracking row with the supplied turn id. The SPI is a
-stand-in for QQQ #1210.
+`JobTrackingRunTracker` is now the default `AssistantRunTracker`, using core
+`JobTracking` in QQQ **4.1.0-RC.8** to publish answers in the Jobs tray. The host
+must provide the jobs tables (through qbit-jobs / core `DurableJobsMetaDataProvider`)
+and run `DurableJobsRuntime`. Without that runtime, answers complete normally
+and are simply not tracked.
+
+Each job is owned by the assistant user, links to its `assistant_conversation`,
+and reports thinking, tool and writing phases. Tool progress contains only the
+tool label; terminal messages are fixed and never contain prompts or answers.
+The tray's Stop cancels the assistant turn. All tracker callbacks remain isolated
+from turn execution. Opt out with `withRunTracker(AssistantRunTracker.NOOP)`;
+hosts may still supply their own `AssistantRunTracker`.
 
 ## Starter defaults, setup card and table help
 
