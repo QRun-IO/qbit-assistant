@@ -30,6 +30,25 @@ Hosts register providers through `AssistantQBitConfig` in `qbit-assistant`.
 
 Data tools use the QQQ UI API (`/qqq/v1`) with the signed-in user's session. The UI API enforces permissions and record locks; assistant data-access policy and field exposure can only narrow access. Only record-free navigation and help use the core AI tool kernel. Every tool result reaches the model wrapped as untrusted data.
 
+## Transcript privacy
+
+QQQ **4.1.0-RC.7** supplies the secured-data tokens and log hook (`qqq#1182`).
+Stored transcripts never contain the raw PII/PHI values read by a turn or supplied
+in classified tool criteria/fields. Messages, tool logs, replay events, knowledge
+snippets and pending payloads store `ClassifiedValueTokens` tokens; scheduled
+summaries use the redacted message. The model and live user stream retain the
+values permitted by PHI routing. History and replay show tokens instead.
+
+Content is finalized at turn completion; interrupted servers leave value-free
+placeholders. Proposals requiring redacted parameters are rejected and must be
+completed in the application. Existing transcripts are not migrated. See
+[transcript redaction](docs/DESIGN.md#transcript-redaction-secured-data-15).
+The dependency upgrade stays draft until RC.7 is published; local verification:
+
+```powershell
+.\mvnw.cmd -q verify "-Dqqq.snapshot.version=4.1.0-RC7PRE-SNAPSHOT"
+```
+
 ## Host audit attribution (X1/Y1)
 
 Use QQQ **4.1.0-RC.6 or later**. The QBit explicitly denies every assistant

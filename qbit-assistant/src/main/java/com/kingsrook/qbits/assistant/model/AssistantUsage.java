@@ -84,7 +84,7 @@ public class AssistantUsage extends QRecordEntity
    @QField(isEditable = false)
    private Long costMicros;
 
-   @QField(isEditable = false, maxLength = 100)
+   @QField(isEditable = false)
    private String requestId;
 
    @QField(isEditable = false)

@@ -22,7 +22,6 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.data.QField;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.data.QRecordEntity;
-import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueTooLongBehavior;
 
 
 /*******************************************************************************
@@ -53,7 +52,7 @@ public class AssistantFeedback extends QRecordEntity
    @QField(isEditable = false)
    private Integer rating;
 
-   @QField(isEditable = false, maxLength = 64, valueTooLongBehavior = ValueTooLongBehavior.TRUNCATE_ELLIPSIS)
+   @QField(isEditable = false)
    private String reason;
 
    @QField(isEditable = false)

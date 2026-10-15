@@ -66,7 +66,7 @@ public class AssistantDataAudit extends QRecordEntity
    @QField(isEditable = false, maxLength = 16)
    private String decision;
 
-   @QField(isEditable = false, maxLength = 1000)
+   @QField(isEditable = false)
    private String reason;
 
    @QField(isEditable = false)

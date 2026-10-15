@@ -62,13 +62,13 @@ public class AssistantScheduledRun extends QRecordEntity
    @QField()
    private Integer turnId;
 
-   @QField(maxLength = 2000)
+   @QField()
    private String summary;
 
    @QField()
    private Long costMicros;
 
-   @QField(maxLength = 500)
+   @QField()
    private String error;
 
    @QField(isEditable = false)

@@ -215,7 +215,8 @@
             <activeByDefault>true</activeByDefault>
          </activation>
          <properties>
-            <qqq.snapshot.version>4.1.0-RC.6</qqq.snapshot.version>
+            <!-- RC.7 carries qqq#1182 classified-value tokens and log redaction. Keep the PR draft until published. -->
+            <qqq.snapshot.version>4.1.0-RC.7</qqq.snapshot.version>
          </properties>
          <dependencyManagement>
             <dependencies>

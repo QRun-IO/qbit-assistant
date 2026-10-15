@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased - Transcript redaction
+
+- Tokenize classified PII/PHI in stored messages, tool inputs/results, replay events, pending actions and derived summaries using QQQ secured-data tokens. Preserve eligible model requests and live SSE.
+- Stage content until turn completion, redact split deltas and classify criteria even when no records match; protect assistant logs with a scoped core redactor.
+- Reject proposals whose parameters were redacted; prevent confirmation before turn completion.
+- Read core table-level classification metadata and add secured-data canary tests for storage, audits, logs and in-memory model access.
+- Preserve durable-turn watchdog, supersede, shutdown and restart recovery with turn-scoped transcript redaction; widen token-bearing columns and entity limits, with H2-safe upgrade SQL.
+- Require QQQ 4.1.0-RC.7 (qqq#1182); retain the default audit-history opt-in and avoid duplicated routing headers against current core. RC.7 is released.
 ## Unreleased - Foreign keys
 
 - Reference DDL: add the missing foreign keys (conversation tree, usage, data audit,
@@ -26,7 +34,6 @@
   `message.start.startedAt`, cancelReason `SUPERSEDED`. The 429 response stays
   documented for budgets and per-minute limits; the "answer already in progress"
   refusal is no longer returned. Cancel keeps 202 documented for older replicas.
-||||||| befb90a
 
 ## Unreleased - Starter defaults
 
