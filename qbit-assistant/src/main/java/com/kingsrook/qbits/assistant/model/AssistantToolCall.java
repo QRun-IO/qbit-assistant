@@ -55,7 +55,7 @@ public class AssistantToolCall extends QRecordEntity
    @QField(isEditable = false, maxLength = 255)
    private String userId;
 
-   @QField(isEditable = false, maxLength = 128)
+   @QField(isEditable = false)
    private String toolCallId;
 
    @QField(isEditable = false, maxLength = 64)
@@ -85,7 +85,7 @@ public class AssistantToolCall extends QRecordEntity
    @QField(isEditable = false)
    private Long durationMs;
 
-   @QField(isEditable = false, maxLength = 500, valueTooLongBehavior = ValueTooLongBehavior.TRUNCATE_ELLIPSIS)
+   @QField(isEditable = false)
    private String resultSummary;
 
    @QField(isEditable = false)

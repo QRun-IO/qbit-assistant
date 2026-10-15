@@ -1,5 +1,13 @@
 # Upgrading qbit-assistant
 
+## Transcript redaction (Unreleased)
+
+Apply the transcript-redaction column widening block in `docs/schema-postgres.sql`
+to existing databases. Stop reasons, request IDs, tool-call IDs, feedback/data-audit/
+budget-override reasons and scheduled-run summaries/errors now use `TEXT`; token
+expansion must not fail a write or truncate secured-data tokens. The corresponding
+entity field limits are removed, including pending-action and tool-result summaries.
+
 ## Foreign keys (2026-10-14)
 
 Recommended: apply the "Foreign keys" block at the end of
@@ -67,7 +75,6 @@ isolated from turn execution. Tracking ids are local to the owning runtime;
 reaping an already dead owner does not invent another tracking job. Hosts should
 associate their durable tracking row with the supplied turn id. The SPI is a
 stand-in for QQQ #1210.
-||||||| befb90a
 
 ## Starter defaults, setup card and table help
 

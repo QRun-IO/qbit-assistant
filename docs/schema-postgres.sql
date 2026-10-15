@@ -49,7 +49,7 @@ CREATE TABLE assistant_turn
    status VARCHAR(16),
    classification VARCHAR(16),
    classification_tables VARCHAR(500),
-   stop_reason VARCHAR(64),
+   stop_reason TEXT,
    error_code VARCHAR(32),
    cancel_reason VARCHAR(64),
    model VARCHAR(200),
@@ -88,7 +88,7 @@ CREATE TABLE assistant_tool_call
    turn_id INTEGER,
    conversation_id INTEGER,
    user_id VARCHAR(255),
-   tool_call_id VARCHAR(128),
+   tool_call_id TEXT,
    tool_name VARCHAR(64),
    input_json TEXT,
    outcome VARCHAR(16),
@@ -118,7 +118,7 @@ CREATE TABLE assistant_feedback
    conversation_id INTEGER,
    user_id VARCHAR(255),
    rating INTEGER,
-   reason VARCHAR(64),
+   reason TEXT,
    comment TEXT,
    create_date TIMESTAMP WITH TIME ZONE
 );
@@ -267,7 +267,7 @@ CREATE TABLE assistant_usage
    cache_read_tokens BIGINT,
    cache_write_tokens BIGINT,
    cost_micros BIGINT,
-   request_id VARCHAR(100),
+   request_id TEXT,
    create_date TIMESTAMP WITH TIME ZONE
 );
 CREATE INDEX assistant_usage_create_date ON assistant_usage (create_date);
@@ -310,7 +310,7 @@ CREATE TABLE assistant_pending_action
    conversation_id INTEGER,
    turn_id INTEGER,
    user_id VARCHAR(255),
-   tool_call_id VARCHAR(128),
+   tool_call_id TEXT,
    tool_name VARCHAR(64),
    ui_api_operation VARCHAR(255),
    table_name VARCHAR(128),
@@ -382,7 +382,7 @@ CREATE TABLE assistant_data_audit
    classification VARCHAR(16),
    tables VARCHAR(500),
    decision VARCHAR(16),
-   reason VARCHAR(1000),
+   reason TEXT,
    create_date TIMESTAMP WITH TIME ZONE
 );
 CREATE INDEX assistant_data_audit_user_id ON assistant_data_audit (user_id);
@@ -415,7 +415,7 @@ CREATE TABLE assistant_budget_override
    scope_value VARCHAR(200),
    extra_value NUMERIC,
    unlimited_until TIMESTAMP WITH TIME ZONE,
-   reason VARCHAR(1000) NOT NULL,
+   reason TEXT NOT NULL,
    granted_by VARCHAR(200),
    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
    create_date TIMESTAMP WITH TIME ZONE,
@@ -566,9 +566,9 @@ CREATE TABLE assistant_scheduled_run (
    status VARCHAR(20) NOT NULL CHECK (status IN ('RUNNING', 'OK', 'FAILED', 'SKIPPED', 'BLOCKED')),
    conversation_id INTEGER REFERENCES assistant_conversation(id) ON DELETE SET NULL,
    turn_id INTEGER REFERENCES assistant_turn(id) ON DELETE SET NULL,
-   summary VARCHAR(2000),
+   summary TEXT,
    cost_micros BIGINT,
-   error VARCHAR(500),
+   error TEXT,
    create_date TIMESTAMPTZ,
    modify_date TIMESTAMPTZ,
    UNIQUE (task_id, scheduled_for)
@@ -701,3 +701,15 @@ BEGIN
       ALTER TABLE assistant_model ADD CONSTRAINT fk_assistant_model_provider FOREIGN KEY (provider_id) REFERENCES assistant_provider (id) ON DELETE CASCADE;
    END IF;
 END $$;
+
+-- Transcript redaction: tokens can expand beyond the original payload bounds.
+-- Apply to existing databases as well; SET DATA TYPE is also valid in H2.
+ALTER TABLE assistant_turn ALTER COLUMN stop_reason SET DATA TYPE TEXT;
+ALTER TABLE assistant_tool_call ALTER COLUMN tool_call_id SET DATA TYPE TEXT;
+ALTER TABLE assistant_feedback ALTER COLUMN reason SET DATA TYPE TEXT;
+ALTER TABLE assistant_usage ALTER COLUMN request_id SET DATA TYPE TEXT;
+ALTER TABLE assistant_pending_action ALTER COLUMN tool_call_id SET DATA TYPE TEXT;
+ALTER TABLE assistant_data_audit ALTER COLUMN reason SET DATA TYPE TEXT;
+ALTER TABLE assistant_budget_override ALTER COLUMN reason SET DATA TYPE TEXT;
+ALTER TABLE assistant_scheduled_run ALTER COLUMN summary SET DATA TYPE TEXT;
+ALTER TABLE assistant_scheduled_run ALTER COLUMN error SET DATA TYPE TEXT;

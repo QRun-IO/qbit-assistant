@@ -211,6 +211,10 @@ public class AssistantQBitProducer implements QBitMetaDataProducer<AssistantQBit
       {
          enableRecordHistory(ClientChannelsMetaData.ofOrWithNew(qInstance));
       }
+      else
+      {
+         ClientChannelsMetaData.ofOrWithNew(qInstance).withDeniedPattern("assistant", "audit*");
+      }
       postProduceActions(new MetaDataProducerMultiOutput(), qInstance);
       return (new MetaDataProducerMultiOutput());
    }

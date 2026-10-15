@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.engine.PolicyService;
 import com.kingsrook.qbits.assistant.engine.TurnClassification;
@@ -38,6 +39,7 @@ import com.kingsrook.qbits.assistant.spi.AssistantProviderType;
 import com.kingsrook.qbits.assistant.spi.EmbeddingRequest;
 import com.kingsrook.qbits.assistant.spi.EmbeddingResponse;
 import com.kingsrook.qbits.assistant.spi.ModelPart;
+import com.kingsrook.qbits.assistant.spi.ModelResponse;
 import com.kingsrook.qbits.assistant.spi.ModelUsage;
 import com.kingsrook.qbits.assistant.testing.AssistantTestFixture;
 import com.kingsrook.qbits.assistant.testing.BaseAssistantTest;
@@ -50,12 +52,17 @@ import com.kingsrook.qqq.backend.core.actions.ai.AiFieldMetaData;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolOutcome;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolResult;
 import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
+import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
+import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiCredentials;
+import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -238,6 +245,49 @@ class RagTest extends BaseAssistantTest
    {
       as(user);
       return (config.getRuntime().getKnowledgeTool().execute(config.getRuntime().getRagService().context(), "search-1", Map.of("query", "Drain upgrade verify", "limit", 8), classification, null, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Indexed PHI is re-read live; snippets reach the eligible model but never
+    ** assistant rows or audit values.
+    *******************************************************************************/
+   @Test
+   @Tag("redteam")
+   void classifiedKnowledgeCanary() throws Exception
+   {
+      String phi = "CANARY-PHI-" + UUID.randomUUID();
+      String pii = "CANARY-PII-" + UUID.randomUUID();
+      var table = qInstance.getTable("blog_post");
+      table.getField("content").withSupplementalMetaData(new AiFieldMetaData().withClassification(DataClassification.PHI));
+      table.getField("title").withSupplementalMetaData(new AiFieldMetaData().withClassification(DataClassification.PII));
+      new UpdateAction().execute(new UpdateInput("blog_post").withRecord(new QRecord().withValue("id", 1)
+         .withValue("title", pii).withValue("content", phi)));
+      config.getRuntime().getStore().updateFields(AssistantProvider.TABLE_NAME, new QRecord().withValue("id", embeddingProvider.getId())
+         .withValue("hipaaEligible", true).withValue("isDefault", true));
+      assertThat(config.getRuntime().getRagService().index(source).errors()).isZero();
+      embeddings.thenToolUse("search_knowledge", Map.of("query", "Drain upgrade verify", "limit", 8)).thenRespond(request ->
+      {
+         assertThat(JsonUtils.toJson(request)).contains(phi, pii);
+         return (new ModelResponse().withParts(List.of(ModelPart.text(phi + " " + pii))).withStopReason(ModelResponse.STOP_END_TURN));
+      });
+      assertThat(runner.run(AssistantTestFixture.ADMIN, "Search knowledge").errorCode()).isNull();
+      as(AssistantTestFixture.ADMIN);
+      for(String name : qInstance.getTables().keySet())
+      {
+         if(name.startsWith("assistant_") || name.toLowerCase().startsWith("audit"))
+         {
+            String rows = JsonUtils.toJson(new QueryAction().execute(new QueryInput(name)).getRecords());
+            for(String marker : List.of(phi, pii))
+            {
+               for(int i = 0; i <= marker.length() - 5; i++)
+               {
+                  assertThat(rows).doesNotContain(marker.substring(i, i + 5));
+               }
+            }
+         }
+      }
    }
 
 

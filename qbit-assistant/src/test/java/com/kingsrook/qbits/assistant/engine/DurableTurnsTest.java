@@ -37,6 +37,7 @@ import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
+import com.kingsrook.qbits.assistant.persistence.TranscriptRedactor;
 import com.kingsrook.qbits.assistant.provider.fake.ScriptedModelProvider;
 import com.kingsrook.qbits.assistant.spi.ModelEventListener;
 import com.kingsrook.qbits.assistant.spi.ModelPart;
@@ -46,14 +47,18 @@ import com.kingsrook.qbits.assistant.spi.ModelUsage;
 import com.kingsrook.qbits.assistant.spi.StreamHandle;
 import com.kingsrook.qbits.assistant.testing.AssistantTestFixture;
 import com.kingsrook.qbits.assistant.testing.BaseAssistantTest;
+import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.data.QRecordEntity;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import static com.kingsrook.qbits.assistant.testing.AssistantTestFixture.EDITOR;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -64,6 +69,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *******************************************************************************/
 class DurableTurnsTest extends BaseAssistantTest
 {
+   private static final String CLASSIFIED_TEXT = "CLASSIFIED-LIFECYCLE-CANARY";
+
    private QSession session;
    private AssistantApi api;
    private AssistantStore store;
@@ -104,6 +111,73 @@ class DurableTurnsTest extends BaseAssistantTest
       QContext.init(qInstance, session);
       api = new AssistantApi(config.getRuntime(), session);
       store = config.getRuntime().getStore();
+   }
+
+
+
+   /*******************************************************************************
+    ** Terminal paths on other threads flush the same provisional transcript scope.
+    ** Live text stays intact; stored user/message/replay content has only tokens.
+    *******************************************************************************/
+   @ParameterizedTest
+   @ValueSource(strings = { "SUPERSEDED", "TIMEOUT", "SHUTDOWN" })
+   void terminalPathsRedactClassifiedContent(String reason) throws Exception
+   {
+      config.withDataClassification("blog_post", "title", DataClassification.PII);
+      ControlledProvider controlled = controlled(true);
+      controlled.classifiedText = CLASSIFIED_TEXT;
+      if("TIMEOUT".equals(reason))
+      {
+         config.setMaxTurnSeconds(1);
+      }
+      Integer conversation = conversation();
+      RunningTurn run = api.startTurn(conversation, Map.of("text", CLASSIFIED_TEXT));
+      try
+      {
+         controlled.awaitCalls(1);
+         if("SHUTDOWN".equals(reason))
+         {
+            config.getRuntime().shutdown(Duration.ZERO);
+            QContext.init(qInstance, session);
+         }
+         else if("SUPERSEDED".equals(reason))
+         {
+            api.startTurn(conversation, Map.of("text", "next question"));
+         }
+         AssistantTurn row = completed(run);
+         assertThat(row.getCancelReason()).isEqualTo(reason);
+         assertThat(store.getMessage(EDITOR, row.getUserMessageId()).getPartsJson()).contains("changed:v1").doesNotContain(CLASSIFIED_TEXT);
+         assertThat(store.getMessage(EDITOR, row.getAssistantMessageId()).getPartsJson()).contains("changed:v1").doesNotContain(CLASSIFIED_TEXT);
+         assertThat(api.turnEvents(run.getTurnId(), 0).persisted()).anySatisfy(event -> assertThat(event.toJson()).contains("changed:v1"))
+            .allSatisfy(event -> assertThat(event.toJson()).doesNotContain(CLASSIFIED_TEXT));
+         assertThat(run.getLog().after(0, 1)).anySatisfy(event -> assertThat(event.toJson()).contains(CLASSIFIED_TEXT));
+         assertThat(TranscriptRedactor.current()).isNull();
+         assertThat(QLogger.redact(CLASSIFIED_TEXT)).isEqualTo("changed:v1");
+      }
+      finally
+      {
+         controlled.release();
+      }
+      await(() -> CLASSIFIED_TEXT.equals(QLogger.redact(CLASSIFIED_TEXT)));
+   }
+
+
+
+   /*******************************************************************************
+    ** A rejected submission still persists its terminal notice and releases scope.
+    *******************************************************************************/
+   @Test
+   void rejectedSubmissionFinalizesTranscript() throws Exception
+   {
+      Integer conversation = conversation();
+      config.getRuntime().getExecutor().shutdown();
+      assertThatThrownBy(() -> api.startTurn(conversation, Map.of("text", "Submission failed")))
+         .isInstanceOf(java.util.concurrent.RejectedExecutionException.class);
+      QContext.init(qInstance, session);
+      assertThat(store.listRunningTurns(EDITOR)).isEmpty();
+      assertThat(store.listMessages(EDITOR, conversation, null, 100)).anySatisfy(message ->
+         assertThat(message.getPartsJson()).contains(TurnEngine.RESTART_TEXT));
+      assertThat(TranscriptRedactor.current()).isNull();
    }
 
 
@@ -363,11 +437,14 @@ class DurableTurnsTest extends BaseAssistantTest
    void orphanRecoveryAndIdempotentStop() throws Exception
    {
       AssistantTurn stale = remote(Instant.now().minusSeconds(5));
+      store.updateFields(AssistantMessage.TABLE_NAME, new QRecord().withValue("id", stale.getAssistantMessageId())
+         .withValue("partsJson", new MessageParts().addText("changed:v1").toJson()));
       AssistantTurn fresh = remote(Instant.now());
       AssistantTurn deadline = remote(Instant.now());
       store.updateFields(AssistantTurn.TABLE_NAME, new QRecord().withValue("id", deadline.getId()).withValue("startedAt", Instant.now().minusSeconds(30)));
       assertThat(active()).extracting(r -> r.get("turnId")).containsExactly(fresh.getId());
       assertThat(store.getTurn(EDITOR, stale.getId()).getStatus()).isEqualTo("ERROR");
+      assertThat(store.getMessage(EDITOR, stale.getAssistantMessageId()).getPartsJson()).contains("changed:v1", "server restarted");
       assertThat(store.getTurn(EDITOR, deadline.getId()).getStatus()).isEqualTo("ERROR");
       assertThat(api.turnEvents(stale.getId(), 0).persisted()).extracting(TurnEvent::getType).containsExactly(TurnEvent.ERROR, TurnEvent.MESSAGE_END);
       assertThat(api.turnEvents(stale.getId(), 0).persisted()).hasSize(2);
@@ -724,6 +801,7 @@ class DurableTurnsTest extends BaseAssistantTest
    private static class ControlledProvider extends ScriptedModelProvider
    {
       private final boolean stubborn;
+      private String classifiedText;
       private final List<ControlledHandle> handles = new CopyOnWriteArrayList<>();
       private boolean emitText = true;
 
@@ -742,6 +820,11 @@ class DurableTurnsTest extends BaseAssistantTest
       public StreamHandle stream(ModelRequest request, ModelEventListener listener)
       {
          ControlledHandle handle = new ControlledHandle(stubborn);
+         if(classifiedText != null)
+         {
+            TranscriptRedactor.current().observe("blog_post", "title", 1, classifiedText, classifiedText);
+            listener.onTextDelta(classifiedText);
+         }
          if(emitText)
          {
             listener.onTextDelta("A partial answer that has already begun streaming to the user. ");

@@ -83,7 +83,7 @@ public class HeaderedUiApiInvoker extends UiApiInvoker
       {
          if(!RESERVED_HEADERS.contains(name.toLowerCase(Locale.ROOT)))
          {
-            builder.header(name, value);
+            builder.setHeader(name, value);
          }
       });
       return (builder.build());

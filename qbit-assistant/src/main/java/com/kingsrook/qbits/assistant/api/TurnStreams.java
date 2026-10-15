@@ -160,7 +160,7 @@ public final class TurnStreams
    /*******************************************************************************
     **
     *******************************************************************************/
-   private static void writeLive(OutputStream out, TurnEventLog log, int after) throws IOException, InterruptedException
+   static void writeLive(OutputStream out, TurnEventLog log, int after) throws IOException, InterruptedException
    {
       int last = after;
       while(true)
@@ -170,7 +170,12 @@ public final class TurnStreams
          {
             if(log.isClosed())
             {
-               return;
+               // The terminal event may have arrived after the empty poll.
+               if(log.size() <= last)
+               {
+                  return;
+               }
+               continue;
             }
             write(out, ping());
             continue;

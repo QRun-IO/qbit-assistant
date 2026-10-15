@@ -80,7 +80,7 @@ public class ConfiguredClassificationSource implements ClassificationSource
    @Override
    public DataClassification ofTable(String table)
    {
-      return (table == null || table.startsWith("assistant_") ? DataClassification.PUBLIC : Classifications.max(null, tables.get(table)));
+      return (table == null || table.startsWith("assistant_") ? DataClassification.PUBLIC : Classifications.max(null, tables.get(table) == null ? AiDataClassifications.ofTable(coreTable(table)) : tables.get(table)));
    }
 
 

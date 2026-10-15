@@ -47,7 +47,7 @@ public class AssistantBudgetOverride extends QRecordEntity
    @QField()
    private Instant unlimitedUntil;
 
-   @QField(isRequired = true, maxLength = 1000)
+   @QField(isRequired = true)
    private String reason;
 
    @QField(isEditable = false, maxLength = 200)

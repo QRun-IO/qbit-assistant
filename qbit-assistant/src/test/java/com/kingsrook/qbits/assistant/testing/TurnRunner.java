@@ -173,7 +173,7 @@ public class TurnRunner
          {
             last = batch.get(batch.size() - 1).getSeq();
          }
-         if(batch.isEmpty() && running.getLog().isClosed())
+         if(batch.isEmpty() && running.getLog().isClosed() && running.getLog().size() <= last)
          {
             break;
          }
