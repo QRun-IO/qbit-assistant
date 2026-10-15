@@ -65,8 +65,17 @@ class AssistantSpecsContractTest extends BaseAssistantTest
 
       assertThat(generated).contains("/qqq/v1/assistant/conversations/{id}/turns").contains("text/event-stream").contains("/qqq/v1/assistant/actions/{id}/confirm")
          .contains("AssistantTurnEventV1").contains("/qqq/v1/assistant/access");
+      ///////////////////////////////////////////////////////////////////////////////////////
+      // The standard error schema retains error/code and adds message/traceId/fieldErrors. //
+      // The two 204 responses never had bodies; their old refs pointed to schema "null".   //
+      // Keep the release baseline and accept only these documented migration corrections. //
+      ///////////////////////////////////////////////////////////////////////////////////////
+      List<String> acceptedChanges = List.of(
+         "$ref changed from #/components/schemas/AssistantErrorV1 to #/components/schemas/BasicErrorResponseV1",
+         "DELETE /qqq/v1/assistant/conversations/{id} response 204: content type removed: application/json",
+         "POST /qqq/v1/assistant/messages/{id}/feedback response 204: content type removed: application/json");
       List<String> problems = UiApiContract.check(generated, Files.readString(COMMITTED, StandardCharsets.UTF_8),
-         Files.exists(BASELINE) ? Files.readString(BASELINE, StandardCharsets.UTF_8) : null, 1, "./mvnw test -pl qbit-assistant -Dtest=AssistantSpecsContractTest -Dassistant.regenerateOpenApi=true");
+         Files.exists(BASELINE) ? Files.readString(BASELINE, StandardCharsets.UTF_8) : null, 1, "./mvnw test -pl qbit-assistant -Dtest=AssistantSpecsContractTest -Dassistant.regenerateOpenApi=true", acceptedChanges);
       assertThat(problems).isEmpty();
    }
 

@@ -161,7 +161,7 @@ components:
           type: "string"
       type: "object"
     AssistantErrorV1:
-      description: "An error."
+      description: "Deprecated since 1.3.0: errors use BasicErrorResponseV1."
       properties:
         error:
           description: "A message for the user."
@@ -240,48 +240,121 @@ components:
             \ toolName and label."
           type: "object"
       type: "object"
+    BasicErrorResponseV1:
+      description: "The error body of every UI API operation (core and extensions)."
+      properties:
+        error:
+          description: "The error message (the same as message; kept for clients of\
+            \ UI API 1.0 to 1.5)."
+          type: "string"
+        code:
+          description: "A stable, machine-readable code. Well-known values: BAD_REQUEST\
+            \ (400), UNAUTHENTICATED (401),\nPERMISSION_DENIED (403), NOT_FOUND (404),\
+            \ CONFLICT (409), RATE_LIMITED (429), INTERNAL_ERROR (500),\nERROR (other).\
+            \ Extensions may add codes; treat an unknown code by the HTTP status.\
+            \ Since 1.6.0."
+          type: "string"
+        message:
+          description: "A message to show the user. Since 1.6.0."
+          type: "string"
+        fieldErrors:
+          description: "Errors about particular request fields, when known. Since\
+            \ 1.6.0."
+          items:
+            properties:
+              field:
+                description: "The field (or parameter) name."
+                type: "string"
+              message:
+                description: "The error about that field."
+                type: "string"
+              code:
+                description: "An optional machine-readable code, e.g. REQUIRED, TOO_LONG,\
+                  \ PATTERN."
+                type: "string"
+            type: "object"
+          type: "array"
+        traceId:
+          description: "Identifies this request in the server logs (also the X-QQQ-Trace-Id\
+            \ response header); quote it when reporting a problem. Since 1.6.0."
+          type: "string"
+      type: "object"
   securitySchemes:
     sessionUuidCookie:
+      description: "The session cookie set by POST /qqq/v1/manageSession (web clients)."
       in: "cookie"
       name: "sessionUUID"
       type: "apiKey"
+    bearerAuth:
+      bearerFormat: "JWT or session UUID"
+      description: "`Authorization: Bearer <token>`, where the token is either\n-\
+        \ an OAuth2 access token (a signed JWT) issued by the app's identity provider\
+        \ to the app's client,\n  or to its native client (`values.nativeClientId`\
+        \ in GET /qqq/v1/metaData/authentication), for\n  example from the device-authorization\
+        \ grant or auth-code + PKCE. It is verified against the\n  provider's keys\
+        \ (issuer, audience, expiry, signature) and gives the same user and permissions\n\
+        \  as signing in on the web. When it expires (401), refresh it at the provider\
+        \ and retry; or\n- a session UUID returned by POST /qqq/v1/manageSession,\
+        \ which the server keeps refreshed."
+      scheme: "bearer"
+      type: "http"
+    oauth2:
+      description: "The app's OAuth2 / OpenID Connect provider. The real endpoints\
+        \ come from the provider's discovery\ndocument: `{values.baseUrl}.well-known/openid-configuration`,\
+        \ with values from\nGET /qqq/v1/metaData/authentication. Native clients use\
+        \ `values.nativeClientId` (a public client)\nwith auth-code + PKCE (loopback\
+        \ or custom-scheme redirect URI registered at the provider) or the\ndevice-authorization\
+        \ grant (`device_authorization_endpoint`, RFC 8628), then send the access\
+        \ token\nas `Authorization: Bearer`."
+      flows:
+        authorizationCode:
+          authorizationUrl: "/authorize"
+          scopes:
+            email: "Email address"
+            offline_access: "A refresh token, to renew the access token without signing\
+              \ in again"
+            openid: "OpenID Connect sign-in"
+            profile: "Name, username and groups (permissions come from the groups)"
+          tokenUrl: "/token"
+      type: "oauth2"
 info:
   contact:
     email: "contact@kingsrook.com"
   description: "QQQ Assistant: conversations, streamed turns, feedback, pending actions\
     \ and data access explanations"
   title: "QQQ Middleware API extension: assistant"
-  version: "1.2.0"
+  version: "1.3.0"
 openapi: "3.0.3"
 paths:
   /qqq/v1/assistant/config:
     get:
       description: "Whether the assistant is available to this user, its persona and\
         \ limits"
+      operationId: "getAssistantConfig"
       responses:
         400:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Invalid input"
         403:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "No access to the assistant"
         404:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Not found (or not the user's own)"
         503:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Disabled, not configured, or the kill switch is on"
         200:
           content:
@@ -293,21 +366,37 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Already finished or decided"
         429:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Budget or rate limit"
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Whether the assistant is available to this user, its persona and limits"
+      tags:
+      - "assistant"
   /qqq/v1/assistant/conversations:
     get:
       description: "The user's own conversations"
+      operationId: "getAssistantConversations"
       parameters:
       - description: "ARCHIVED for archived conversations; active ones by default."
         in: "query"
@@ -320,25 +409,25 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Invalid input"
         403:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "No access to the assistant"
         404:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Not found (or not the user's own)"
         503:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Disabled, not configured, or the kill switch is on"
         200:
           content:
@@ -350,20 +439,36 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Already finished or decided"
         429:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Budget or rate limit"
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "The user's own conversations"
+      tags:
+      - "assistant"
     post:
       description: "Start a conversation"
+      operationId: "postAssistantConversations"
       requestBody:
         content:
           application/json:
@@ -383,31 +488,31 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Invalid input"
         403:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "No access to the assistant"
         404:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Not found (or not the user's own)"
         503:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Disabled, not configured, or the kill switch is on"
         409:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Already finished or decided"
         201:
           content:
@@ -419,15 +524,31 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Budget or rate limit"
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Start a conversation"
+      tags:
+      - "assistant"
   /qqq/v1/assistant/conversations/{id}:
     delete:
       description: "Delete a conversation"
+      operationId: "deleteAssistantConversationsById"
       parameters:
       - description: "The conversation id."
         in: "path"
@@ -440,50 +561,62 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Invalid input"
         403:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "No access to the assistant"
         404:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Not found (or not the user's own)"
         503:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Disabled, not configured, or the kill switch is on"
         409:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Already finished or decided"
         204:
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/null"
           description: "Done (no body)"
         429:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Budget or rate limit"
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Delete a conversation"
+      tags:
+      - "assistant"
     get:
       description: "A conversation and a page of its messages"
+      operationId: "getAssistantConversationsById"
       parameters:
       - description: "The conversation id."
         in: "path"
@@ -508,25 +641,25 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Invalid input"
         403:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "No access to the assistant"
         404:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Not found (or not the user's own)"
         503:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Disabled, not configured, or the kill switch is on"
         200:
           content:
@@ -538,20 +671,36 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Already finished or decided"
         429:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Budget or rate limit"
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "A conversation and a page of its messages"
+      tags:
+      - "assistant"
     patch:
       description: "Rename, pin or archive a conversation"
+      operationId: "patchAssistantConversationsById"
       parameters:
       - description: "The conversation id."
         in: "path"
@@ -579,25 +728,25 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Invalid input"
         403:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "No access to the assistant"
         404:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Not found (or not the user's own)"
         503:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Disabled, not configured, or the kill switch is on"
         200:
           content:
@@ -609,21 +758,37 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Already finished or decided"
         429:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Budget or rate limit"
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Rename, pin or archive a conversation"
+      tags:
+      - "assistant"
   /qqq/v1/assistant/conversations/{id}/turns:
     post:
       description: "Ask: start a turn and stream the reply as server-sent events"
+      operationId: "postAssistantConversationsByIdTurns"
       parameters:
       - description: "The conversation id."
         in: "path"
@@ -655,25 +820,25 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Invalid input"
         403:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "No access to the assistant"
         404:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Not found (or not the user's own)"
         503:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Disabled, not configured, or the kill switch is on"
         200:
           content:
@@ -685,22 +850,38 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Already finished or decided"
         429:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Budget or rate limit"
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Ask: start a turn and stream the reply as server-sent events"
+      tags:
+      - "assistant"
   /qqq/v1/assistant/turns/{turnId}/events:
     get:
       description: "Resume a turn's events after a sequence number (replay, then the\
         \ live tail)"
+      operationId: "getAssistantTurnsByTurnIdEvents"
       parameters:
       - description: "The turn id."
         in: "path"
@@ -719,25 +900,25 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Invalid input"
         403:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "No access to the assistant"
         404:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Not found (or not the user's own)"
         503:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Disabled, not configured, or the kill switch is on"
         200:
           content:
@@ -749,22 +930,38 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Already finished or decided"
         429:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Budget or rate limit"
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Resume a turn's events after a sequence number (replay, then the live\
         \ tail)"
+      tags:
+      - "assistant"
   /qqq/v1/assistant/turns/{turnId}/cancel:
     post:
       description: "Stop a running turn"
+      operationId: "postAssistantTurnsByTurnIdCancel"
       parameters:
       - description: "The turn id."
         in: "path"
@@ -777,25 +974,25 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Invalid input"
         403:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "No access to the assistant"
         404:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Not found (or not the user's own)"
         503:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Disabled, not configured, or the kill switch is on"
         200:
           content:
@@ -807,7 +1004,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Already finished or decided"
         202:
           content:
@@ -819,39 +1016,55 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Budget or rate limit"
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Stop a running turn"
+      tags:
+      - "assistant"
   /qqq/v1/assistant/turns/active:
     get:
       description: "Find the user's active assistant runs"
+      operationId: "getAssistantTurnsActive"
       responses:
         400:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Invalid input"
         403:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "No access to the assistant"
         404:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Not found (or not the user's own)"
         503:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Disabled, not configured, or the kill switch is on"
         200:
           content:
@@ -863,21 +1076,37 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Already finished or decided"
         429:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Budget or rate limit"
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Find the user's active assistant runs"
+      tags:
+      - "assistant"
   /qqq/v1/assistant/messages/{id}/feedback:
     post:
       description: "Thumbs up or down on an assistant message"
+      operationId: "postAssistantMessagesByIdFeedback"
       parameters:
       - description: "The assistant message id."
         in: "path"
@@ -905,51 +1134,63 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Invalid input"
         403:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "No access to the assistant"
         404:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Not found (or not the user's own)"
         503:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Disabled, not configured, or the kill switch is on"
         409:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Already finished or decided"
         204:
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/null"
           description: "Done (no body)"
         429:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Budget or rate limit"
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Thumbs up or down on an assistant message"
+      tags:
+      - "assistant"
   /qqq/v1/assistant/actions/{id}:
     get:
       description: "A write the assistant proposed, and its state"
+      operationId: "getAssistantActionsById"
       parameters:
       - description: "The pending action id."
         in: "path"
@@ -962,25 +1203,25 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Invalid input"
         403:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "No access to the assistant"
         404:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Not found (or not the user's own)"
         503:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Disabled, not configured, or the kill switch is on"
         200:
           content:
@@ -992,22 +1233,38 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Already finished or decided"
         429:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Budget or rate limit"
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "A write the assistant proposed, and its state"
+      tags:
+      - "assistant"
   /qqq/v1/assistant/actions/{id}/confirm:
     post:
       description: "Confirm a proposed write: it runs once, through the UI API, with\
         \ this request's session"
+      operationId: "postAssistantActionsByIdConfirm"
       parameters:
       - description: "The pending action id."
         in: "path"
@@ -1020,25 +1277,25 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Invalid input"
         403:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "No access to the assistant"
         404:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Not found (or not the user's own)"
         503:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Disabled, not configured, or the kill switch is on"
         200:
           content:
@@ -1050,22 +1307,38 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Already finished or decided"
         429:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Budget or rate limit"
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Confirm a proposed write: it runs once, through the UI API, with this\
         \ request's session"
+      tags:
+      - "assistant"
   /qqq/v1/assistant/actions/{id}/reject:
     post:
       description: "Cancel a proposed write; nothing changes"
+      operationId: "postAssistantActionsByIdReject"
       parameters:
       - description: "The pending action id."
         in: "path"
@@ -1078,25 +1351,25 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Invalid input"
         403:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "No access to the assistant"
         404:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Not found (or not the user's own)"
         503:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Disabled, not configured, or the kill switch is on"
         200:
           content:
@@ -1108,22 +1381,38 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Already finished or decided"
         429:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Budget or rate limit"
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Cancel a proposed write; nothing changes"
+      tags:
+      - "assistant"
   /qqq/v1/assistant/access:
     get:
       description: "Explain access: which UI API operations the assistant could call\
         \ for this user, and why not"
+      operationId: "getAssistantAccess"
       parameters:
       - description: "Only this table."
         in: "query"
@@ -1148,25 +1437,25 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Invalid input"
         403:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "No access to the assistant"
         404:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Not found (or not the user's own)"
         503:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Disabled, not configured, or the kill switch is on"
         200:
           content:
@@ -1178,16 +1467,37 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Already finished or decided"
         429:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantErrorV1"
+                $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Budget or rate limit"
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Explain access: which UI API operations the assistant could call for\
         \ this user, and why not"
+      tags:
+      - "assistant"
+servers:
+- description: "The QQQ server that serves this document (paths include /qqq/v1)."
+  url: "/"
+tags:
+- description: "Operations of the assistant extension."
+  name: "assistant"

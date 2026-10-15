@@ -179,7 +179,11 @@ class AssistantRouteProviderTest extends BaseAssistantTest
       assertThat((Map<String, Object>) config.get("features")).containsEntry("writes", false);
 
       assertThat(json(send("GET", "/config", NO_ACCESS, null))).containsEntry("enabled", false).containsEntry("reason", "NO_PERMISSION");
-      assertThat(send("GET", "/conversations", NO_ACCESS, null).statusCode()).isEqualTo(403);
+      HttpResponse<String> denied = send("GET", "/conversations", NO_ACCESS, null);
+      assertThat(denied.statusCode()).isEqualTo(403);
+      assertThat(json(denied)).containsEntry("code", "NO_PERMISSION")
+         .containsEntry("message", json(denied).get("error"))
+         .containsEntry("traceId", denied.headers().firstValue("X-QQQ-Trace-Id").orElseThrow());
 
       setKillSwitch(true);
       assertThat(json(send("GET", "/config", EDITOR, null))).containsEntry("enabled", false).containsEntry("reason", "KILL_SWITCH");
@@ -217,6 +221,9 @@ class AssistantRouteProviderTest extends BaseAssistantTest
       HttpResponse<String> foreign = send("GET", "/conversations/" + id, OTHER_EDITOR, null);
       assertThat(foreign.statusCode()).isEqualTo(404);
       assertThat(foreign.body()).doesNotContain("Posts");
+      assertThat(json(foreign)).containsEntry("code", "NOT_FOUND")
+         .containsEntry("message", json(foreign).get("error"))
+         .containsEntry("traceId", foreign.headers().firstValue("X-QQQ-Trace-Id").orElseThrow());
       assertThat(send("PATCH", "/conversations/" + id, OTHER_EDITOR, "{\"title\":\"x\"}").statusCode()).isEqualTo(404);
       assertThat(send("DELETE", "/conversations/" + id, OTHER_EDITOR, null).statusCode()).isEqualTo(404);
       assertThat(send("POST", "/conversations/" + id + "/turns", OTHER_EDITOR, "{\"text\":\"hi\"}").statusCode()).isEqualTo(404);
@@ -238,7 +245,11 @@ class AssistantRouteProviderTest extends BaseAssistantTest
       HttpRequest form = HttpRequest.newBuilder(URI.create(base + "/conversations")).header("Cookie", "sessionId=" + EDITOR)
          .header("Content-Type", "application/x-www-form-urlencoded").POST(HttpRequest.BodyPublishers.ofString("title=x")).build();
       assertThat(client.send(form, HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(400);
-      assertThat(send("GET", "/conversations/abc", EDITOR, null).statusCode()).isEqualTo(400);
+      HttpResponse<String> invalid = send("GET", "/conversations/abc", EDITOR, null);
+      assertThat(invalid.statusCode()).isEqualTo(400);
+      assertThat(json(invalid)).containsEntry("code", "BAD_REQUEST")
+         .containsEntry("message", json(invalid).get("error"))
+         .containsEntry("traceId", invalid.headers().firstValue("X-QQQ-Trace-Id").orElseThrow());
       assertThat(send("POST", "/conversations/" + id + "/turns", EDITOR, "{}").statusCode()).isEqualTo(400);
 
       assertThat(send("DELETE", "/conversations/" + id, EDITOR, null).statusCode()).isEqualTo(204);

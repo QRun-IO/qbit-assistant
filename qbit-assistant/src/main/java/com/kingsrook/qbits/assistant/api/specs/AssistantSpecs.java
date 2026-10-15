@@ -37,9 +37,11 @@ import com.kingsrook.qqq.middleware.javalin.specs.BasicResponse;
 import com.kingsrook.qqq.middleware.javalin.specs.extensions.AbstractJsonEndpointSpec;
 import com.kingsrook.qqq.middleware.javalin.specs.extensions.MiddlewareSpecExtension;
 import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiCredentials;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.BasicErrorResponseV1;
 import com.kingsrook.qqq.openapi.model.HttpMethod;
 import com.kingsrook.qqq.openapi.model.In;
 import com.kingsrook.qqq.openapi.model.Parameter;
+import com.kingsrook.qqq.openapi.model.Response;
 import com.kingsrook.qqq.openapi.model.Schema;
 import com.kingsrook.qqq.openapi.model.Type;
 import io.javalin.http.ContentType;
@@ -54,14 +56,14 @@ import io.javalin.http.HttpStatus;
  ** routes, with the same URLs and bodies, so they appear in the served
  ** /qqq/v1/openapi.yaml and a generated client covers them.
  **
- ** Errors keep the assistant's shape: HTTP status plus {"error", "code"}.
+ ** Errors use BasicErrorResponseV1 and retain assistant-specific codes.
  ** Turns and events are text/event-stream; each event type is documented as
  ** AssistantTurnEventV1.
  *******************************************************************************/
 public final class AssistantSpecs
 {
    public static final String EXTENSION_NAME    = "assistant";
-   public static final String EXTENSION_VERSION = "1.2.0";
+   public static final String EXTENSION_VERSION = "1.3.0";
    public static final String PREFIX            = "/assistant";
 
 
@@ -227,7 +229,7 @@ public final class AssistantSpecs
       rs.put("AssistantTurnEventV1", object("One server-sent event of a turn (event: <type>, id: <seq>, data: this object). Types: message.start, turn.phase, text.delta, tool.start, tool.result, ui.navigate, notice, usage, message.end, error, ping.",
          "seq", integer("Sequence number; resume with ?after=<seq>."), "type", string("The event type (also the SSE event name)."),
          "data", freeObject("The event's fields, by type. message.start includes startedAt (ISO-8601). turn.phase includes phase (thinking, tool, writing), optional toolName and label.")));
-      rs.put("AssistantErrorV1", object("An error.", "error", string("A message for the user."), "code", string("BUDGET, RATE_LIMIT, NOT_CONFIGURED, KILL_SWITCH, DISABLED, NO_PERMISSION...").withNullable(true)));
+      rs.put("AssistantErrorV1", object("Deprecated since " + EXTENSION_VERSION + ": errors use BasicErrorResponseV1.", "error", string("A message for the user."), "code", string("BUDGET, RATE_LIMIT, NOT_CONFIGURED, KILL_SWITCH, DISABLED, NO_PERMISSION...").withNullable(true)));
       return (rs);
    }
 
@@ -260,7 +262,7 @@ public final class AssistantSpecs
    /*******************************************************************************
     ** Base of the assistant's JSON specs: the user's own AssistantApi (with the
     ** request's credentials, forwarded to the UI API by the tools), errors in
-    ** the assistant's {"error","code"} shape with their status.
+    ** the standard error shape with their status and assistant-specific code.
     *******************************************************************************/
    public abstract static class AssistantJsonSpec extends AbstractJsonEndpointSpec
    {
@@ -337,6 +339,26 @@ public final class AssistantSpecs
 
 
       /*******************************************************************************
+       ** A bodyless response has empty content. Core 1.6's schema traversal
+       ** requires a non-null map even when the response has no schema.
+       *******************************************************************************/
+      @Override
+      public Map<Integer, Response> defineResponses()
+      {
+         Map<Integer, Response> responses = super.defineResponses();
+         for(Response response : responses.values())
+         {
+            if(response.getContent() == null)
+            {
+               response.withContent(Map.of());
+            }
+         }
+         return (responses);
+      }
+
+
+
+      /*******************************************************************************
        ** Keep the request (for its credentials and the server's local port).
        *******************************************************************************/
       @Override
@@ -403,7 +425,7 @@ public final class AssistantSpecs
 
 
       /*******************************************************************************
-       ** Assistant errors keep their status and {"error","code"}; others go
+       ** Assistant errors keep their status and code in the standard shape; others go
        ** through QQQ's mapping (400 / 401 / 403 / 404 / 500).
        *******************************************************************************/
       @Override
@@ -413,15 +435,16 @@ public final class AssistantSpecs
          AssistantApiException apiException = ExceptionUtils.findClassInRootChain(e, AssistantApiException.class);
          if(apiException != null)
          {
-            Map<String, Object> body = new LinkedHashMap<>();
-            body.put("error", apiException.getMessage());
+            context.contentType(ContentType.APPLICATION_JSON);
+            QJavalinUtils.respondWithError(context, org.eclipse.jetty.http.HttpStatus.getCode(apiException.getStatus()), apiException.getMessage());
             if(apiException.getCode() != null)
             {
-               body.put("code", apiException.getCode());
+               context.result(JsonUtils.toJson(new BasicErrorResponseV1()
+                  .withError(apiException.getMessage())
+                  .withCode(apiException.getCode())
+                  .withTraceId(QJavalinUtils.getTraceId(context))
+                  .toMap()));
             }
-            context.status(apiException.getStatus());
-            context.contentType(ContentType.APPLICATION_JSON);
-            context.result(JsonUtils.toJson(body));
             return;
          }
          QJavalinUtils.handleException(null, context, e);
@@ -436,12 +459,12 @@ public final class AssistantSpecs
       public List<BasicResponse> defineAdditionalBasicResponses()
       {
          return (List.of(
-            new BasicResponse(HttpStatus.BAD_REQUEST, "Invalid input", "AssistantErrorV1"),
-            new BasicResponse(HttpStatus.FORBIDDEN, "No access to the assistant", "AssistantErrorV1"),
-            new BasicResponse(HttpStatus.NOT_FOUND, "Not found (or not the user's own)", "AssistantErrorV1"),
-            new BasicResponse(HttpStatus.CONFLICT, "Already finished or decided", "AssistantErrorV1"),
-            new BasicResponse(HttpStatus.TOO_MANY_REQUESTS, "Budget or rate limit", "AssistantErrorV1"),
-            new BasicResponse(HttpStatus.SERVICE_UNAVAILABLE, "Disabled, not configured, or the kill switch is on", "AssistantErrorV1")));
+            new BasicResponse(HttpStatus.BAD_REQUEST, "Invalid input", BasicErrorResponseV1.class.getSimpleName()),
+            new BasicResponse(HttpStatus.FORBIDDEN, "No access to the assistant", BasicErrorResponseV1.class.getSimpleName()),
+            new BasicResponse(HttpStatus.NOT_FOUND, "Not found (or not the user's own)", BasicErrorResponseV1.class.getSimpleName()),
+            new BasicResponse(HttpStatus.CONFLICT, "Already finished or decided", BasicErrorResponseV1.class.getSimpleName()),
+            new BasicResponse(HttpStatus.TOO_MANY_REQUESTS, "Budget or rate limit", BasicErrorResponseV1.class.getSimpleName()),
+            new BasicResponse(HttpStatus.SERVICE_UNAVAILABLE, "Disabled, not configured, or the kill switch is on", BasicErrorResponseV1.class.getSimpleName())));
       }
 
 
