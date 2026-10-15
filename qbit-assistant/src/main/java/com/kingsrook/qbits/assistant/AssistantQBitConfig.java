@@ -33,6 +33,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.kingsrook.qbits.assistant.classification.ClassificationSource;
 import com.kingsrook.qbits.assistant.classification.ConfiguredClassificationSource;
 import com.kingsrook.qbits.assistant.jobs.AssistantRunTracker;
+import com.kingsrook.qbits.assistant.jobs.JobTrackingRunTracker;
 import com.kingsrook.qbits.assistant.rag.VectorStore;
 import com.kingsrook.qbits.assistant.spi.AssistantModelProvider;
 import com.kingsrook.qbits.assistant.spi.AssistantProviderType;
@@ -106,7 +107,7 @@ public class AssistantQBitConfig implements QBitConfig
    private Integer shutdownGraceSeconds = 8;
    private String defaultConcurrencyMode = "SUPERSEDE";
    private Boolean registerShutdownHook = true;
-   private AssistantRunTracker runTracker = AssistantRunTracker.NOOP;
+   private AssistantRunTracker runTracker = new JobTrackingRunTracker();
 
    private Integer               maxTurnSeconds             = 300;
    private Integer               maxUserMessageChars        = 8000;

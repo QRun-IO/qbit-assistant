@@ -17,9 +17,14 @@
 package com.kingsrook.qbits.assistant.jobs;
 
 
+import com.kingsrook.qqq.backend.core.exceptions.QException;
+
+
 /*******************************************************************************
- ** STAND-IN(core=QRun-IO/qqq#1210, removeBy=RC.9): core job tracking
- ** (jobs_job tracking rows) will implement this contract; hosts may wire their own.
+ ** Publishes assistant answers as jobs. The default, JobTrackingRunTracker,
+ ** uses QQQ core job tracking (the Jobs tray); NOOP turns it off, and hosts
+ ** may wire their own. Every call is isolated from the turn: a failure here
+ ** never affects the answer.
  *******************************************************************************/
 public interface AssistantRunTracker
 {
@@ -54,7 +59,7 @@ public interface AssistantRunTracker
    /*******************************************************************************
     ** Publish a run and return its tracking id.
     *******************************************************************************/
-   String start(String userId, Integer turnId, Integer conversationId, String label);
+   String start(String userId, Integer turnId, Integer conversationId, String label) throws QException;
 
    /*******************************************************************************
     ** Publish a changed phase.
@@ -64,12 +69,12 @@ public interface AssistantRunTracker
    /*******************************************************************************
     ** Publish the terminal outcome.
     *******************************************************************************/
-   void finish(String trackingId, String status, String message);
+   void finish(String trackingId, String status, String message) throws QException;
 
    /*******************************************************************************
     ** Wire the host's Stop action to the owner's cancellation path.
     *******************************************************************************/
-   default void onCancel(String trackingId, Runnable cancel)
+   default void onCancel(String trackingId, Runnable cancel) throws QException
    {
    }
 }
