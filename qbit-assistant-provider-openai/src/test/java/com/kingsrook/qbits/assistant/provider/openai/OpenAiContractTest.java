@@ -150,6 +150,35 @@ class OpenAiContractTest
 
 
    /*******************************************************************************
+    ** An image part switches that user message to the content-part array (text
+    ** then image_url with a data URL); messages without images stay strings.
+    *******************************************************************************/
+   @Test
+   void imagePartsUseContentArray() throws Exception
+   {
+      try(MockOpenAiServer server = new MockOpenAiServer())
+      {
+         server.enqueue(200, TEXT);
+         ModelRequest request = request().withMessages(List.of(ModelMessage.user("first"), ModelMessage.assistant("ok"),
+            new ModelMessage().withRole(ModelMessage.Role.USER).withPart(ModelPart.text("<uploaded_file/>"))
+               .withPart(ModelPart.image("image/png", "iVBORw0KGgo=")).withPart(ModelPart.text("What is this?"))));
+         var provider = new OpenAiCompatibleModelProvider(settings(server, "OPENAI"));
+         assertThat(provider.stream(request, text -> {}).await(Duration.ofSeconds(5)).getText()).isEqualTo("OK");
+         JsonNode body = OpenAiHttp.JSON.readTree(server.requests.getFirst().body());
+         assertThat(body.path("messages").get(0).path("content").isTextual()).isTrue();
+         JsonNode content = body.path("messages").get(2).path("content");
+         assertThat(content.isArray()).isTrue();
+         assertThat(content.get(0).path("type").asText()).isEqualTo("text");
+         assertThat(content.get(0).path("text").asText()).isEqualTo("<uploaded_file/>");
+         assertThat(content.get(1).path("type").asText()).isEqualTo("image_url");
+         assertThat(content.get(1).path("image_url").path("url").asText()).isEqualTo("data:image/png;base64,iVBORw0KGgo=");
+         assertThat(content.get(2).path("text").asText()).isEqualTo("What is this?");
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Fragmented parallel tools, comments, cache usage and ignored reasoning.
     *******************************************************************************/
    @Test
