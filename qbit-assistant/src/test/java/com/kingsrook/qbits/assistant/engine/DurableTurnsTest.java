@@ -209,6 +209,42 @@ class DurableTurnsTest extends BaseAssistantTest
 
 
    /*******************************************************************************
+    ** Streamed text arrives on the provider's own thread; the "writing" progress
+    ** it triggers still runs in the turn's QContext (the job tracker writes
+    ** through QQQ, which needs the instance).
+    *******************************************************************************/
+   @Test
+   void streamedProgressRunsInTheTurnContext() throws Exception
+   {
+      List<String> contexts = new CopyOnWriteArrayList<>();
+      config.setRunTracker(new AssistantRunTracker()
+      {
+         @Override
+         public String start(String userId, Integer turnId, Integer conversationId, String label)
+         {
+            return ("job-" + turnId);
+         }
+
+         @Override
+         public void progress(String trackingId, String phase, String message)
+         {
+            contexts.add(phase + ":" + (QContext.getQInstance() != null));
+         }
+
+         @Override
+         public void finish(String trackingId, String status, String message)
+         {
+         }
+      });
+      provider.thenText("A streamed answer on the provider's thread");
+      AssistantTurn row = completed(api.startTurn(conversation(), Map.of("text", "hello")));
+      assertThat(row.getStatus()).isEqualTo("COMPLETE");
+      assertThat(contexts).contains("writing:true").doesNotContain("writing:false");
+   }
+
+
+
+   /*******************************************************************************
     ** A throwing post-processing collaborator cannot strand a streamed answer.
     *******************************************************************************/
    @Test

@@ -67,6 +67,7 @@ import com.kingsrook.qqq.backend.core.actions.ai.AiToolCall;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolOutcome;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolResult;
 import com.kingsrook.qqq.backend.core.actions.ai.output.AiRedactor;
+import com.kingsrook.qqq.backend.core.context.CapturedContext;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -770,13 +771,28 @@ public class TurnEngine implements Runnable
       {
          throw (new BudgetService.Blocked("The assistant has reached this provider's monthly cost cap. Ask an administrator."));
       }
+      ///////////////////////////////////////////////////////////////////////
+      // providers stream on their own (virtual) threads, which have no     //
+      // QContext: run the delta handler in the turn's context, or progress //
+      // writes (JobLogWriter) fail with no instance                        //
+      ///////////////////////////////////////////////////////////////////////
+      CapturedContext turnContext = QContext.capture();
       ModelEventListener listener = new ModelEventListener()
       {
          @Override
          public void onTextDelta(String text)
          {
-            phase("writing", null);
-            bufferText(text);
+            if(QContext.getQInstance() != null)
+            {
+               phase("writing", null);
+               bufferText(text);
+               return;
+            }
+            QContext.withTemporaryContext(turnContext, () ->
+            {
+               phase("writing", null);
+               bufferText(text);
+            });
          }
       };
 

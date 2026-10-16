@@ -161,7 +161,7 @@ components:
           type: "string"
       type: "object"
     AssistantErrorV1:
-      description: "Deprecated since 1.3.0: errors use BasicErrorResponseV1."
+      description: "Deprecated since 1.4.0: errors use BasicErrorResponseV1."
       properties:
         error:
           description: "A message for the user."
@@ -215,6 +215,57 @@ components:
           items:
             type: "string"
           type: "array"
+      type: "object"
+    AssistantRecordsRenderV1:
+      description: "A tool part's render of type records (query results). columns\
+        \ and rows are always present - empty when the query matched nothing (since\
+        \ 1.4.0; older stored parts are completed when read)."
+      properties:
+        type:
+          description: "records"
+          type: "string"
+        tableName:
+          type: "string"
+        tableLabel:
+          type: "string"
+        columns:
+          description: "Always present; empty when nothing matched."
+          items:
+            description: "A column."
+            properties:
+              name:
+                type: "string"
+              label:
+                type: "string"
+            type: "object"
+          type: "array"
+        rows:
+          description: "Always present; empty when nothing matched."
+          items:
+            description: "A row."
+            properties:
+              id:
+                description: "The primary key."
+                type: "string"
+              href:
+                description: "The record's /app link."
+                type: "string"
+              values:
+                additionalProperties: true
+                description: "Display values by column name."
+                type: "object"
+            type: "object"
+          type: "array"
+        totalCount:
+          description: "All matching rows."
+          nullable: true
+          type: "integer"
+        truncated:
+          description: "More rows match than are shown."
+          type: "boolean"
+        openHref:
+          description: "The Query screen link."
+          type: "string"
       type: "object"
     AssistantStatusResponseV1:
       description: "An acknowledgement."
@@ -323,7 +374,7 @@ info:
   description: "QQQ Assistant: conversations, streamed turns, feedback, pending actions\
     \ and data access explanations"
   title: "QQQ Middleware API extension: assistant"
-  version: "1.3.0"
+  version: "1.4.0"
 openapi: "3.0.3"
 paths:
   /qqq/v1/assistant/config:
