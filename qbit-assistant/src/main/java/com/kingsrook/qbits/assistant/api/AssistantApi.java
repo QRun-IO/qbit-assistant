@@ -33,6 +33,7 @@ import com.kingsrook.qbits.assistant.AssistantSecurity;
 import com.kingsrook.qbits.assistant.access.AccessExplainer;
 import com.kingsrook.qbits.assistant.access.DataAccessMode;
 import com.kingsrook.qbits.assistant.engine.AbandonedTurns;
+import com.kingsrook.qbits.assistant.engine.ClientErrors;
 import com.kingsrook.qbits.assistant.engine.ContextBuilder;
 import com.kingsrook.qbits.assistant.engine.MessageParts;
 import com.kingsrook.qbits.assistant.engine.PolicyService;
@@ -41,6 +42,7 @@ import com.kingsrook.qbits.assistant.engine.ProviderService;
 import com.kingsrook.qbits.assistant.engine.RunningTurn;
 import com.kingsrook.qbits.assistant.engine.TurnEngine;
 import com.kingsrook.qbits.assistant.engine.TurnEvent;
+import com.kingsrook.qbits.assistant.model.AssistantClientError;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantFeedback;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
@@ -745,6 +747,71 @@ public class AssistantApi
          .withRating(number.intValue())
          .withReason(reason)
          .withComment(comment));
+   }
+
+
+
+   /*******************************************************************************
+    ** POST /client-errors: an error the panel hit, reported by the user's own
+    ** browser. Any signed-in user may report (also when the assistant is off
+    ** for them); only bounded, scrubbed fields are stored (ClientErrors), and
+    ** conversation / message / turn ids only when they are the user's own.
+    ** Over the per-user rate limit the report is acknowledged but dropped
+    ** (accepted: false), never a 429, so a looping client is not spammed.
+    *******************************************************************************/
+   public Map<String, Object> reportClientError(Map<String, Object> body) throws QException, AssistantApiException
+   {
+      if(userId == null)
+      {
+         throw (new AssistantApiException(403, "NO_PERMISSION", "Sign in to report errors."));
+      }
+      if(body == null)
+      {
+         throw (new AssistantApiException(400, "A JSON object is required."));
+      }
+      String scope = ClientErrors.token(body.get("scope"), ClientErrors.SCOPE_MAX);
+      if(scope == null)
+      {
+         throw (new AssistantApiException(400, "scope is required."));
+      }
+      String message = ClientErrors.text(body.get("message"), ClientErrors.MESSAGE_MAX);
+      if(message == null)
+      {
+         throw (new AssistantApiException(400, "message is required."));
+      }
+      if(!runtime.getClientErrors().tryAcquire(userId, config.getClientErrorsPerUserPerMinute()))
+      {
+         return (Map.of("accepted", false));
+      }
+
+      Integer conversationId = ClientErrors.id(body.get("conversationId"));
+      Integer messageId      = ClientErrors.id(body.get("messageId"));
+      Integer turnId         = ClientErrors.id(body.get("turnId"));
+      AssistantClientError row = new AssistantClientError()
+         .withUserId(userId)
+         .withScope(scope)
+         .withMessage(message)
+         .withErrorName(ClientErrors.token(body.get("errorName"), ClientErrors.ERROR_NAME_MAX))
+         .withStack(ClientErrors.text(body.get("stack"), ClientErrors.STACK_MAX))
+         .withComponentStack(ClientErrors.text(body.get("componentStack"), ClientErrors.COMPONENT_STACK_MAX))
+         .withRequestId(ClientErrors.token(body.get("requestId"), ClientErrors.REQUEST_ID_MAX))
+         .withRoute(ClientErrors.route(body.get("route")))
+         .withConversationId(conversationId != null && store.getConversation(userId, conversationId) != null ? conversationId : null)
+         .withMessageId(messageId != null && store.getMessage(userId, messageId) != null ? messageId : null)
+         .withTurnId(turnId != null && store.getTurn(userId, turnId) != null ? turnId : null)
+         .withPartType(ClientErrors.token(body.get("partType"), ClientErrors.PART_TYPE_MAX))
+         .withRenderType(ClientErrors.token(body.get("renderType"), ClientErrors.RENDER_TYPE_MAX))
+         .withAppVersion(ClientErrors.token(body.get("appVersion"), ClientErrors.APP_VERSION_MAX))
+         .withOccurredAt(runtime.getClientErrors().occurredAt(body.get("occurredAt")));
+      AssistantClientError saved = store.insert(row);
+
+      //////////////////////////////////////////////////////////////////////
+      // structured, no reported text: the row holds the (scrubbed) text //
+      //////////////////////////////////////////////////////////////////////
+      LOG.info("Assistant client error reported", logPair("clientErrorId", saved.getId()), logPair("scope", row.getScope()),
+         logPair("partType", row.getPartType()), logPair("renderType", row.getRenderType()), logPair("conversationId", row.getConversationId()),
+         logPair("messageId", row.getMessageId()), logPair("turnId", row.getTurnId()));
+      return (Map.of("accepted", true));
    }
 
 

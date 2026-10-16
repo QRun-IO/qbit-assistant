@@ -44,7 +44,8 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  ** - nulls assistantToolCall.resultJson older than toolResultRetentionDays
  **   (the audit row stays);
  ** - finalizes abandoned runs (still RUNNING past the hard stream limit, e.g.
- **   after a pod restart nobody looked at) as interrupted.
+ **   after a pod restart nobody looked at) as interrupted;
+ ** - deletes client error reports older than toolResultRetentionDays.
  ** It works on the rows the running session can see: run on a schedule (the
  ** scheduler's session) or by an admin holding the owner all-access key.
  *******************************************************************************/
@@ -72,6 +73,7 @@ public class AssistantRetentionStep implements BackendStep
       output.addValue("turnEventsDeleted", result.turnEventsDeleted());
       output.addValue("messagesStripped", result.messagesStripped());
       output.addValue("turnsFinalized", result.turnsFinalized());
+      output.addValue("clientErrorsDeleted", result.clientErrorsDeleted());
    }
 
 
@@ -79,7 +81,7 @@ public class AssistantRetentionStep implements BackendStep
    /*******************************************************************************
     ** What was purged.
     *******************************************************************************/
-   public record Result(int conversationsDeleted, int toolResultsCleared, int turnEventsDeleted, int messagesStripped, int turnsFinalized)
+   public record Result(int conversationsDeleted, int toolResultsCleared, int turnEventsDeleted, int messagesStripped, int turnsFinalized, int clientErrorsDeleted)
    {
    }
 
@@ -166,9 +168,21 @@ public class AssistantRetentionStep implements BackendStep
 
       int turnsFinalized = AbandonedTurns.sweep(config, store, now);
 
+      int clientErrorsDeleted = 0;
+      while(true)
+      {
+         int count = store.deleteClientErrorsBefore(toolResultCutoff, BATCH);
+         clientErrorsDeleted += count;
+         if(count < BATCH)
+         {
+            break;
+         }
+      }
+
       LOG.info("Assistant retention ran", logPair("conversationsDeleted", deleted), logPair("toolResultsCleared", cleared),
-         logPair("turnEventsDeleted", eventsDeleted), logPair("messagesStripped", messagesStripped), logPair("turnsFinalized", turnsFinalized));
-      return (new Result(deleted, cleared, eventsDeleted, messagesStripped, turnsFinalized));
+         logPair("turnEventsDeleted", eventsDeleted), logPair("messagesStripped", messagesStripped), logPair("turnsFinalized", turnsFinalized),
+         logPair("clientErrorsDeleted", clientErrorsDeleted));
+      return (new Result(deleted, cleared, eventsDeleted, messagesStripped, turnsFinalized, clientErrorsDeleted));
    }
 
 }

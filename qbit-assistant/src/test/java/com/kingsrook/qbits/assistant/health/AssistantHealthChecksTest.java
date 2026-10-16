@@ -303,7 +303,7 @@ class AssistantHealthChecksTest extends BaseAssistantTest
       var registry = HealthChecksMetaData.ofOrWithNew(qInstance);
       AssistantHealthChecks.register(qInstance);
       assertThat(registry.getSuppliers()).hasSize(2).allSatisfy(supplier -> assertThat(supplier.getComponent()).isEqualTo("assistant"));
-      assertThat(registry.resolveAll(qInstance)).hasSize(4).allSatisfy(check ->
+      assertThat(registry.resolveAll(qInstance)).hasSize(5).allSatisfy(check ->
       {
          assertThat(check.getKind()).isEqualTo(HealthCheckKind.DEPENDENCY);
          assertThat(check.getCategory()).isEqualTo(HealthCategory.AI);
@@ -317,7 +317,7 @@ class AssistantHealthChecksTest extends BaseAssistantTest
       assertThat(modelCheck.getTimeoutMs()).isEqualTo(30000);
       assertThat(check("assistant.provider." + local.getId()).getTimeoutMs()).isEqualTo(10000);
       config.getRuntime().getStore().updateFields(AssistantModel.TABLE_NAME, new QRecord().withValue("id", model.getId()).withValue("enabled", false));
-      assertThat(registry.resolveAll(qInstance)).hasSize(3);
+      assertThat(registry.resolveAll(qInstance)).hasSize(4);
       assertThat(run(modelCheck).getStatus()).isEqualTo(HealthStatus.UNKNOWN);
    }
 
@@ -610,8 +610,18 @@ class AssistantHealthChecksTest extends BaseAssistantTest
       assertThat(data.getCountURL()).startsWith("/app/").contains("health_check", "assistant");
       try(var central = cached("assistant.provider." + row.getId(), HealthCheckOutcome.up("Reachable"), Instant.now()))
       {
+         var cache = HealthRunner.class.getDeclaredMethod("cacheOutcome", String.class, HealthCheckOutcome.class);
+         cache.setAccessible(true);
+         cache.invoke(central, AssistantHealthChecks.CLIENT_ERRORS, HealthCheckOutcome.up("0 client errors reported in the last hour"));
          data = (StatisticsData) renderer.render(new RenderWidgetInput()).getWidgetData();
          assertThat(data.getCount()).isEqualTo("UP");
+
+         //////////////////////////////////////////////////////////////////
+         // many client errors in the last hour show on the card as well //
+         //////////////////////////////////////////////////////////////////
+         cache.invoke(central, AssistantHealthChecks.CLIENT_ERRORS, HealthCheckOutcome.degraded("25 client errors reported in the last hour"));
+         data = (StatisticsData) renderer.render(new RenderWidgetInput()).getWidgetData();
+         assertThat(data.getCount()).isEqualTo("DEGRADED");
       }
    }
 }

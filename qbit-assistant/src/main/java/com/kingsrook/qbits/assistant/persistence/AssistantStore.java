@@ -36,6 +36,7 @@ import com.kingsrook.qbits.assistant.model.AssistantBudget;
 import com.kingsrook.qbits.assistant.model.AssistantBudgetEvent;
 import com.kingsrook.qbits.assistant.model.AssistantBudgetOverride;
 import com.kingsrook.qbits.assistant.model.AssistantBudgetUsage;
+import com.kingsrook.qbits.assistant.model.AssistantClientError;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantDataAudit;
 import com.kingsrook.qbits.assistant.model.AssistantFeedback;
@@ -54,6 +55,7 @@ import com.kingsrook.qbits.assistant.model.AssistantUsage;
 import com.kingsrook.qbits.assistant.model.AssistantUsageDaily;
 import com.kingsrook.qbits.assistant.scheduled.ScheduledTasks;
 import com.kingsrook.qbits.assistant.spi.ModelUsage;
+import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
 import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
@@ -61,6 +63,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.ActionFlag;
+import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
@@ -739,6 +742,39 @@ public class AssistantStore
       events.forEach(e -> ids.add(e.getId()));
       new DeleteAction().execute(new DeleteInput(AssistantTurnEvent.TABLE_NAME).withPrimaryKeys(ids));
       return (events.size());
+   }
+
+
+
+   /*******************************************************************************
+    ** How many client error reports (that the running session can see) were
+    ** stored since a time.
+    *******************************************************************************/
+   public int countClientErrorsSince(Instant since) throws QException
+   {
+      Integer count = new CountAction().execute(new CountInput(AssistantClientError.TABLE_NAME)
+         .withFilter(new QQueryFilter().withCriteria("createDate", QCriteriaOperator.GREATER_THAN_OR_EQUALS, since))).getCount();
+      return (count == null ? 0 : count);
+   }
+
+
+
+   /*******************************************************************************
+    ** Delete client error reports stored before a time; returns how many.
+    *******************************************************************************/
+   public int deleteClientErrorsBefore(Instant cutoff, int limit) throws QException
+   {
+      List<AssistantClientError> errors = query(AssistantClientError.TABLE_NAME, new QQueryFilter()
+         .withCriteria("createDate", QCriteriaOperator.LESS_THAN, cutoff)
+         .withLimit(limit), AssistantClientError.class);
+      if(errors.isEmpty())
+      {
+         return (0);
+      }
+      List<Serializable> ids = new ArrayList<>();
+      errors.forEach(e -> ids.add(e.getId()));
+      new DeleteAction().execute(new DeleteInput(AssistantClientError.TABLE_NAME).withPrimaryKeys(ids));
+      return (errors.size());
    }
 
 

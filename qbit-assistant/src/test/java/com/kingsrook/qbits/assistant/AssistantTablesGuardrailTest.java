@@ -71,6 +71,7 @@ class AssistantTablesGuardrailTest extends BaseAssistantTest
       Map.entry("assistant_tool_call", "runtime: every tool call"),
       Map.entry("assistant_pending_action", "runtime: a proposed change"),
       Map.entry("assistant_feedback", "user content: a rating"),
+      Map.entry("assistant_client_error", "runtime: the panel reports an error it hit"),
       Map.entry("assistant_usage", "runtime: every model call"),
       Map.entry("assistant_usage_daily", "runtime: after every answer"),
       Map.entry("assistant_data_audit", "runtime: every model call carrying data"));
