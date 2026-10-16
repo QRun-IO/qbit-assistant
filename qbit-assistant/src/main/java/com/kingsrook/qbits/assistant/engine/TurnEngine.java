@@ -775,8 +775,8 @@ public class TurnEngine implements Runnable
       }
       ///////////////////////////////////////////////////////////////////////
       // providers stream on their own (virtual) threads, which have no     //
-      // QContext: run the delta handler in the turn's context, or progress //
-      // writes (JobLogWriter) fail with no instance                        //
+      // QContext: run the delta handler in the turn's context, so phase    //
+      // and text events are recorded with the turn's instance and session //
       ///////////////////////////////////////////////////////////////////////
       CapturedContext turnContext = QContext.capture();
       ModelEventListener listener = new ModelEventListener()
@@ -1396,30 +1396,21 @@ public class TurnEngine implements Runnable
                runtime.getScheduledTurn().detach(conversation.getId(), session.getUuid());
             }
          });
-         String finalStatus = status;
-         String finalText = errorText;
-         try
+         runtime.unregister(turn.getId());
+         runtime.getRateLimiter().release(userId);
+         if(transcript != null && !engineRunning)
          {
-            safely(() -> config.getRunTracker().finish(running.getTrackingId(), finalStatus, finalText));
+            transcript.close();
          }
-         finally
+         else
          {
-            runtime.unregister(turn.getId());
-            runtime.getRateLimiter().release(userId);
-            if(transcript != null && !engineRunning)
-            {
-               transcript.close();
-            }
-            else
-            {
-               // A wedged provider can still log after forced finalization. The
-               // engine's finally releases its log protection when it returns.
-               TranscriptRedactor.detach();
-            }
-            if(previousTranscript != null && previousTranscript != transcript)
-            {
-               previousTranscript.attach();
-            }
+            // A wedged provider can still log after forced finalization. The
+            // engine's finally releases its log protection when it returns.
+            TranscriptRedactor.detach();
+         }
+         if(previousTranscript != null && previousTranscript != transcript)
+         {
+            previousTranscript.attach();
          }
       }
    }
@@ -1469,7 +1460,6 @@ public class TurnEngine implements Runnable
       running.setPhase(phase, toolName);
       String label = toolName == null ? phase : ToolLabels.running(toolName);
       emit(TurnEvent.TURN_PHASE, map("phase", phase, "toolName", toolName, "label", label));
-      safely(() -> config.getRunTracker().progress(running.getTrackingId(), phase, label));
    }
 
 
