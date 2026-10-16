@@ -53,6 +53,10 @@ public class MessageParts
             List<Map<String, Object>> list = JsonUtils.toObject(json, new TypeReference<List<Map<String, Object>>>() {});
             if(list != null)
             {
+               ////////////////////////////////////////////////////////////////
+               // parts stored before RenderShapes may lack empty render lists //
+               ////////////////////////////////////////////////////////////////
+               list.forEach(RenderShapes::complete);
                result.parts.addAll(list);
             }
          }
@@ -240,7 +244,7 @@ public class MessageParts
     *******************************************************************************/
    public synchronized String toJson()
    {
-      return (JsonUtils.toJson(parts));
+      return (RenderShapes.toJson(parts));
    }
 
 

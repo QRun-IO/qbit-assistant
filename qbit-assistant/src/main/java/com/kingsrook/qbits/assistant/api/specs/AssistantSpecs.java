@@ -63,7 +63,7 @@ import io.javalin.http.HttpStatus;
 public final class AssistantSpecs
 {
    public static final String EXTENSION_NAME    = "assistant";
-   public static final String EXTENSION_VERSION = "1.3.0";
+   public static final String EXTENSION_VERSION = "1.4.0";
    public static final String PREFIX            = "/assistant";
 
 
@@ -210,6 +210,11 @@ public final class AssistantSpecs
       rs.put("AssistantMessageV1", object("A message: the user's text or the assistant's reply as parts (text, tool, record_refs, navigate, notice).",
          "id", integer(null), "role", string("USER or ASSISTANT."), "status", string(null), "turnId", integer(null).withNullable(true),
          "createDate", string(null).withNullable(true), "parts", array(freeObject("A message part."), null)));
+      rs.put("AssistantRecordsRenderV1", object("A tool part's render of type records (query results). columns and rows are always present - empty when the query matched nothing (since 1.4.0; older stored parts are completed when read).",
+         "type", string("records"), "tableName", string(null), "tableLabel", string(null),
+         "columns", array(object("A column.", "name", string(null), "label", string(null)), "Always present; empty when nothing matched."),
+         "rows", array(object("A row.", "id", string("The primary key."), "href", string("The record's /app link."), "values", freeObject("Display values by column name.")), "Always present; empty when nothing matched."),
+         "totalCount", integer("All matching rows.").withNullable(true), "truncated", bool("More rows match than are shown."), "openHref", string("The Query screen link.")));
       rs.put("AssistantConversationDetailResponseV1", object("A conversation and a page of its messages, oldest first.",
          "conversation", ref("AssistantConversationV1"), "messages", array(ref("AssistantMessageV1"), null)));
       rs.put("AssistantStatusResponseV1", object("An acknowledgement.", "status", string(null)));
