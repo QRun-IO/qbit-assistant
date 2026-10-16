@@ -289,7 +289,9 @@ components:
           nullable: true
           type: "string"
         starterPrompts:
-          description: "Suggested first questions."
+          description: "Suggested first questions, built for this user: up to three\
+            \ generated from the tables the user can read that have data, plus any\
+            \ configured ones whose tables the user can read."
           items:
             type: "string"
           type: "array"
