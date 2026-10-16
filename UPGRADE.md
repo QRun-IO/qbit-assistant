@@ -1,5 +1,18 @@
 # Upgrading qbit-assistant
 
+## Conversation management (Unreleased, UI API extension assistant 1.6.0)
+
+No schema change. `assistant_conversation` is now usable by every user holding
+`assistant.hasAccess` (not only `assistant.admin`), together with three new
+record actions (Archive, Restore and Delete conversations). Rows stay locked to
+their owner. A user's table queries only return their own rows if their session
+carries their owner key: call `AssistantSecurity.applySessionKeys` from the
+authentication customizer for **every** user, not only for admins. Without it,
+non-admin users see an empty table.
+
+The panel can link to the table using `conversationsTable` from `GET /config`.
+That field is present only when the user may query the table.
+
 ## Provider setup state (Unreleased)
 
 Apply the **Provider setup state** block at the end of `docs/schema-postgres.sql`
