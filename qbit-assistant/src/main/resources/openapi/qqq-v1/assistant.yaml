@@ -195,6 +195,12 @@ components:
           type: "object"
         profile:
           $ref: "#/components/schemas/AssistantProfileV1"
+        conversationsTable:
+          description: "Since 1.6.0: the table name of the user's conversations (assistant_conversation)\
+            \ for the standard table UI (manage, archive, restore and delete); present\
+            \ only when this session may query that table."
+          nullable: true
+          type: "string"
       type: "object"
     AssistantConversationDetailResponseV1:
       description: "A conversation and a page of its messages, oldest first."
@@ -237,6 +243,11 @@ components:
           description: "ISO-8601 instant."
           nullable: true
           type: "string"
+        running:
+          description: "Since 1.6.0, in GET /conversations items only: whether an\
+            \ answer is in progress (a RUNNING or CANCELLING turn that is not orphaned)."
+          nullable: true
+          type: "boolean"
       type: "object"
     AssistantErrorV1:
       description: "Deprecated since 1.3.0: errors use BasicErrorResponseV1."
@@ -452,7 +463,7 @@ info:
   description: "QQQ Assistant: conversations, streamed turns, feedback, pending actions\
     \ and data access explanations"
   title: "QQQ Middleware API extension: assistant"
-  version: "1.5.0"
+  version: "1.6.0"
 openapi: "3.0.3"
 paths:
   /qqq/v1/assistant/config:
@@ -828,7 +839,7 @@ paths:
       tags:
       - "assistant"
     patch:
-      description: "Rename, pin or archive a conversation"
+      description: "Rename, pin, archive or mark read a conversation"
       operationId: "patchAssistantConversationsById"
       parameters:
       - description: "The conversation id."
@@ -850,6 +861,10 @@ paths:
                 status:
                   description: "ACTIVE or ARCHIVED."
                   type: "string"
+                read:
+                  description: "Since 1.6.0: true sets unreadCount to 0 (the user\
+                    \ watched the reply stream in). Only true is accepted."
+                  type: "boolean"
               type: "object"
         required: true
       responses:
@@ -911,7 +926,7 @@ paths:
         - "openid"
         - "profile"
         - "email"
-      summary: "Rename, pin or archive a conversation"
+      summary: "Rename, pin, archive or mark read a conversation"
       tags:
       - "assistant"
   /qqq/v1/assistant/conversations/{id}/turns:

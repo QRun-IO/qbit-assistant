@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased - Conversation management (UI API extension 1.6.0)
+
+- `assistant_conversation` is open to every assistant user (`assistant.hasAccess` or `assistant.admin`, through the new `AssistantAccessPermissionChecker`) in the standard table UI. Rows stay locked to their owner by the `userId` record lock, so a user only ever sees, updates and deletes their own conversations; admins with the all-access key still see everyone's. The Assistant app (its nav) and every other assistant table stay admin-only.
+- Users change only a conversation's title, pinned flag and status (Active / Archived) through the table; the other fields are the assistant's own. A new title is encrypted in HIPAA mode, as panel renames are.
+- A table delete of a conversation also deletes its messages, turns, turn events, tool calls, feedback, data audits and pending actions (the same rows `DELETE /conversations/{id}` removes), so nothing is orphaned on a database without the cascading foreign keys. A conversation with an answer in progress is refused.
+- New record actions on `assistant_conversation`: **Archive conversations**, **Restore conversations** and **Delete conversations** (standard streamed ETL: selected records, Review, Result; same permission as the table; only rows the user can see; delete skips conversations with an answer in progress).
+- UI API extension assistant 1.6.0: `GET /conversations` items have `running` (an answer in progress: a RUNNING or CANCELLING turn that is not orphaned); `PATCH /conversations/{id}` accepts `{"read": true}` (sets `unreadCount` to 0); `GET /config` has `conversationsTable: "assistant_conversation"` when the session may query that table.
+
 ## Unreleased - Optional provider health
 
 - An enabled provider that is not the default and not the only route for any configured routing (an enabled profile's simple/complex model, a budget downgrade model or a knowledge source's embedding model, with no fallback on another usable provider) is optional: when it is unreachable, its `assistant.provider.<id>` and `assistant.model.<id>` checks report DEGRADED with a message naming the provider requests use instead, so one unfinished local server no longer turns the whole `assistant` component DOWN. The default provider and sole routes still report DOWN. A failed provider probe still carries `reachable=false`, so the circuit breaker keeps refusing the provider.
