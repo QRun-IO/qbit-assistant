@@ -63,7 +63,7 @@ import io.javalin.http.HttpStatus;
 public final class AssistantSpecs
 {
    public static final String EXTENSION_NAME    = "assistant";
-   public static final String EXTENSION_VERSION = "1.5.0";
+   public static final String EXTENSION_VERSION = "1.6.0";
    public static final String PREFIX            = "/assistant";
 
 
@@ -203,10 +203,13 @@ public final class AssistantSpecs
          "model", string("The model that answers."),
          "limits", freeObject("maxTurnSeconds and maxToolCallsPerTurn."),
          "features", freeObject("writes: some table allows writes; pendingActions: writes wait for confirmation."),
-         "profile", ref("AssistantProfileV1")));
+         "profile", ref("AssistantProfileV1"),
+         "conversationsTable", string("Since 1.6.0: the table name of the user's conversations (assistant_conversation) for the standard table UI "
+            + "(manage, archive, restore and delete); present only when this session may query that table.").withNullable(true)));
       rs.put("AssistantConversationV1", object("One of the user's own conversations.",
          "id", integer(null), "title", string(null).withNullable(true), "status", string("ACTIVE or ARCHIVED."), "pinned", bool(null),
-         "lastMessageAt", string("ISO-8601 instant.").withNullable(true), "unreadCount", integer(null), "createDate", string("ISO-8601 instant.").withNullable(true)));
+         "lastMessageAt", string("ISO-8601 instant.").withNullable(true), "unreadCount", integer(null), "createDate", string("ISO-8601 instant.").withNullable(true),
+         "running", bool("Since 1.6.0, in GET /conversations items only: whether an answer is in progress (a RUNNING or CANCELLING turn that is not orphaned).").withNullable(true)));
       rs.put("AssistantConversationListResponseV1", object("The user's conversations, newest first.", "conversations", array(ref("AssistantConversationV1"), null)));
       rs.put("AssistantMessageV1", object("A message: the user's text or the assistant's reply as parts (text, tool, record_refs, navigate, notice).",
          "id", integer(null), "role", string("USER or ASSISTANT."), "status", string(null), "turnId", integer(null).withNullable(true),
@@ -816,7 +819,7 @@ public final class AssistantSpecs
       @Override
       protected String summary()
       {
-         return ("Rename, pin or archive a conversation");
+         return ("Rename, pin, archive or mark read a conversation");
       }
 
 
@@ -832,7 +835,8 @@ public final class AssistantSpecs
       @Override
       protected Schema defineRequestBodySchema()
       {
-         return (object("The changed properties.", "title", string(null), "pinned", bool(null), "status", string("ACTIVE or ARCHIVED.")));
+         return (object("The changed properties.", "title", string(null), "pinned", bool(null), "status", string("ACTIVE or ARCHIVED."),
+            "read", bool("Since 1.6.0: true sets unreadCount to 0 (the user watched the reply stream in). Only true is accepted.")));
       }
 
 

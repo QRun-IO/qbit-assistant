@@ -26,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
@@ -57,8 +58,12 @@ import com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadTools;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolOutcome;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolResult;
 import com.kingsrook.qqq.backend.core.actions.ai.output.AiRedactor;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
@@ -159,6 +164,10 @@ public class AssistantApi
       profile.put("greeting", persona.greeting());
       profile.put("starterPrompts", persona.starterPrompts());
       result.put("profile", profile);
+      if(mayQueryConversationsTable())
+      {
+         result.put("conversationsTable", AssistantConversation.TABLE_NAME);
+      }
       return (result);
    }
 
@@ -171,10 +180,13 @@ public class AssistantApi
    {
       requireAccess();
       String effective = "ARCHIVED".equalsIgnoreCase(status) ? "ARCHIVED" : "ACTIVE";
+      Set<Integer> running = runningConversationIds();
       List<Map<String, Object>> list = new ArrayList<>();
       for(AssistantConversation conversation : store.listConversations(userId, effective))
       {
-         list.add(toJson(conversation));
+         Map<String, Object> item = toJson(conversation);
+         item.put("running", running.contains(conversation.getId()));
+         list.add(item);
       }
       return (Map.of("conversations", list));
    }
@@ -303,6 +315,18 @@ public class AssistantApi
          }
          update.setValue("status", status);
          conversation.setStatus((String) status);
+      }
+      if(body.containsKey("read"))
+      {
+         ////////////////////////////////////////////////////////////////////
+         // the panel watched the reply stream in: clear the unread count //
+         ////////////////////////////////////////////////////////////////////
+         if(!Boolean.TRUE.equals(body.get("read")))
+         {
+            throw (new AssistantApiException(400, "read can only be true."));
+         }
+         update.setValue("unreadCount", 0);
+         conversation.setUnreadCount(0);
       }
 
       store.updateFields(AssistantConversation.TABLE_NAME, update);
@@ -654,6 +678,53 @@ public class AssistantApi
    static boolean isRunning(AssistantTurn turn)
    {
       return (turn != null && ("RUNNING".equals(turn.getStatus()) || "CANCELLING".equals(turn.getStatus())));
+   }
+
+
+
+   /*******************************************************************************
+    ** Ids of the user's conversations with an answer in progress: a RUNNING or
+    ** CANCELLING turn that is not orphaned (orphans are recovered on the way,
+    ** as in GET /turns/active).
+    *******************************************************************************/
+   Set<Integer> runningConversationIds() throws QException
+   {
+      Set<Integer> ids = new HashSet<>();
+      for(AssistantTurn turn : store.listRunningTurns(userId))
+      {
+         turn = reapIfOrphaned(turn);
+         if(isRunning(turn) && turn.getConversationId() != null)
+         {
+            ids.add(turn.getConversationId());
+         }
+      }
+      return (ids);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether a turn row (of any owner) is an answer still in progress: running
+    ** here, or running elsewhere and not orphaned. Read-only (no recovery).
+    *******************************************************************************/
+   boolean inProgress(AssistantTurn turn)
+   {
+      return (isRunning(turn) && (runtime.getRunningTurn(turn.getId()) != null || !orphaned(turn)));
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether this session may query the conversation table in the standard
+    ** table UI (assistant access or admin; rows stay owner-locked).
+    *******************************************************************************/
+   private boolean mayQueryConversationsTable()
+   {
+      if(userId == null || QContext.getQInstance() == null || QContext.getQInstance().getTable(AssistantConversation.TABLE_NAME) == null)
+      {
+         return (false);
+      }
+      return (PermissionsHelper.hasTablePermission(new QueryInput(AssistantConversation.TABLE_NAME), AssistantConversation.TABLE_NAME, TablePermissionSubType.READ));
    }
 
 
