@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased - Empty renders and stream context (UI API extension 1.4.0)
+
+- Tool result renders always carry their lists: a `records` render for a query that matched nothing now has `"rows": []` and `"columns": []` (QQQ's JSON omitted empty lists, and Next's Assistant crashed the page reading `rows.length`). Parts and events stored before the fix are completed when read. Extension 1.4.0 documents the shape as `AssistantRecordsRenderV1`.
+- Streamed text arrives on the provider's own (virtual) thread; the turn's progress updates now run in the turn's QContext, so job progress no longer fails with "Could not flush job progress" (NPE on the missing instance).
+
 ## Unreleased - UI API 1.6.0
 
 - UI API extension assistant 1.3.0 (requires QQQ 4.1.0-RC.15, UI API 1.6.0): operationIds, standard error responses with BasicErrorResponseV1, extension tags and trace IDs. Preserve HTTP statuses and assistant-specific error codes.
