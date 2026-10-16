@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased - Chat turns are not jobs
+
+- Ordinary chat turns no longer create core tracking jobs: they stay out of the Jobs tray and Jobs tables, and core no longer sends an "Assistant answer finished" notification for every answer. Crash safety is unchanged; it comes from the assistant's own turn table (leased, heartbeated `assistant_turn` rows, seq-numbered `assistant_turn_event` replay and the abandoned-turn sweep). The panel's Stop (`POST /turns/{id}/cancel`) is unchanged.
+- Removed the `AssistantRunTracker` SPI, `JobTrackingRunTracker` and `AssistantQBitConfig.withRunTracker` / `setRunTracker` / `getRunTracker` (see UPGRADE.md).
+- Real multi-step work stays a real job: a confirmed bulk load still launches through `POST /qqq/v1/processes/{p}/jobs`, and its tool result now carries `jobHref` (the job's `/app` link) next to `jobId`, plus a record ref to the job; the confirm response's `href` links to the job.
+- Scheduled task notifications (output mode Notification or Both) now go through core `QAlerts.notify` (category Job, the owner as the only audience, a link to the conversation, success/error/warning severity by run status), replacing the reflective call into an older alerts SPI that no longer matched.
+
 ## Unreleased - Optional provider health
 
 - An enabled provider that is not the default and not the only route for any configured routing (an enabled profile's simple/complex model, a budget downgrade model or a knowledge source's embedding model, with no fallback on another usable provider) is optional: when it is unreachable, its `assistant.provider.<id>` and `assistant.model.<id>` checks report DEGRADED with a message naming the provider requests use instead, so one unfinished local server no longer turns the whole `assistant` component DOWN. The default provider and sole routes still report DOWN. A failed provider probe still carries `reachable=false`, so the circuit breaker keeps refusing the provider.

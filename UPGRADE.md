@@ -1,5 +1,25 @@
 # Upgrading qbit-assistant
 
+## Chat turns are not jobs (Unreleased)
+
+Ordinary chat turns no longer create core tracking jobs, so they no longer appear
+in the Jobs tray or the Jobs tables and no longer trigger a per-answer "finished"
+notification. No schema change and no configuration is needed.
+
+The `AssistantRunTracker` SPI and `JobTrackingRunTracker` are removed, along with
+`AssistantQBitConfig.withRunTracker`, `setRunTracker` and `getRunTracker`. A host
+that called any of them must delete the call: `withRunTracker(AssistantRunTracker.NOOP)`
+is now the only behavior, and a custom tracker has no replacement hook. Turn
+progress, Stop and recovery are available through the assistant's own routes
+(`GET /turns/active`, the turn events stream and `POST /turns/{id}/cancel`).
+
+Bulk loads the assistant launches are still durable jobs. Their confirmed tool
+result now includes `jobHref` (the job's in-app link) and the confirm response's
+`href` points at the job.
+
+Scheduled task notifications now use core `QAlerts.notify`; they reach whatever
+alerts sink the host installed (or core's logging sink when none is).
+
 ## Provider setup state (Unreleased)
 
 Apply the **Provider setup state** block at the end of `docs/schema-postgres.sql`
