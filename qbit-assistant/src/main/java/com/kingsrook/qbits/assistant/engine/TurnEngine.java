@@ -29,12 +29,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLongArray;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
@@ -871,6 +873,10 @@ public class TurnEngine implements Runnable
       AiToolResult[]   results      = new AiToolResult[toolUses.size()];
       UiApiToolbox.Outcome[] outcomes = new UiApiToolbox.Outcome[toolUses.size()];
       List<Future<?>>  futures      = new ArrayList<>();
+      List<Integer>    futureIndexes = new ArrayList<>();
+      AtomicLongArray  startedNanos = new AtomicLongArray(toolUses.size());
+      boolean[]        failed       = new boolean[toolUses.size()];
+      boolean[]        timedOut     = new boolean[toolUses.size()];
       Semaphore        permits      = new Semaphore(Math.max(1, config.getMaxParallelToolCalls()));
 
       for(int i = 0; i < toolUses.size(); i++)
@@ -895,6 +901,7 @@ public class TurnEngine implements Runnable
 
          final int    index = i;
          AiToolCall   call  = new AiToolCall().withId(use.getToolUseId()).withName(use.getToolName()).withInput(use.getInput());
+         futureIndexes.add(index);
          futures.add(runtime.getExecutor().submit(() ->
          {
             if(!transcript.retainWorker())
@@ -906,6 +913,7 @@ public class TurnEngine implements Runnable
             {
                QContext.init(runtime.getQInstance(), session);
                permits.acquire();
+               startedNanos.set(index, System.nanoTime());
                try
                {
                   if(!running.isCancelled())
@@ -960,11 +968,15 @@ public class TurnEngine implements Runnable
             {
                Thread.currentThread().interrupt();
             }
-            catch(RuntimeException e)
+            catch(RuntimeException | Error e)
             {
-               LOG.warn("Tool kernel threw", hipaaSafe(e), logPair("tool", call.getName()));
-               results[index] = new AiToolResult().withToolCallId(call.getId()).withToolName(call.getName()).withOutcome(AiToolOutcome.ERROR)
-                  .withSummary("Failed").withModelContent("The tool failed unexpectedly.");
+               ///////////////////////////////////////////////////////////////////
+               // internal details go to the log only; the model and the user  //
+               // get a fixed, safe text                                       //
+               ///////////////////////////////////////////////////////////////////
+               LOG.warn("Tool kernel threw", hipaaSafe(e), logPair("turnId", turn.getId()), logPair("tool", call.getName()), logPair("errorClass", e.getClass().getSimpleName()));
+               failed[index] = true;
+               results[index] = failedResult(call.getId(), call.getName());
             }
             finally
             {
@@ -976,20 +988,39 @@ public class TurnEngine implements Runnable
       }
       persistPendingEvents();
 
-      for(Future<?> future : futures)
+      long toolTimeoutNanos = TimeUnit.SECONDS.toNanos(config.getToolCallTimeoutSeconds() == null ? 60 : config.getToolCallTimeoutSeconds());
+      for(int f = 0; f < futures.size(); f++)
       {
-         long waitMillis = Math.max(1, Duration.between(runtime.getClock().instant(), deadline).toMillis());
+         Future<?> future = futures.get(f);
+         int       index  = futureIndexes.get(f);
+         ///////////////////////////////////////////////////////////////////////
+         // each call has its own limit (from when it got a permit), and no  //
+         // call outlives the turn's deadline                                 //
+         ///////////////////////////////////////////////////////////////////////
+         long now        = System.nanoTime();
+         long started    = startedNanos.get(index);
+         long toolMillis = TimeUnit.NANOSECONDS.toMillis((started == 0 ? now : started) + toolTimeoutNanos - now);
+         long turnMillis = Duration.between(runtime.getClock().instant(), deadline).toMillis();
+         long waitMillis = Math.max(1, Math.min(toolMillis, turnMillis));
          try
          {
             future.get(waitMillis, TimeUnit.MILLISECONDS);
          }
          catch(TimeoutException e)
          {
+            timedOut[index] = !future.isDone();
             future.cancel(true);
+            LOG.warn("Assistant tool call timed out", logPair("turnId", turn.getId()), logPair("tool", toolUses.get(index).getToolName()),
+               logPair("limitSeconds", config.getToolCallTimeoutSeconds()), logPair("turnDeadline", toolMillis > turnMillis));
          }
          catch(ExecutionException e)
          {
-            LOG.debug("tool future failed", hipaaSafe(e));
+            failed[index] = true;
+            LOG.warn("Assistant tool call failed", hipaaSafe(e), logPair("turnId", turn.getId()), logPair("tool", toolUses.get(index).getToolName()));
+         }
+         catch(CancellationException e)
+         {
+            LOG.debug("tool future cancelled", logPair("turnId", turn.getId()));
          }
       }
 
@@ -1003,15 +1034,30 @@ public class TurnEngine implements Runnable
             continue;
          }
 
-         AiToolResult result = results[i];
-         if(result == null)
+         AiToolResult         result = timedOut[i] ? null : results[i];
+         UiApiToolbox.Outcome extras = timedOut[i] ? null : outcomes[i];
+         if(result == null && failed[i])
          {
+            result = failedResult(use.getToolUseId(), use.getToolName());
+         }
+         else if(result == null)
+         {
+            boolean stopped = running.isCancelled() && !timedOut[i];
             result = new AiToolResult().withToolCallId(use.getToolUseId()).withToolName(use.getToolName()).withOutcome(AiToolOutcome.ERROR)
-               .withSummary(running.isCancelled() ? "Not run (stopped)" : "Timed out")
-               .withModelContent(running.isCancelled() ? "Not run: the user stopped the answer." : "The tool did not finish in time.");
+               .withSummary(stopped ? "Not run (stopped)" : "Timed out")
+               .withModelContent(stopped ? "Not run: the user stopped the answer." : "The tool did not finish in time. Answer with what you have, or try a narrower request.");
+            timedOut[i] = !stopped;
          }
          classification.observe(use, result);
-         recordToolResult(use, result, outcomes[i]);
+         recordToolResult(use, result, extras);
+         if(timedOut[i])
+         {
+            notice("error", "A step took too long and was stopped (" + ToolLabels.running(use.getToolName()) + ").");
+         }
+         else if(failed[i] || (extras != null && extras.isFailed()))
+         {
+            notice("error", "A step failed (" + ToolLabels.running(use.getToolName()) + ").");
+         }
 
          String content = result.getModelContent() == null ? "" : result.getModelContent();
          modelResults.add(ModelPart.toolResult(use.getToolUseId(), content, result.getOutcome() != null && ERROR_OUTCOMES.contains(result.getOutcome())));
@@ -1024,7 +1070,21 @@ public class TurnEngine implements Runnable
 
 
    /*******************************************************************************
-    ** Audit row, events and message parts of one tool result.
+    ** The result of a tool call that threw: an ERROR (is_error) result with a
+    ** fixed text; what went wrong is only in the log.
+    *******************************************************************************/
+   private static AiToolResult failedResult(String toolCallId, String toolName)
+   {
+      return (new AiToolResult().withToolCallId(toolCallId).withToolName(toolName).withOutcome(AiToolOutcome.ERROR)
+         .withSummary("Failed").withModelContent("The tool failed unexpectedly. Answer with what you have, or try another way."));
+   }
+
+
+
+   /*******************************************************************************
+    ** Audit row, events and message parts of one tool result. The render is
+    ** checked first (RenderShapes): one that cannot be shown is left out and an
+    ** error notice says so.
     *******************************************************************************/
    private void recordToolResult(ModelPart use, AiToolResult result, UiApiToolbox.Outcome extras)
    {
@@ -1042,9 +1102,23 @@ public class TurnEngine implements Runnable
 
       Map<String, Object> data = map("messageId", assistantMessage.getId(), "toolCallId", use.getToolUseId(), "name", use.getToolName(), "outcome", outcome, "summary", summary);
       Boolean presentation = PresentResultsTool.NAME.equals(use.getToolName()) && AiToolOutcome.OK.equals(result.getOutcome()) && result.getRender() != null;
-      if(result.getRender() != null && !presentation)
+      Map<String, Object> render           = null;
+      Map<String, Object> presentationPart = null;
+      if(result.getRender() != null)
       {
-         data.put("render", result.getRender());
+         if(presentation)
+         {
+            presentationPart = RenderShapes.presentation(result.getRender());
+         }
+         else
+         {
+            render = RenderShapes.render(result.getRender());
+         }
+      }
+      boolean undisplayable = result.getRender() != null && render == null && presentationPart == null;
+      if(render != null)
+      {
+         data.put("render", render);
       }
       if(!refs.isEmpty())
       {
@@ -1052,11 +1126,16 @@ public class TurnEngine implements Runnable
       }
       emit(TurnEvent.TOOL_RESULT, data);
 
-      parts.addTool(use.getToolUseId(), use.getToolName(), summary, outcome, presentation ? null : result.getRender());
-      if(presentation)
+      parts.addTool(use.getToolUseId(), use.getToolName(), summary, outcome, render);
+      if(presentationPart != null)
       {
-         parts.addPresentation(result.getRender());
-         emit(TurnEvent.PRESENTATION, map("messageId", assistantMessage.getId(), "part", result.getRender()));
+         parts.addPresentation(presentationPart);
+         emit(TurnEvent.PRESENTATION, map("messageId", assistantMessage.getId(), "part", presentationPart));
+      }
+      if(undisplayable)
+      {
+         LOG.warn("Assistant tool result could not be displayed", logPair("turnId", turn.getId()), logPair("tool", use.getToolName()));
+         notice("error", RenderShapes.UNDISPLAYABLE_TEXT);
       }
       parts.addRecordRefs(refs);
 
@@ -1231,13 +1310,18 @@ public class TurnEngine implements Runnable
                .withValue("model", model).withValue("partsJson", parts.toJson())));
          }
 
-         emit(TurnEvent.USAGE, map("turnId", turn.getId(), "inputTokens", usage.getInputTokens(), "outputTokens", usage.getOutputTokens(),
-            "cacheReadTokens", usage.getCacheReadTokens(), "cacheWriteTokens", usage.getCacheWriteTokens(), "costMicros", costMicros));
+         //////////////////////////////////////////////////////////////////////
+         // each terminal event is independent: a failing emit never skips  //
+         // message.end or the terminal turn row below                      //
+         //////////////////////////////////////////////////////////////////////
+         safely(() -> emit(TurnEvent.USAGE, map("turnId", turn.getId(), "inputTokens", usage.getInputTokens(), "outputTokens", usage.getOutputTokens(),
+            "cacheReadTokens", usage.getCacheReadTokens(), "cacheWriteTokens", usage.getCacheWriteTokens(), "costMicros", costMicros)));
          if(errorCode != null)
          {
-            emit(TurnEvent.ERROR, map("code", errorCode, "message", errorText));
+            String finalErrorText = errorText;
+            safely(() -> emit(TurnEvent.ERROR, map("code", finalErrorCode, "message", finalErrorText)));
          }
-         emit(TurnEvent.MESSAGE_END, map("messageId", assistantMessage.getId(), "status", status, "stopReason", stopReason));
+         safely(() -> emit(TurnEvent.MESSAGE_END, map("messageId", assistantMessage.getId(), "status", finalStatus, "stopReason", finalStopReason)));
          if(!alreadyTerminal)
          {
             safely(this::persistPendingEvents);

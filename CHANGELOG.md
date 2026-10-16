@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased - Fail soft (UI API extension 1.5.0)
+
+- Every message part, tool render and presentation is validated before it is stored or streamed, and again when stored parts and events are read: all render types (records, record, count, widget, history, pending_action, bulk_load_dry_run) and presentation blocks always carry their lists. A render that cannot be repaired is replaced by an error notice ("This result could not be displayed."); unknown part and render types pass through. Problems are logged with the type and a fixed code only.
+- Tool calls have their own limit (`toolCallTimeoutSeconds`, default 60) besides the turn's (`maxTurnSeconds`, default 300). A timed-out or failing tool gets an ERROR (`is_error`) result for the model, an ERROR tool part and an error notice for the user; internal details go only to the log.
+- Every turn ends: terminal events are emitted independently, so a failing emit never skips `message.end` or the terminal turn row. Conversation detail repairs assistant messages left `STREAMING` (an orphaned run is reaped; a run that already ended gives its status), and the retention process finalizes runs still `RUNNING` past the hard stream limit (e.g. after a pod restart).
+
 ## Unreleased - Empty renders and stream context (UI API extension 1.4.0)
 
 - Tool result renders always carry their lists: a `records` render for a query that matched nothing now has `"rows": []` and `"columns": []` (QQQ's JSON omitted empty lists, and Next's Assistant crashed the page reading `rows.length`). Parts and events stored before the fix are completed when read. Extension 1.4.0 documents the shape as `AssistantRecordsRenderV1`.

@@ -438,6 +438,23 @@ public class AssistantStore
 
 
    /*******************************************************************************
+    ** Runs of any user (that the running session can see) still RUNNING or
+    ** CANCELLING although they started before a time, by id after afterId
+    ** (the retention sweep of abandoned runs).
+    *******************************************************************************/
+   public List<AssistantTurn> listRunningTurnsStartedBefore(Instant cutoff, Integer afterId, int limit) throws QException
+   {
+      return (query(AssistantTurn.TABLE_NAME, new QQueryFilter()
+         .withCriteria("status", QCriteriaOperator.IN, List.of("RUNNING", "CANCELLING"))
+         .withCriteria("startedAt", QCriteriaOperator.LESS_THAN, cutoff)
+         .withCriteria("id", QCriteriaOperator.GREATER_THAN, afterId == null ? 0 : afterId)
+         .withOrderBy(new QFilterOrderBy("id", true))
+         .withLimit(limit), AssistantTurn.class));
+   }
+
+
+
+   /*******************************************************************************
     ** Persist one streamed event.
     *******************************************************************************/
    public void insertEvent(Integer turnId, String userId, int seq, String eventType, String dataJson) throws QException

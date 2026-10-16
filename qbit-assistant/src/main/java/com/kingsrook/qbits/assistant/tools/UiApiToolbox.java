@@ -223,6 +223,7 @@ public class UiApiToolbox
       private Integer            httpStatus;
       private String             auditHref;
       private Integer            pendingActionId;
+      private boolean            failed;
 
 
 
@@ -247,6 +248,17 @@ public class UiApiToolbox
          outcome.httpStatus = httpStatus;
          outcome.pendingActionId = pendingActionId;
          return (outcome);
+      }
+
+
+
+      /*******************************************************************************
+       ** Whether the tool failed unexpectedly (an exception, not a refusal or a
+       ** bad input): the user is told a step failed.
+       *******************************************************************************/
+      public boolean isFailed()
+      {
+         return (failed);
       }
 
 
@@ -483,6 +495,7 @@ public class UiApiToolbox
       }
       catch(QException | RuntimeException e)
       {
+         outcome.failed = true;
          result.withOutcome(AiToolOutcome.ERROR).withSummary("Failed").withModelContent("The tool failed: " + shortText(e.getMessage()));
       }
       finally

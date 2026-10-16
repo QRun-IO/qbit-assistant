@@ -110,6 +110,9 @@ public class AssistantQBitConfig implements QBitConfig
    private AssistantRunTracker runTracker = new JobTrackingRunTracker();
 
    private Integer               maxTurnSeconds             = 300;
+   private Integer               toolCallTimeoutSeconds     = 60;
+   private Integer               clientErrorsPerUserPerMinute = 30;
+   private Integer               clientErrorWarnPerHour     = 20;
    private Integer               maxUserMessageChars        = 8000;
    private Integer               historyMessageLimit        = 40;
    private AssistantBudgets      budgets                    = new AssistantBudgets();
@@ -233,6 +236,9 @@ public class AssistantQBitConfig implements QBitConfig
          errors.add("turnHeartbeatSeconds must be less than turnLeaseSeconds.");
       }
 
+      requirePositive(errors, "toolCallTimeoutSeconds", toolCallTimeoutSeconds);
+      requirePositive(errors, "clientErrorsPerUserPerMinute", clientErrorsPerUserPerMinute);
+      requirePositive(errors, "clientErrorWarnPerHour", clientErrorWarnPerHour);
       requirePositive(errors, "maxUserMessageChars", maxUserMessageChars);
       requirePositive(errors, "historyMessageLimit", historyMessageLimit);
       requirePositive(errors, "maxTurnsPerUserPerMinute", maxTurnsPerUserPerMinute);
@@ -742,6 +748,99 @@ public class AssistantQBitConfig implements QBitConfig
    public AssistantQBitConfig withMaxTurnSeconds(Integer maxTurnSeconds)
    {
       this.maxTurnSeconds = maxTurnSeconds;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for toolCallTimeoutSeconds (how long one tool call may run before it gets an error result; default 60)
+    *******************************************************************************/
+   public Integer getToolCallTimeoutSeconds()
+   {
+      return (this.toolCallTimeoutSeconds);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for toolCallTimeoutSeconds
+    *******************************************************************************/
+   public void setToolCallTimeoutSeconds(Integer toolCallTimeoutSeconds)
+   {
+      this.toolCallTimeoutSeconds = toolCallTimeoutSeconds;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for toolCallTimeoutSeconds
+    *******************************************************************************/
+   public AssistantQBitConfig withToolCallTimeoutSeconds(Integer toolCallTimeoutSeconds)
+   {
+      this.toolCallTimeoutSeconds = toolCallTimeoutSeconds;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for clientErrorsPerUserPerMinute (client error reports accepted per user and minute; more are acknowledged but dropped; default 30)
+    *******************************************************************************/
+   public Integer getClientErrorsPerUserPerMinute()
+   {
+      return (this.clientErrorsPerUserPerMinute);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for clientErrorsPerUserPerMinute
+    *******************************************************************************/
+   public void setClientErrorsPerUserPerMinute(Integer clientErrorsPerUserPerMinute)
+   {
+      this.clientErrorsPerUserPerMinute = clientErrorsPerUserPerMinute;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for clientErrorsPerUserPerMinute
+    *******************************************************************************/
+   public AssistantQBitConfig withClientErrorsPerUserPerMinute(Integer clientErrorsPerUserPerMinute)
+   {
+      this.clientErrorsPerUserPerMinute = clientErrorsPerUserPerMinute;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for clientErrorWarnPerHour (client error reports in the last hour at which the health check warns; default 20)
+    *******************************************************************************/
+   public Integer getClientErrorWarnPerHour()
+   {
+      return (this.clientErrorWarnPerHour);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for clientErrorWarnPerHour
+    *******************************************************************************/
+   public void setClientErrorWarnPerHour(Integer clientErrorWarnPerHour)
+   {
+      this.clientErrorWarnPerHour = clientErrorWarnPerHour;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for clientErrorWarnPerHour
+    *******************************************************************************/
+   public AssistantQBitConfig withClientErrorWarnPerHour(Integer clientErrorWarnPerHour)
+   {
+      this.clientErrorWarnPerHour = clientErrorWarnPerHour;
       return (this);
    }
 

@@ -22,6 +22,7 @@ import java.time.Instant;
 import java.util.List;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
+import com.kingsrook.qbits.assistant.engine.AbandonedTurns;
 import com.kingsrook.qbits.assistant.engine.MessageParts;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
@@ -41,7 +42,9 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  ** - deletes conversations not active for conversationRetentionDays, with
  **   their messages, turns, events, tool calls and feedback;
  ** - nulls assistantToolCall.resultJson older than toolResultRetentionDays
- **   (the audit row stays).
+ **   (the audit row stays);
+ ** - finalizes abandoned runs (still RUNNING past the hard stream limit, e.g.
+ **   after a pod restart nobody looked at) as interrupted.
  ** It works on the rows the running session can see: run on a schedule (the
  ** scheduler's session) or by an admin holding the owner all-access key.
  *******************************************************************************/
@@ -68,6 +71,7 @@ public class AssistantRetentionStep implements BackendStep
       output.addValue("toolResultsCleared", result.toolResultsCleared());
       output.addValue("turnEventsDeleted", result.turnEventsDeleted());
       output.addValue("messagesStripped", result.messagesStripped());
+      output.addValue("turnsFinalized", result.turnsFinalized());
    }
 
 
@@ -75,7 +79,7 @@ public class AssistantRetentionStep implements BackendStep
    /*******************************************************************************
     ** What was purged.
     *******************************************************************************/
-   public record Result(int conversationsDeleted, int toolResultsCleared, int turnEventsDeleted, int messagesStripped)
+   public record Result(int conversationsDeleted, int toolResultsCleared, int turnEventsDeleted, int messagesStripped, int turnsFinalized)
    {
    }
 
@@ -160,9 +164,11 @@ public class AssistantRetentionStep implements BackendStep
          }
       }
 
+      int turnsFinalized = AbandonedTurns.sweep(config, store, now);
+
       LOG.info("Assistant retention ran", logPair("conversationsDeleted", deleted), logPair("toolResultsCleared", cleared),
-         logPair("turnEventsDeleted", eventsDeleted), logPair("messagesStripped", messagesStripped));
-      return (new Result(deleted, cleared, eventsDeleted, messagesStripped));
+         logPair("turnEventsDeleted", eventsDeleted), logPair("messagesStripped", messagesStripped), logPair("turnsFinalized", turnsFinalized));
+      return (new Result(deleted, cleared, eventsDeleted, messagesStripped, turnsFinalized));
    }
 
 }
