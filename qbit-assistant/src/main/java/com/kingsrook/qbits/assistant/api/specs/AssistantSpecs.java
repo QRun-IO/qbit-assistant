@@ -63,7 +63,7 @@ import io.javalin.http.HttpStatus;
 public final class AssistantSpecs
 {
    public static final String EXTENSION_NAME    = "assistant";
-   public static final String EXTENSION_VERSION = "1.4.0";
+   public static final String EXTENSION_VERSION = "1.5.0";
    public static final String PREFIX            = "/assistant";
 
 
@@ -101,7 +101,8 @@ public final class AssistantSpecs
          .withSpec(GetActionSpec.class)
          .withSpec(ConfirmActionSpec.class)
          .withSpec(RejectActionSpec.class)
-         .withSpec(AccessSpec.class));
+         .withSpec(AccessSpec.class)
+         .withSpec(ClientErrorsSpec.class));
    }
 
 
@@ -218,6 +219,23 @@ public final class AssistantSpecs
       rs.put("AssistantConversationDetailResponseV1", object("A conversation and a page of its messages, oldest first.",
          "conversation", ref("AssistantConversationV1"), "messages", array(ref("AssistantMessageV1"), null)));
       rs.put("AssistantStatusResponseV1", object("An acknowledgement.", "status", string(null)));
+      rs.put("AssistantClientErrorReportV1", object("An error the client hit while showing the assistant (since 1.5.0). scope and message are required; "
+            + "longer values are truncated, message and stacks are scrubbed of e-mail addresses, long numbers, tokens and query strings, and ids "
+            + "are kept only when they are the user's own.",
+         "scope", string("Required. Where it happened: assistant-panel, assistant-message, assistant-part, assistant-render, assistant-stream, widget, record-section, page...").withMaxLength(64),
+         "message", string("Required. The error message.").withMaxLength(500),
+         "errorName", string("The error's name, e.g. TypeError.").withMaxLength(100).withNullable(true),
+         "stack", string("The JavaScript stack.").withMaxLength(4000).withNullable(true),
+         "componentStack", string("The React component stack.").withMaxLength(4000).withNullable(true),
+         "requestId", string("The request or trace id the client saw.").withMaxLength(128).withNullable(true),
+         "route", string("The page path (no host, query or fragment).").withMaxLength(300).withNullable(true),
+         "conversationId", integer(null).withNullable(true), "messageId", integer(null).withNullable(true), "turnId", integer(null).withNullable(true),
+         "partType", string("The message part type being shown.").withMaxLength(64).withNullable(true),
+         "renderType", string("The render type being shown.").withMaxLength(64).withNullable(true),
+         "appVersion", string("The client build.").withMaxLength(64).withNullable(true),
+         "occurredAt", string("ISO-8601 instant.").withFormat("date-time").withNullable(true)));
+      rs.put("AssistantClientErrorResponseV1", object("Whether the report was stored: false when the user's reports are over the per-minute limit (still 202).",
+         "accepted", bool(null)));
       rs.put("AssistantActionV1", object("A write the assistant proposed and its state.",
          "id", integer(null), "status", string("PENDING, RUNNING, EXECUTED, FAILED, REJECTED or EXPIRED."), "toolName", string(null), "tableName", string(null),
          "recordId", string(null).withNullable(true), "summary", string(null), "httpStatus", integer("The UI API status of the write.").withNullable(true),
@@ -234,7 +252,7 @@ public final class AssistantSpecs
       rs.put("AssistantTurnEventV1", object("One server-sent event of a turn (event: <type>, id: <seq>, data: this object). Types: message.start, turn.phase, text.delta, tool.start, tool.result, ui.navigate, notice, usage, message.end, error, ping.",
          "seq", integer("Sequence number; resume with ?after=<seq>."), "type", string("The event type (also the SSE event name)."),
          "data", freeObject("The event's fields, by type. message.start includes startedAt (ISO-8601). turn.phase includes phase (thinking, tool, writing), optional toolName and label.")));
-      rs.put("AssistantErrorV1", object("Deprecated since " + EXTENSION_VERSION + ": errors use BasicErrorResponseV1.", "error", string("A message for the user."), "code", string("BUDGET, RATE_LIMIT, NOT_CONFIGURED, KILL_SWITCH, DISABLED, NO_PERMISSION...").withNullable(true)));
+      rs.put("AssistantErrorV1", object("Deprecated since 1.3.0: errors use BasicErrorResponseV1.", "error", string("A message for the user."), "code", string("BUDGET, RATE_LIMIT, NOT_CONFIGURED, KILL_SWITCH, DISABLED, NO_PERMISSION...").withNullable(true)));
       return (rs);
    }
 
@@ -1384,6 +1402,89 @@ public final class AssistantSpecs
       protected Object handle(AssistantApi api, JsonInput input) throws Exception
       {
          return (api.rejectAction(pathInt(input, "id")));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** POST /assistant/client-errors (since 1.5.0)
+    *******************************************************************************/
+   public static class ClientErrorsSpec extends AssistantJsonSpec
+   {
+      /*******************************************************************************
+       ** HTTP method.
+       *******************************************************************************/
+      @Override
+      protected HttpMethod method()
+      {
+         return (HttpMethod.POST);
+      }
+
+
+
+      /*******************************************************************************
+       ** Route path.
+       *******************************************************************************/
+      @Override
+      protected String path()
+      {
+         return (PREFIX + "/client-errors");
+      }
+
+
+
+      /*******************************************************************************
+       ** Operation summary.
+       *******************************************************************************/
+      @Override
+      protected String summary()
+      {
+         return ("Report an error the client hit while showing the assistant (stored for administrators, rate limited per user)");
+      }
+
+
+
+      /*******************************************************************************
+       ** Request body.
+       *******************************************************************************/
+      @Override
+      protected Schema defineRequestBodySchema()
+      {
+         return (ref("AssistantClientErrorReportV1"));
+      }
+
+
+
+      /*******************************************************************************
+       ** Response schema.
+       *******************************************************************************/
+      @Override
+      protected String getResponseSchemaName()
+      {
+         return ("AssistantClientErrorResponseV1");
+      }
+
+
+
+      /*******************************************************************************
+       ** 202: accepted (or over the limit and dropped).
+       *******************************************************************************/
+      @Override
+      protected HttpStatus successStatus()
+      {
+         return (HttpStatus.ACCEPTED);
+      }
+
+
+
+      /*******************************************************************************
+       ** Runs in the invoker's authenticated user session.
+       *******************************************************************************/
+      @Override
+      protected Object handle(AssistantApi api, JsonInput input) throws Exception
+      {
+         return (api.reportClientError(input.getBody()));
       }
    }
 

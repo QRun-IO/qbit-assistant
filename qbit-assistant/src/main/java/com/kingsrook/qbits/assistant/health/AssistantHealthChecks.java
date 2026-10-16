@@ -53,6 +53,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
  *******************************************************************************/
 public final class AssistantHealthChecks
 {
+   public static final String CLIENT_ERRORS = "assistant.client-errors";
+
    /*******************************************************************************
     ** Utility class.
     *******************************************************************************/
@@ -70,6 +72,33 @@ public final class AssistantHealthChecks
       HealthChecksMetaData registry = HealthChecksMetaData.ofOrWithNew(instance);
       register(registry, "assistant.provider", Providers.class);
       register(registry, "assistant.model", Models.class);
+      if(registry.getChecks().stream().noneMatch(existing -> CLIENT_ERRORS.equals(existing.getName())))
+      {
+         registry.withCheck(new HealthCheckMetaData().withName(CLIENT_ERRORS).withLabel("Assistant client errors").withComponent("assistant")
+            .withKind(HealthCheckKind.DEPENDENCY).withCategory(HealthCategory.AI)
+            .withIntervalSeconds(300).withTimeoutMs(10000)
+            .withCheckInstance(input -> bounded(input, () -> clientErrors(AssistantRuntime.of(input.getQInstance())))));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Errors the panel reported in the last hour (POST /assistant/client-errors):
+    ** DEGRADED at clientErrorWarnPerHour or more, so administrators see in
+    ** System Health that users are hitting broken screens. Only the count.
+    *******************************************************************************/
+   public static HealthCheckOutcome clientErrors(AssistantRuntime runtime) throws QException
+   {
+      if(runtime == null)
+      {
+         return (HealthCheckOutcome.unknown("Assistant not installed"));
+      }
+      int count = runtime.getStore().countClientErrorsSince(runtime.getClock().instant().minusSeconds(3600));
+      Integer threshold = runtime.getConfig().getClientErrorWarnPerHour();
+      String  text      = count + " client error" + (count == 1 ? "" : "s") + " reported in the last hour";
+      HealthCheckOutcome outcome = threshold != null && count >= threshold ? HealthCheckOutcome.degraded(text) : HealthCheckOutcome.up(text);
+      return (outcome.withDetails(new HealthDetails().withValue("lastHour", count).withValue("warnAt", threshold)));
    }
 
 

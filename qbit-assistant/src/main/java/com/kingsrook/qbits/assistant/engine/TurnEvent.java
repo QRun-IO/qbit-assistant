@@ -67,6 +67,11 @@ public class TurnEvent
             }
          });
       }
+      ////////////////////////////////////////////////////////////////////
+      // renders and presentations are checked before they are streamed //
+      // or stored, and again when stored events are replayed           //
+      ////////////////////////////////////////////////////////////////////
+      RenderShapes.normalizeEvent(type, this.data);
    }
 
 
@@ -82,10 +87,6 @@ public class TurnEvent
          if(json != null)
          {
             data = JsonUtils.toObject(json, new TypeReference<Map<String, Object>>() {});
-            //////////////////////////////////////////////////////////////////
-            // events stored before RenderShapes may lack empty render lists //
-            //////////////////////////////////////////////////////////////////
-            RenderShapes.complete(data);
          }
       }
       catch(Exception e)

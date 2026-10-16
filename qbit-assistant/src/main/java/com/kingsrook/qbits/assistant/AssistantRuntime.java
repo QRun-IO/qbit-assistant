@@ -30,6 +30,7 @@ import java.util.regex.Pattern;
 import com.kingsrook.qbits.assistant.access.AccessExplainer;
 import com.kingsrook.qbits.assistant.access.DataAccessService;
 import com.kingsrook.qbits.assistant.engine.BudgetService;
+import com.kingsrook.qbits.assistant.engine.ClientErrors;
 import com.kingsrook.qbits.assistant.engine.ContextBuilder;
 import com.kingsrook.qbits.assistant.engine.PolicyService;
 import com.kingsrook.qbits.assistant.engine.ProfileService;
@@ -86,6 +87,7 @@ public class AssistantRuntime
    private final ProviderService                  providerService;
    private final BudgetService                    budgetService;
    private final RateLimiter                      rateLimiter;
+   private final ClientErrors                     clientErrors;
    private final AiToolKernel                     kernel;
    private final ContextBuilder                   contextBuilder;
    private final DataAccessService                dataAccessService;
@@ -134,6 +136,7 @@ public class AssistantRuntime
       this.budgetService = new BudgetService(store, providerService, clock);
       this.policyService.withBudgetService(budgetService, providerService);
       this.rateLimiter = new RateLimiter(clock);
+      this.clientErrors = new ClientErrors(clock);
       AiToolKernelSettings settings = kernelSettings(config);
       this.kernel = new AiToolKernel(qInstance, settings);
       AiExposurePolicy exposurePolicy = new AiExposurePolicy(settings);
@@ -477,6 +480,17 @@ public class AssistantRuntime
    public RateLimiter getRateLimiter()
    {
       return (rateLimiter);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for clientErrors (bounds, scrubbing and rate limit of client
+    ** error reports)
+    *******************************************************************************/
+   public ClientErrors getClientErrors()
+   {
+      return (clientErrors);
    }
 
 

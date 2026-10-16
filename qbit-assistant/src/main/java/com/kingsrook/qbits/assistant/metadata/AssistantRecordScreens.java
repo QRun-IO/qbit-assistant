@@ -30,6 +30,7 @@ import com.kingsrook.qbits.assistant.engine.ProviderService;
 import com.kingsrook.qbits.assistant.model.AssistantBudget;
 import com.kingsrook.qbits.assistant.model.AssistantBudgetEvent;
 import com.kingsrook.qbits.assistant.model.AssistantBudgetOverride;
+import com.kingsrook.qbits.assistant.model.AssistantClientError;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantDataAccess;
 import com.kingsrook.qbits.assistant.model.AssistantDataAudit;
@@ -215,6 +216,7 @@ public final class AssistantRecordScreens
          case AssistantTurnEvent.TABLE_NAME -> turnEvent(table);
          case AssistantToolCall.TABLE_NAME -> toolCall(table);
          case AssistantFeedback.TABLE_NAME -> feedback(table);
+         case AssistantClientError.TABLE_NAME -> clientError(table);
          case AssistantPolicy.TABLE_NAME -> policy(table);
          case AssistantUsageDaily.TABLE_NAME -> usageDaily(table);
          case AssistantProvider.TABLE_NAME -> provider(table);
@@ -691,6 +693,21 @@ public final class AssistantRecordScreens
       sections(table,
          section("feedback", "Feedback", "thumbs_up_down", Tier.T1, "id", "rating", "reason", "comment"),
          section("about", "About", "chat", Tier.T2, "conversationId", "messageId", "userId"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Errors the panel reported: what and where first, the stacks last.
+    *******************************************************************************/
+   private static void clientError(QTableMetaData table)
+   {
+      link(table, "messageId", AssistantMessage.TABLE_NAME, "Message");
+      link(table, "turnId", AssistantTurn.TABLE_NAME, "Turn");
+      sections(table,
+         section("error", "Error", "bug_report", Tier.T1, "id", "scope", "errorName", "message", "occurredAt"),
+         section("where", "Where", "place", Tier.T2, "route", "partType", "renderType", "appVersion", "requestId", "userId", "conversationId", "messageId", "turnId"),
+         section("stacks", "Stacks", "code", Tier.T2, "stack", "componentStack"));
    }
 
 

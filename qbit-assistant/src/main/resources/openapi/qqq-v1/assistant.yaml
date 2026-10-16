@@ -90,6 +90,84 @@ components:
             type: "object"
           type: "array"
       type: "object"
+    AssistantClientErrorReportV1:
+      description: "An error the client hit while showing the assistant (since 1.5.0).\
+        \ scope and message are required; longer values are truncated, message and\
+        \ stacks are scrubbed of e-mail addresses, long numbers, tokens and query\
+        \ strings, and ids are kept only when they are the user's own."
+      properties:
+        scope:
+          description: "Required. Where it happened: assistant-panel, assistant-message,\
+            \ assistant-part, assistant-render, assistant-stream, widget, record-section,\
+            \ page..."
+          maxLength: 64
+          type: "string"
+        message:
+          description: "Required. The error message."
+          maxLength: 500
+          type: "string"
+        errorName:
+          description: "The error's name, e.g. TypeError."
+          maxLength: 100
+          nullable: true
+          type: "string"
+        stack:
+          description: "The JavaScript stack."
+          maxLength: 4000
+          nullable: true
+          type: "string"
+        componentStack:
+          description: "The React component stack."
+          maxLength: 4000
+          nullable: true
+          type: "string"
+        requestId:
+          description: "The request or trace id the client saw."
+          maxLength: 128
+          nullable: true
+          type: "string"
+        route:
+          description: "The page path (no host, query or fragment)."
+          maxLength: 300
+          nullable: true
+          type: "string"
+        conversationId:
+          nullable: true
+          type: "integer"
+        messageId:
+          nullable: true
+          type: "integer"
+        turnId:
+          nullable: true
+          type: "integer"
+        partType:
+          description: "The message part type being shown."
+          maxLength: 64
+          nullable: true
+          type: "string"
+        renderType:
+          description: "The render type being shown."
+          maxLength: 64
+          nullable: true
+          type: "string"
+        appVersion:
+          description: "The client build."
+          maxLength: 64
+          nullable: true
+          type: "string"
+        occurredAt:
+          description: "ISO-8601 instant."
+          format: "date-time"
+          nullable: true
+          type: "string"
+      type: "object"
+    AssistantClientErrorResponseV1:
+      description: "Whether the report was stored: false when the user's reports are\
+        \ over the per-minute limit (still 202)."
+      properties:
+        accepted:
+          type: "boolean"
+      type: "object"
     AssistantConfigResponseV1:
       description: "Whether the assistant is available to this user, and how."
       properties:
@@ -161,7 +239,7 @@ components:
           type: "string"
       type: "object"
     AssistantErrorV1:
-      description: "Deprecated since 1.4.0: errors use BasicErrorResponseV1."
+      description: "Deprecated since 1.3.0: errors use BasicErrorResponseV1."
       properties:
         error:
           description: "A message for the user."
@@ -374,7 +452,7 @@ info:
   description: "QQQ Assistant: conversations, streamed turns, feedback, pending actions\
     \ and data access explanations"
   title: "QQQ Middleware API extension: assistant"
-  version: "1.4.0"
+  version: "1.5.0"
 openapi: "3.0.3"
 paths:
   /qqq/v1/assistant/config:
@@ -1544,6 +1622,80 @@ paths:
         - "email"
       summary: "Explain access: which UI API operations the assistant could call for\
         \ this user, and why not"
+      tags:
+      - "assistant"
+  /qqq/v1/assistant/client-errors:
+    post:
+      description: "Report an error the client hit while showing the assistant (stored\
+        \ for administrators, rate limited per user)"
+      operationId: "postAssistantClientErrors"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssistantClientErrorReportV1"
+        required: true
+      responses:
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Invalid input"
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "No access to the assistant"
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found (or not the user's own)"
+        503:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Disabled, not configured, or the kill switch is on"
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Already finished or decided"
+        202:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantClientErrorResponseV1"
+          description: "Successful Response"
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Budget or rate limit"
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
+      summary: "Report an error the client hit while showing the assistant (stored\
+        \ for administrators, rate limited per user)"
       tags:
       - "assistant"
 servers:

@@ -50,15 +50,12 @@ public class MessageParts
       {
          try
          {
-            List<Map<String, Object>> list = JsonUtils.toObject(json, new TypeReference<List<Map<String, Object>>>() {});
-            if(list != null)
-            {
-               ////////////////////////////////////////////////////////////////
-               // parts stored before RenderShapes may lack empty render lists //
-               ////////////////////////////////////////////////////////////////
-               list.forEach(RenderShapes::complete);
-               result.parts.addAll(list);
-            }
+            List<Object> list = JsonUtils.toObject(json, new TypeReference<List<Object>>() {});
+            //////////////////////////////////////////////////////////////////////
+            // stored parts are repaired on read: older rows may lack empty     //
+            // render lists, and a part that cannot be shown becomes a notice   //
+            //////////////////////////////////////////////////////////////////////
+            result.parts.addAll(RenderShapes.parts(list));
          }
          catch(Exception e)
          {
@@ -244,7 +241,7 @@ public class MessageParts
     *******************************************************************************/
    public synchronized String toJson()
    {
-      return (RenderShapes.toJson(parts));
+      return (RenderShapes.toJson(RenderShapes.parts(parts)));
    }
 
 
