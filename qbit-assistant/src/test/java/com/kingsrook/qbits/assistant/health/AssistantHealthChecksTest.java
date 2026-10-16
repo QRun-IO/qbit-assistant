@@ -606,7 +606,8 @@ class AssistantHealthChecksTest extends BaseAssistantTest
       assertThat(qInstance.getWidget(AssistantHealthWidget.NAME).getType()).isEqualTo(WidgetType.STATISTICS.getType());
       var renderer = new AssistantHealthWidget();
       StatisticsData data = (StatisticsData) renderer.render(new RenderWidgetInput()).getWidgetData();
-      assertThat(data.getCount()).isEqualTo("UNKNOWN");
+      assertThat(data.getCount()).isEqualTo("Not checked yet");
+      assertThat(data.getCountContext()).contains("Provider checks run every 1 to 5 minutes");
       assertThat(data.getCountURL()).startsWith("/app/").contains("health_check", "assistant");
       try(var central = cached("assistant.provider." + row.getId(), HealthCheckOutcome.up("Reachable"), Instant.now()))
       {
@@ -614,14 +615,14 @@ class AssistantHealthChecksTest extends BaseAssistantTest
          cache.setAccessible(true);
          cache.invoke(central, AssistantHealthChecks.CLIENT_ERRORS, HealthCheckOutcome.up("0 client errors reported in the last hour"));
          data = (StatisticsData) renderer.render(new RenderWidgetInput()).getWidgetData();
-         assertThat(data.getCount()).isEqualTo("UP");
+         assertThat(data.getCount()).isEqualTo("Healthy");
 
          //////////////////////////////////////////////////////////////////
          // many client errors in the last hour show on the card as well //
          //////////////////////////////////////////////////////////////////
          cache.invoke(central, AssistantHealthChecks.CLIENT_ERRORS, HealthCheckOutcome.degraded("25 client errors reported in the last hour"));
          data = (StatisticsData) renderer.render(new RenderWidgetInput()).getWidgetData();
-         assertThat(data.getCount()).isEqualTo("DEGRADED");
+         assertThat(data.getCount()).isEqualTo("Degraded");
       }
    }
 }
