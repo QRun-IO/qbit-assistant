@@ -893,6 +893,13 @@ public class AssistantApi
       {
          rs.put("href", outcome.getAuditHref());
       }
+      else if(!result.getRecordRefs().isEmpty() && TurnEngine.isAppHref(result.getRecordRefs().get(0).getHref()))
+      {
+         //////////////////////////////////////////////////////////////
+         // e.g. the job a confirmed bulk load launched              //
+         //////////////////////////////////////////////////////////////
+         rs.put("href", result.getRecordRefs().get(0).getHref());
+      }
       return (rs);
    }
 
