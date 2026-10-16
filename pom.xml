@@ -20,7 +20,7 @@
    <!-- Multi-module build. The qqq-orb sets the revision here; the modules -->
    <!-- inherit it, and the flatten plugin resolves it in the published POMs. -->
    <properties>
-      <revision>0.1.0-RC.22</revision>
+      <revision>0.1.0-RC.23</revision>
       <maven.compiler.source>21</maven.compiler.source>
       <maven.compiler.target>21</maven.compiler.target>
       <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
