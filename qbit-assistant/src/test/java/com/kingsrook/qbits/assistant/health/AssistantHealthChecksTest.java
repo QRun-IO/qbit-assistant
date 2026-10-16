@@ -31,8 +31,10 @@ import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.engine.ProviderHealth;
 import com.kingsrook.qbits.assistant.engine.ProviderService;
 import com.kingsrook.qbits.assistant.engine.UsageRecorder;
+import com.kingsrook.qbits.assistant.model.AssistantBudget;
 import com.kingsrook.qbits.assistant.model.AssistantModel;
 import com.kingsrook.qbits.assistant.model.AssistantPolicy;
+import com.kingsrook.qbits.assistant.model.AssistantProfile;
 import com.kingsrook.qbits.assistant.model.AssistantProvider;
 import com.kingsrook.qbits.assistant.model.AssistantUsage;
 import com.kingsrook.qbits.assistant.provider.fake.ScriptedModelProvider;
@@ -624,5 +626,193 @@ class AssistantHealthChecksTest extends BaseAssistantTest
          data = (StatisticsData) renderer.render(new RenderWidgetInput()).getWidgetData();
          assertThat(data.getCount()).isEqualTo("Degraded");
       }
+   }
+
+
+   /*******************************************************************************
+    ** A second enabled provider, not the default.
+    *******************************************************************************/
+   private AssistantProvider optionalRow(AssistantProvider defaultRow) throws Exception
+   {
+      config.getRuntime().getStore().updateFields(AssistantProvider.TABLE_NAME, new QRecord().withValue("id", defaultRow.getId()).withValue("isDefault", true).withValue("name", "Claude"));
+      AssistantProvider optional = config.getRuntime().getStore().insert(new AssistantProvider().withName("lore (local GPU)")
+         .withProviderType(type.getType()).withEnabled(true).withIsDefault(false));
+      config.getRuntime().getProviderService().invalidate();
+      return (optional);
+   }
+
+
+
+   /*******************************************************************************
+    ** An unreachable optional provider is DEGRADED and names the default; the
+    ** default stays DOWN, and the breaker still refuses the optional provider.
+    *******************************************************************************/
+   @Test
+   void optionalProviderIsDegradedDefaultIsDown() throws Exception
+   {
+      AssistantProvider defaultRow = row();
+      AssistantProvider lore       = optionalRow(defaultRow);
+      healthy = false;
+
+      HealthCheckOutcome outcome = run(check("assistant.provider." + lore.getId()));
+      assertThat(outcome.getStatus()).isEqualTo(HealthStatus.DEGRADED);
+      assertThat(outcome.getMessage()).isEqualTo("Provider 'lore (local GPU)' is unreachable; it is optional (not the default and not the only route), so requests use 'Claude'");
+      assertThat(outcome.getDetails().getValues()).containsEntry("reachable", false).containsEntry("optional", true).containsEntry("providerId", lore.getId());
+      assertThat(ProviderHealth.isUnreachable(outcome)).isTrue();
+
+      HealthCheckOutcome required = run(check("assistant.provider." + defaultRow.getId()));
+      assertThat(required.getStatus()).isEqualTo(HealthStatus.DOWN);
+      assertThat(required.getDetails().getValues()).containsEntry("required", "default provider").containsEntry("reachable", false);
+
+      healthy = true;
+      assertThat(run(check("assistant.provider." + lore.getId())).getStatus()).isEqualTo(HealthStatus.UP);
+      assertThat(ProviderHealth.isUnreachable(HealthCheckOutcome.degraded("Slow"))).isFalse();
+      assertThat(ProviderHealth.isUnreachable(null)).isFalse();
+
+      ////////////////////////////////////////////////////////////////////
+      // a fresh DEGRADED-but-unreachable central result opens the breaker //
+      ////////////////////////////////////////////////////////////////////
+      var active = new ProviderService.Active(lore, type.getType(), "model", provider);
+      try(var central = cached("assistant.provider." + lore.getId(), outcome, Instant.now().minusSeconds(1)))
+      {
+         assertThatThrownBy(() -> new ProviderHealth(config.getRuntime()).beforeCall(active)).isInstanceOf(ModelProviderException.class);
+         assertThat(probes).isEqualTo(3);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Model checks follow their provider: DEGRADED when optional.
+    *******************************************************************************/
+   @Test
+   void optionalProviderModelIsDegraded() throws Exception
+   {
+      AssistantProvider defaultRow = row();
+      AssistantProvider lore       = optionalRow(defaultRow);
+      AssistantModel    model      = model(lore);
+      provider.thenError(ModelProviderException.Kind.NETWORK, SECRET);
+      HealthCheckOutcome outcome = run(check("assistant.model." + model.getId()));
+      assertThat(outcome.getStatus()).isEqualTo(HealthStatus.DEGRADED);
+      assertThat(outcome.getMessage()).startsWith("Model connection failed; provider 'lore (local GPU)' is optional").endsWith("so requests use 'Claude'");
+      assertThat(outcome.getDetails().getValues()).doesNotContainKey("reachable").containsEntry("modelId", model.getId());
+
+      AssistantModel defaultModel = model(defaultRow);
+      provider.thenError(ModelProviderException.Kind.NETWORK, SECRET);
+      assertThat(run(check("assistant.model." + defaultModel.getId())).getStatus()).isEqualTo(HealthStatus.DOWN);
+   }
+
+
+
+   /*******************************************************************************
+    ** A provider that is the only route for routing or a budget downgrade stays
+    ** DOWN; an explicit fallback on another provider makes it optional again.
+    *******************************************************************************/
+   @Test
+   void soleRouteStaysDown() throws Exception
+   {
+      AssistantProvider defaultRow = row();
+      config.getRuntime().getStore().updateFields(AssistantProvider.TABLE_NAME, new QRecord().withValue("id", defaultRow.getId()).withValue("location", "CLOUD"));
+      AssistantProvider lore         = optionalRow(defaultRow);
+      AssistantModel    loreModel    = model(lore);
+      AssistantModel    defaultModel = model(defaultRow);
+      healthy = false;
+      var check = check("assistant.provider." + lore.getId());
+      assertThat(run(check).getStatus()).isEqualTo(HealthStatus.DEGRADED);
+
+      AssistantProfile profile = config.getRuntime().getStore().insert(new AssistantProfile().withName("routing").withDisplayName("Assistant").withEnabled(true)
+         .withRoutingMode("HEURISTIC").withSimpleModelId(loreModel.getId()).withComplexModelId(defaultModel.getId()));
+      HealthCheckOutcome outcome = run(check);
+      assertThat(outcome.getStatus()).isEqualTo(HealthStatus.DOWN);
+      assertThat(outcome.getDetails().getValues()).containsEntry("required", "only route for a configured model");
+
+      config.getRuntime().getStore().updateFields(AssistantModel.TABLE_NAME, new QRecord().withValue("id", loreModel.getId()).withValue("fallbackModelId", defaultModel.getId()));
+      assertThat(run(check).getStatus()).isEqualTo(HealthStatus.DEGRADED);
+
+      config.getRuntime().getStore().updateFields(AssistantProvider.TABLE_NAME, new QRecord().withValue("id", defaultRow.getId()).withValue("setupState", AssistantProvider.SETUP_STATE_SETTING_UP));
+      config.getRuntime().getProviderService().invalidate();
+      assertThat(run(check).getStatus()).as("lore is the only usable provider left, hence the default").isEqualTo(HealthStatus.DOWN);
+      config.getRuntime().getStore().updateFields(AssistantProvider.TABLE_NAME, new QRecord().withValue("id", defaultRow.getId()).withValue("setupState", AssistantProvider.SETUP_STATE_ACTIVE));
+      config.getRuntime().getProviderService().invalidate();
+
+      config.getRuntime().getStore().updateFields(AssistantModel.TABLE_NAME, new QRecord().withValue("id", loreModel.getId()).withValue("fallbackModelId", null));
+      config.getRuntime().getStore().updateFields(AssistantProfile.TABLE_NAME, new QRecord().withValue("id", profile.getId()).withValue("routingMode", "OFF"));
+      assertThat(run(check).getStatus()).isEqualTo(HealthStatus.DEGRADED);
+
+      config.getRuntime().getStore().insert(new AssistantBudget().withName("Downgrade").withScopeType("INSTANCE").withPeriod("MONTH").withMetric("COST_USD")
+         .withLimitValue(BigDecimal.ONE).withEnabled(true).withDowngradeModelId(loreModel.getId()));
+      assertThat(run(check).getStatus()).isEqualTo(HealthStatus.DOWN);
+   }
+
+
+
+   /*******************************************************************************
+    ** Another local provider of the same type is the automatic fallback.
+    *******************************************************************************/
+   @Test
+   void localPoolIsAFallback() throws Exception
+   {
+      AssistantProvider defaultRow = row();
+      AssistantProvider lore       = optionalRow(defaultRow);
+      AssistantModel    loreModel  = model(lore);
+      model(defaultRow);
+      config.getRuntime().getStore().insert(new AssistantProfile().withName("routing").withDisplayName("Assistant").withEnabled(true)
+         .withRoutingMode("HEURISTIC").withSimpleModelId(loreModel.getId()).withComplexModelId(loreModel.getId()));
+      healthy = false;
+      assertThat(run(check("assistant.provider." + lore.getId())).getStatus()).isEqualTo(HealthStatus.DEGRADED);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setting up: no checks registered, no routing, and an already resolved check
+    ** reports UP without probing.
+    *******************************************************************************/
+   @Test
+   void settingUpSkipsChecksAndRouting() throws Exception
+   {
+      AssistantProvider defaultRow = row();
+      AssistantProvider lore       = optionalRow(defaultRow);
+      AssistantModel    model      = model(lore);
+      assertThat(lore.getSetupState()).isEqualTo(AssistantProvider.SETUP_STATE_ACTIVE);
+      var providerCheck = check("assistant.provider." + lore.getId());
+      var modelCheck    = check("assistant.model." + model.getId());
+
+      config.getRuntime().getStore().updateFields(AssistantProvider.TABLE_NAME, new QRecord().withValue("id", lore.getId()).withValue("setupState", AssistantProvider.SETUP_STATE_SETTING_UP));
+      config.getRuntime().getProviderService().invalidate();
+      assertThat(HealthChecksMetaData.ofOrWithNew(qInstance).resolveAll(qInstance)).extracting(HealthCheckMetaData::getName)
+         .doesNotContain("assistant.provider." + lore.getId(), "assistant.model." + model.getId())
+         .contains("assistant.provider." + defaultRow.getId());
+      Integer before = probes;
+      assertThat(run(providerCheck).getMessage()).isEqualTo(AssistantHealthChecks.NOT_SET_UP);
+      assertThat(run(modelCheck).getStatus()).isEqualTo(HealthStatus.UP);
+      assertThat(probes).isEqualTo(before);
+      assertThat(provider.getRequests()).isEmpty();
+
+      assertThat(config.getRuntime().getProviderService().resolveModel(model.getId(), false)).isNull();
+      assertThatThrownBy(() -> new ProviderHealth(config.getRuntime()).beforeCall(new ProviderService.Active(lore, type.getType(), "model", provider)))
+         .hasMessageContaining("not set up yet");
+
+      config.getRuntime().getStore().updateFields(AssistantProvider.TABLE_NAME, new QRecord().withValue("id", lore.getId()).withValue("isDefault", true));
+      config.getRuntime().getProviderService().invalidate();
+      assertThat(config.getRuntime().getProviderService().activeRow().getId()).as("a default that is setting up is skipped").isEqualTo(defaultRow.getId());
+
+      assertThatThrownBy(() -> config.getRuntime().getStore().insert(new AssistantProvider().withName("Bad").withProviderType(type.getType()).withEnabled(true).withSetupState("BOGUS")))
+         .hasMessageContaining("Setup state must be Active or Setting up.");
+   }
+
+
+
+   /*******************************************************************************
+    ** If routes cannot be read the failure stays DOWN; other statuses pass through.
+    *******************************************************************************/
+   @Test
+   void optionalPassThrough() throws Exception
+   {
+      assertThat(AssistantHealthChecks.optional(config.getRuntime(), null, null, false)).isNull();
+      HealthCheckOutcome up = HealthCheckOutcome.up("fine");
+      assertThat(AssistantHealthChecks.optional(config.getRuntime(), 1, up, false)).isSameAs(up);
+      assertThat(AssistantHealthChecks.optional(config.getRuntime(), null, HealthCheckOutcome.down("x"), true).getStatus()).isEqualTo(HealthStatus.DOWN);
+      assertThat(AssistantHealthChecks.optional(null, 1, HealthCheckOutcome.down("x"), false).getStatus()).isEqualTo(HealthStatus.DOWN);
    }
 }

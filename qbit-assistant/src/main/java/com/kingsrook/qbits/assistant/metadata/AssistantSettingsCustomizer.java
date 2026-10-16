@@ -137,6 +137,14 @@ public class AssistantSettingsCustomizer implements TableCustomizerInterface
          {
             record.setValue("location", service.location(provider));
          }
+         if(merged.getValue("setupState") == null)
+         {
+            record.setValue("setupState", AssistantProvider.SETUP_STATE_ACTIVE);
+         }
+         else if(!List.of(AssistantProvider.SETUP_STATE_ACTIVE, AssistantProvider.SETUP_STATE_SETTING_UP).contains(merged.getValueString("setupState")))
+         {
+            record.addError(new BadInputStatusMessage("Setup state must be Active or Setting up."));
+         }
          for(String field : List.of("hipaaEligible", "connectTimeoutSeconds", "requestTimeoutSeconds"))
          {
             if(merged.getValue(field) == null)

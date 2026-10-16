@@ -27,6 +27,7 @@ import com.kingsrook.qbits.assistant.spi.HealthResult;
 import com.kingsrook.qbits.assistant.spi.ModelProviderException;
 import com.kingsrook.qbits.assistant.spi.ProviderSettings;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.health.HealthCheckOutcome;
 import com.kingsrook.qqq.backend.core.health.HealthRunner;
 import com.kingsrook.qqq.backend.core.health.HealthStatus;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
@@ -37,6 +38,12 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
  *******************************************************************************/
 public class ProviderHealth
 {
+   /*******************************************************************************
+    ** Health detail set to false when a provider probe failed, even when the
+    ** outcome is only DEGRADED because the provider is optional.
+    *******************************************************************************/
+   public static final String DETAIL_REACHABLE = "reachable";
+
    private final AssistantRuntime runtime;
 
 
@@ -65,6 +72,10 @@ public class ProviderHealth
       {
          throw (new ModelProviderException(ModelProviderException.Kind.AUTHENTICATION, null, "Provider is disabled."));
       }
+      if(row.isSettingUp())
+      {
+         throw (new ModelProviderException(ModelProviderException.Kind.AUTHENTICATION, null, "Provider is not set up yet."));
+      }
       if(isDown(row))
       {
          throw (new ModelProviderException(ModelProviderException.Kind.OVERLOADED, null, "Provider circuit is open."));
@@ -80,7 +91,7 @@ public class ProviderHealth
       var outcome = runner == null ? null : runner.getLastOutcome(checkName);
       if(checked != null && !checked.isAfter(now) && checked.plusSeconds(60).isAfter(now) && outcome != null)
       {
-         if(outcome.getStatus() == HealthStatus.DOWN)
+         if(outcome.getStatus() == HealthStatus.DOWN || isUnreachable(outcome))
          {
             throw (new ModelProviderException(ModelProviderException.Kind.NETWORK, null, "Provider health check failed."));
          }
@@ -157,5 +168,16 @@ public class ProviderHealth
       runtime.getStore().updateFields(AssistantProvider.TABLE_NAME, new QRecord().withValue("id", providerId)
          .withValue("healthState", state).withValue("healthCheckedAt", runtime.getClock().instant()).withValue("downUntil", downUntil));
       runtime.getProviderService().invalidate();
+   }
+
+
+
+   /*******************************************************************************
+    ** A central outcome that says the provider could not be reached, whatever
+    ** its status (an optional provider's failed probe is DEGRADED, not DOWN).
+    *******************************************************************************/
+   public static boolean isUnreachable(HealthCheckOutcome outcome)
+   {
+      return (outcome != null && outcome.getDetails() != null && Boolean.FALSE.equals(outcome.getDetails().getValues().get(DETAIL_REACHABLE)));
    }
 }
