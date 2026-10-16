@@ -195,7 +195,7 @@ public final class AssistantSpecs
       Map<String, Schema> rs = new LinkedHashMap<>();
       rs.put("AssistantProfileV1", object("How the assistant presents itself (admin-configured; text only, it never changes access).",
          "displayName", string("The assistant's name."), "icon", string("A Material icon name."), "greeting", string("Shown on a new conversation.").withNullable(true),
-         "starterPrompts", array(string(null), "Suggested first questions.")));
+         "starterPrompts", array(string(null), "Suggested first questions, built for this user: up to three generated from the tables the user can read that have data, plus any configured ones whose tables the user can read.")));
       rs.put("AssistantConfigResponseV1", object("Whether the assistant is available to this user, and how.",
          "enabled", bool("Whether the panel may be used."),
          "reason", string("Why not: DISABLED, NO_PERMISSION, NOT_CONFIGURED or KILL_SWITCH.").withNullable(true),

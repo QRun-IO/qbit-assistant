@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased - Starter prompts follow access
+
+- `profile.starterPrompts` in `GET /assistant/config` is built per user: up to three prompts generated from tables the user can read that have rows (UI API metadata and count as the user, bounded, cached five minutes, stable for the day), plus configured prompts only when tagged with tables the user can read (`[table] prompt`, `[none] prompt`; untagged lines are dropped). See UPGRADE.md.
+
 ## Unreleased - Optional provider health
 
 - An enabled provider that is not the default and not the only route for any configured routing (an enabled profile's simple/complex model, a budget downgrade model or a knowledge source's embedding model, with no fallback on another usable provider) is optional: when it is unreachable, its `assistant.provider.<id>` and `assistant.model.<id>` checks report DEGRADED with a message naming the provider requests use instead, so one unfinished local server no longer turns the whole `assistant` component DOWN. The default provider and sole routes still report DOWN. A failed provider probe still carries `reachable=false`, so the circuit breaker keeps refusing the provider.

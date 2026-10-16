@@ -124,7 +124,7 @@ Owner: *"the agent should have to go through the same API that the UIUX does. th
 4. **Persona and skills, never more access** (owner, 2026-10-13): *"in the config for the AI settings, we should be able to set a name and personality and extra skills etc for the agent - and again - the agent should be limited to only using our UIUX API and being able to only do the things that the currently logged in user could do with the same UIUX API via the UIUX"*.
    - **Profiles** (`assistant_profile`, admin-edited): display name, icon, personality (tone instructions, at most 2,000 characters), greeting and up to 6 starter prompts.
      - One profile is the default. Others are scoped to an app, to users holding a permission (a role), or to both. The most specific profile wins.
-     - `/assistant/config` returns the profile for the panel header, the greeting and the starter prompts.
+     - `/assistant/config` returns the profile for the panel header, the greeting and the starter prompts (built per user from the tables the user can read; configured ones need a `[table]` tag, see UPGRADE.md).
    - **Skills** (`assistant_skill`, linked to profiles through `assistant_profile_skill`): named Markdown instruction packs of at most 6,000 characters, with a description, an enabled flag, trigger keywords and apps.
      - A skill is read only when relevant: a keyword appears in the question, the user is in one of its apps, or it has neither, in which case it is always read.
      - All skills read for one question total at most 12,000 characters.
