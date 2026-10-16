@@ -1,5 +1,19 @@
 # Upgrading qbit-assistant
 
+## Provider setup state (Unreleased)
+
+Apply the **Provider setup state** block at the end of `docs/schema-postgres.sql`
+**before** deploying: the provider table now reads `setup_state`, so the new jar
+fails on `assistant_provider` without it. It adds a nullable `VARCHAR(16)` with
+default `'ACTIVE'` and a check for `ACTIVE` / `SETTING_UP`; existing rows behave as
+before. It is `IF NOT EXISTS` and safe to re-run.
+
+To stop an unfinished provider from being routed to or health-checked, edit it in
+Assistant > Assistant Provider (Provider section) and set **Setup state** to **Setting up** (SQL:
+`UPDATE assistant_provider SET setup_state = 'SETTING_UP' WHERE id = <id>;`).
+Enabled providers that are neither the default nor the only route for a configured
+model now report DEGRADED, not DOWN, when unreachable. No configuration change.
+
 ## Fail soft (Unreleased, UI API extension assistant 1.5.0)
 
 Apply the **Fail soft** block at the end of `docs/schema-postgres.sql` before
