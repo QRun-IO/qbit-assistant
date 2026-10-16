@@ -713,3 +713,34 @@ ALTER TABLE assistant_data_audit ALTER COLUMN reason SET DATA TYPE TEXT;
 ALTER TABLE assistant_budget_override ALTER COLUMN reason SET DATA TYPE TEXT;
 ALTER TABLE assistant_scheduled_run ALTER COLUMN summary SET DATA TYPE TEXT;
 ALTER TABLE assistant_scheduled_run ALTER COLUMN error SET DATA TYPE TEXT;
+
+-- Fail soft (UI API extension assistant 1.5.0): errors the panel reports through
+-- POST /qqq/v1/assistant/client-errors. Owner-locked like the other user rows; the
+-- message and stacks are scrubbed and bounded before they are stored. The ids are
+-- kept only when they are the reporting user's own rows, and SET NULL when those go.
+-- Retention deletes rows older than toolResultRetentionDays. Safe to re-run.
+CREATE TABLE IF NOT EXISTS assistant_client_error
+(
+   id SERIAL PRIMARY KEY,
+   user_id VARCHAR(255),
+   scope VARCHAR(64),
+   message TEXT,
+   error_name VARCHAR(100),
+   stack TEXT,
+   component_stack TEXT,
+   request_id VARCHAR(128),
+   route VARCHAR(300),
+   conversation_id INTEGER CONSTRAINT fk_assistant_client_error_conversation_id REFERENCES assistant_conversation (id) ON DELETE SET NULL,
+   message_id INTEGER CONSTRAINT fk_assistant_client_error_message_id REFERENCES assistant_message (id) ON DELETE SET NULL,
+   turn_id INTEGER CONSTRAINT fk_assistant_client_error_turn_id REFERENCES assistant_turn (id) ON DELETE SET NULL,
+   part_type VARCHAR(64),
+   render_type VARCHAR(64),
+   app_version VARCHAR(64),
+   occurred_at TIMESTAMP WITH TIME ZONE,
+   create_date TIMESTAMP WITH TIME ZONE
+);
+CREATE INDEX IF NOT EXISTS assistant_client_error_user_id ON assistant_client_error (user_id);
+CREATE INDEX IF NOT EXISTS assistant_client_error_create_date ON assistant_client_error (create_date);
+CREATE INDEX IF NOT EXISTS assistant_client_error_conversation ON assistant_client_error (conversation_id);
+CREATE INDEX IF NOT EXISTS assistant_client_error_message ON assistant_client_error (message_id);
+CREATE INDEX IF NOT EXISTS assistant_client_error_turn ON assistant_client_error (turn_id);

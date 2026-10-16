@@ -27,6 +27,7 @@ import com.kingsrook.qbits.assistant.model.AssistantBudget;
 import com.kingsrook.qbits.assistant.model.AssistantBudgetEvent;
 import com.kingsrook.qbits.assistant.model.AssistantBudgetOverride;
 import com.kingsrook.qbits.assistant.model.AssistantBudgetUsage;
+import com.kingsrook.qbits.assistant.model.AssistantClientError;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantDataAccess;
 import com.kingsrook.qbits.assistant.model.AssistantDataAudit;
@@ -114,7 +115,7 @@ public class AssistantMetaDataBuilder
     ** calls on a conversation; model calls on a provider) or reached from the
     ** home. Processes are table and record actions, never nav entries.
     *******************************************************************************/
-   public static final List<String> NAV_TABLES = List.of(AssistantScheduledTask.TABLE_NAME, AssistantRagSource.TABLE_NAME, AssistantBudget.TABLE_NAME, AssistantProvider.TABLE_NAME, AssistantProfile.TABLE_NAME, AssistantSkill.TABLE_NAME, AssistantDataAccess.TABLE_NAME, AssistantConversation.TABLE_NAME, AssistantModelPrice.TABLE_NAME, AssistantPolicy.TABLE_NAME);
+   public static final List<String> NAV_TABLES = List.of(AssistantScheduledTask.TABLE_NAME, AssistantRagSource.TABLE_NAME, AssistantBudget.TABLE_NAME, AssistantProvider.TABLE_NAME, AssistantProfile.TABLE_NAME, AssistantSkill.TABLE_NAME, AssistantDataAccess.TABLE_NAME, AssistantConversation.TABLE_NAME, AssistantClientError.TABLE_NAME, AssistantModelPrice.TABLE_NAME, AssistantPolicy.TABLE_NAME);
 
    private final AssistantQBitConfig config;
 
@@ -178,6 +179,9 @@ public class AssistantMetaDataBuilder
          .withRecordLabelFormat("%s #%s").withRecordLabelFields("toolName", "id"));
 
       tables.add(text(readOnly(owned(base(AssistantFeedback.TABLE_NAME, "Assistant Feedback", "thumbs_up_down", AssistantFeedback.class), false)), "comment"));
+
+      tables.add(text(readOnly(owned(base(AssistantClientError.TABLE_NAME, "Assistant Client Error", "bug_report", AssistantClientError.class), false)), "message", "stack", "componentStack")
+         .withRecordLabelFormat("%s #%s").withRecordLabelFields("scope", "id"));
 
       tables.add(base(AssistantPolicy.TABLE_NAME, "Assistant Policy", "policy", AssistantPolicy.class)
          .withRecordLabelFormat("%s").withRecordLabelFields("name"));

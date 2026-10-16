@@ -1,5 +1,17 @@
 # Upgrading qbit-assistant
 
+## Fail soft (Unreleased, UI API extension assistant 1.5.0)
+
+Apply the **Fail soft** block at the end of `docs/schema-postgres.sql` before
+deploying. It creates `assistant_client_error` (errors the panel reports through
+`POST /qqq/v1/assistant/client-errors`) with its indexes and `SET NULL` foreign keys
+to the conversation, message and turn. It is `IF NOT EXISTS` and safe to re-run.
+
+New configuration, all optional: `toolCallTimeoutSeconds` (default 60),
+`clientErrorsPerUserPerMinute` (default 30) and `clientErrorWarnPerHour` (default
+20, when the `assistant.client-errors` health check turns degraded). The new table
+is in the Assistant app's nav for administrators.
+
 ## Transcript redaction (Unreleased)
 
 Apply the transcript-redaction column widening block in `docs/schema-postgres.sql`

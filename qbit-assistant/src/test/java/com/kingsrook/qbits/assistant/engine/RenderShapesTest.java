@@ -92,4 +92,117 @@ class RenderShapesTest
       Map<String, Object> eventRender = (Map<String, Object>) event.get("render");
       assertThat(eventRender.get("rows")).isEqualTo(List.of());
    }
+
+
+
+   /*******************************************************************************
+    ** One render through the normalizer, as a stored part would be read.
+    *******************************************************************************/
+   @SuppressWarnings("unchecked")
+   private static Map<String, Object> renderOf(String renderJson)
+   {
+      List<Map<String, Object>> parts = MessageParts.fromJson("[{\"type\":\"tool\",\"name\":\"t\",\"render\":" + renderJson + "}]").list();
+      assertThat(parts).hasSize(1);
+      return ((Map<String, Object>) parts.get(0).get("render"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Every known render type gets its required lists and safe defaults.
+    *******************************************************************************/
+   @Test
+   @SuppressWarnings("unchecked")
+   void everyRenderTypeIsNormalized()
+   {
+      Map<String, Object> records = renderOf("{\"type\":\"records\",\"tableName\":\"t\",\"columns\":[{\"name\":\"a\"},\"junk\",{\"label\":\"no name\"}],\"rows\":[{\"id\":1},7],\"totalCount\":\"3\",\"truncated\":\"yes\"}");
+      assertThat(records).containsEntry("tableLabel", "t").containsEntry("totalCount", 3L).containsEntry("truncated", false);
+      assertThat((List<Map<String, Object>>) records.get("columns")).containsExactly(Map.of("name", "a", "label", "a"));
+      assertThat((List<Map<String, Object>>) records.get("rows")).hasSize(1).first().satisfies(row -> assertThat(row.get("values")).isEqualTo(Map.of()));
+
+      Map<String, Object> record = renderOf("{\"type\":\"record\",\"tableName\":\"t\",\"fields\":[{\"name\":\"n\",\"value\":5},{\"value\":\"orphan\"}]}");
+      assertThat((List<Map<String, Object>>) record.get("fields")).containsExactly(Map.of("name", "n", "label", "n", "value", "5"));
+
+      Map<String, Object> count = renderOf("{\"type\":\"count\",\"tableName\":\"t\",\"count\":\"many\"}");
+      assertThat(count).containsEntry("tableLabel", "t").containsEntry("count", null);
+
+      Map<String, Object> widget = renderOf("{\"type\":\"widget\",\"widgetName\":\"w\",\"data\":\"bad\"}");
+      assertThat(widget).containsEntry("label", "w").containsEntry("data", Map.of());
+
+      Map<String, Object> history = renderOf("{\"type\":\"history\",\"entries\":[{\"message\":\"x\",\"details\":\"bad\"},3]}");
+      assertThat((List<Map<String, Object>>) history.get("entries")).containsExactly(Map.of("message", "x", "details", List.of()));
+
+      Map<String, Object> pending = renderOf("{\"type\":\"pending_action\",\"actionId\":\"12\"}");
+      assertThat(pending).containsEntry("actionId", 12L).containsEntry("summary", "").containsEntry("changes", List.of());
+
+      assertThat(renderOf("{\"type\":\"bulk_load_dry_run\",\"okCount\":1}")).containsEntry("errors", List.of());
+      assertThat(renderOf("{\"type\":\"records\"}")).containsEntry("rows", List.of()).containsEntry("columns", List.of()).containsEntry("tableLabel", "");
+   }
+
+
+
+   /*******************************************************************************
+    ** Unknown render and part types pass through untouched.
+    *******************************************************************************/
+   @Test
+   void unknownTypesPassThrough()
+   {
+      assertThat(renderOf("{\"type\":\"sparkline\",\"points\":\"whatever\"}")).isEqualTo(Map.of("type", "sparkline", "points", "whatever"));
+      List<Map<String, Object>> parts = MessageParts.fromJson("[{\"type\":\"future_part\",\"x\":1}]").list();
+      assertThat(parts).containsExactly(Map.of("type", "future_part", "x", 1));
+   }
+
+
+
+   /*******************************************************************************
+    ** What cannot be repaired becomes the error notice; nothing throws.
+    *******************************************************************************/
+   @Test
+   void unrepairableRendersBecomeNotices()
+   {
+      List<Map<String, Object>> parts = MessageParts.fromJson("[{\"type\":\"tool\",\"name\":\"t\",\"outcome\":\"OK\",\"render\":{\"type\":\"pending_action\"}},"
+         + "{\"type\":\"tool\",\"name\":\"u\",\"render\":\"not an object\"},"
+         + "42, {\"no\":\"type\"}, {\"type\":\"presentation\"},"
+         + "{\"type\":\"navigate\",\"href\":\"https://evil.example\"}, {\"type\":\"notice\",\"level\":\"panic\"}]").list();
+      Map<String, Object> notice = RenderShapes.undisplayableNotice();
+      assertThat(parts).containsExactly(
+         Map.of("type", "tool", "name", "t", "outcome", "OK", "summary", ""), notice,
+         Map.of("type", "tool", "name", "u", "outcome", "ERROR", "summary", ""), notice,
+         notice, notice, notice,
+         Map.of("type", "notice", "level", "info", "text", ""));
+      assertThat(notice).containsEntry("level", "error").containsEntry("text", RenderShapes.UNDISPLAYABLE_TEXT);
+      assertThat(MessageParts.fromJson("{\"not\":\"a list\"}").list()).isEmpty();
+      assertThat(RenderShapes.parts(null)).isEmpty();
+      assertThat(RenderShapes.render(null)).isNull();
+   }
+
+
+
+   /*******************************************************************************
+    ** Presentations: blocks keep their lists; a presentation with nothing to
+    ** show is replaced (in parts and in the presentation event).
+    *******************************************************************************/
+   @Test
+   @SuppressWarnings("unchecked")
+   void presentationsAreNormalized()
+   {
+      Map<String, Object> presentation = RenderShapes.presentation(Map.of("summary", "Sales", "blocks", List.of(
+         Map.of("kind", "table", "columns", List.of(Map.of("key", "c0"), "junk"), "rows", List.of(Map.of("cells", "bad"))),
+         Map.of("kind", "chart"), Map.of("kind", "metrics"), Map.of("no", "kind"), Map.of("kind", "future"))));
+      assertThat(presentation).containsEntry("type", "presentation").containsEntry("markdown", "Sales");
+      List<Map<String, Object>> blocks = (List<Map<String, Object>>) presentation.get("blocks");
+      assertThat(blocks).hasSize(4);
+      assertThat(blocks.get(0)).containsEntry("title", "").containsEntry("columns", List.of(Map.of("key", "c0", "label", "c0")))
+         .containsEntry("rows", List.of(Map.of("cells", Map.of(), "display", Map.of())));
+      assertThat(blocks.get(1)).containsEntry("chartType", "bar").containsEntry("points", List.of());
+      assertThat(blocks.get(2)).containsEntry("items", List.of());
+      assertThat(blocks.get(3)).isEqualTo(Map.of("kind", "future"));
+
+      assertThat(RenderShapes.presentation(Map.of("blocks", List.of()))).isNull();
+      TurnEvent event = new TurnEvent(4, TurnEvent.PRESENTATION, Map.of("part", Map.of("type", "presentation")));
+      assertThat(event.getData().get("part")).isEqualTo(RenderShapes.undisplayableNotice());
+      TurnEvent toolResult = TurnEvent.fromJson(5, TurnEvent.TOOL_RESULT, "{\"name\":\"t\",\"render\":{\"type\":\"pending_action\"}}");
+      assertThat(toolResult.getData()).doesNotContainKey("render").containsEntry("name", "t");
+      assertThat(TurnEvent.fromJson(6, TurnEvent.TOOL_RESULT, "not json").getData()).containsOnlyKeys("seq");
+   }
 }

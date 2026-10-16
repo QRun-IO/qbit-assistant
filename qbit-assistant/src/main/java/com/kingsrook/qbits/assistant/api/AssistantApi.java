@@ -32,6 +32,8 @@ import com.kingsrook.qbits.assistant.AssistantRuntime;
 import com.kingsrook.qbits.assistant.AssistantSecurity;
 import com.kingsrook.qbits.assistant.access.AccessExplainer;
 import com.kingsrook.qbits.assistant.access.DataAccessMode;
+import com.kingsrook.qbits.assistant.engine.AbandonedTurns;
+import com.kingsrook.qbits.assistant.engine.ClientErrors;
 import com.kingsrook.qbits.assistant.engine.ContextBuilder;
 import com.kingsrook.qbits.assistant.engine.MessageParts;
 import com.kingsrook.qbits.assistant.engine.PolicyService;
@@ -40,6 +42,7 @@ import com.kingsrook.qbits.assistant.engine.ProviderService;
 import com.kingsrook.qbits.assistant.engine.RunningTurn;
 import com.kingsrook.qbits.assistant.engine.TurnEngine;
 import com.kingsrook.qbits.assistant.engine.TurnEvent;
+import com.kingsrook.qbits.assistant.model.AssistantClientError;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantFeedback;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
@@ -206,7 +209,7 @@ public class AssistantApi
       List<Map<String, Object>> messages = new ArrayList<>();
       for(AssistantMessage message : store.listMessages(userId, id, beforeMessageId, pageSize))
       {
-         messages.add(toJson(message));
+         messages.add(toJson(repairIfAbandoned(message)));
       }
 
       if(conversation.getUnreadCount() != null && conversation.getUnreadCount() > 0)
@@ -219,6 +222,45 @@ public class AssistantApi
       result.put("conversation", toJson(conversation));
       result.put("messages", messages);
       return (result);
+   }
+
+
+
+   /*******************************************************************************
+    ** A message still STREAMING whose run is not live here: an orphaned run is
+    ** recovered; a run that already ended (or is gone) gives the message its
+    ** terminal status. A run still alive on another replica is left alone.
+    ** Never throws: the conversation is shown either way.
+    *******************************************************************************/
+   private AssistantMessage repairIfAbandoned(AssistantMessage message)
+   {
+      if(!"STREAMING".equals(message.getStatus()) || (message.getTurnId() != null && runtime.getRunningTurn(message.getTurnId()) != null))
+      {
+         return (message);
+      }
+      try
+      {
+         AssistantTurn turn = message.getTurnId() == null ? null : store.getTurn(userId, message.getTurnId());
+         if(isRunning(turn))
+         {
+            turn = reapIfOrphaned(turn);
+            if(isRunning(turn))
+            {
+               return (message);
+            }
+            AssistantMessage reread = store.getMessage(userId, message.getId());
+            if(reread != null && !"STREAMING".equals(reread.getStatus()))
+            {
+               return (reread);
+            }
+         }
+         return (AbandonedTurns.repairMessage(store, userId, message, turn));
+      }
+      catch(Exception e)
+      {
+         LOG.warn("Could not check an unfinished assistant message", logPair("messageId", message.getId()));
+         return (message);
+      }
    }
 
 
@@ -669,53 +711,7 @@ public class AssistantApi
       }
       // Recovery only appends fixed notices to already redacted stored parts (or
       // crash placeholders). It never reloads model/tool values or raw user text.
-      String status = cancelReason == null ? "ERROR" : "CANCELLED";
-      String text = cancelReason == null ? "This answer was interrupted (the server restarted). Ask again."
-         : ("SUPERSEDED".equals(cancelReason) ? TurnEngine.SUPERSEDED_TEXT : "Stopped by you.");
-      if(current.getAssistantMessageId() != null)
-      {
-         try
-         {
-            AssistantMessage message = store.getMessage(userId, current.getAssistantMessageId());
-            if(message != null)
-            {
-               store.updateFields(AssistantMessage.TABLE_NAME, new QRecord().withValue("id", message.getId()).withValue("status", status)
-                  .withValue("partsJson", MessageParts.fromJson(message.getPartsJson()).addNotice(cancelReason == null ? "error" : "info", text).toJson()));
-            }
-         }
-         catch(Exception e)
-         {
-            LOG.warn("Could not persist recovered assistant message");
-         }
-      }
-      try
-      {
-         int seq = store.lastEventSeq(userId, current.getId());
-         List<AssistantTurnEvent> last = store.listEvents(userId, current.getId(), Math.max(0, seq - 1), 1);
-         if(last.isEmpty() || !TurnEvent.MESSAGE_END.equals(last.getFirst().getEventType()))
-         {
-            if(cancelReason == null)
-            {
-               seq++;
-               store.insertEvent(current.getId(), userId, seq, TurnEvent.ERROR,
-                  new TurnEvent(seq, TurnEvent.ERROR, Map.of("code", "INTERNAL", "message", text)).toJson());
-            }
-            seq++;
-            Map<String, Object> end = new LinkedHashMap<>();
-            end.put("messageId", current.getAssistantMessageId());
-            end.put("status", status);
-            end.put("stopReason", cancelReason == null ? "interrupted" : "cancelled");
-            store.insertEvent(current.getId(), userId, seq, TurnEvent.MESSAGE_END, new TurnEvent(seq, TurnEvent.MESSAGE_END, end).toJson());
-         }
-      }
-      catch(Exception e)
-      {
-         LOG.warn("Could not persist recovered assistant events");
-      }
-      Instant now = runtime.getClock().instant();
-      store.updateRunningTurn(userId, new QRecord().withValue("id", current.getId()).withValue("status", status)
-         .withValue("errorCode", cancelReason == null ? "INTERNAL" : null).withValue("cancelReason", cancelReason)
-         .withValue("stopReason", cancelReason == null ? "interrupted" : "cancelled").withValue("phase", "done").withValue("endedAt", now));
+      AbandonedTurns.finalizeRun(store, runtime.getClock().instant(), userId, current, cancelReason);
       return (store.getTurn(userId, current.getId()));
    }
 
@@ -751,6 +747,71 @@ public class AssistantApi
          .withRating(number.intValue())
          .withReason(reason)
          .withComment(comment));
+   }
+
+
+
+   /*******************************************************************************
+    ** POST /client-errors: an error the panel hit, reported by the user's own
+    ** browser. Any signed-in user may report (also when the assistant is off
+    ** for them); only bounded, scrubbed fields are stored (ClientErrors), and
+    ** conversation / message / turn ids only when they are the user's own.
+    ** Over the per-user rate limit the report is acknowledged but dropped
+    ** (accepted: false), never a 429, so a looping client is not spammed.
+    *******************************************************************************/
+   public Map<String, Object> reportClientError(Map<String, Object> body) throws QException, AssistantApiException
+   {
+      if(userId == null)
+      {
+         throw (new AssistantApiException(403, "NO_PERMISSION", "Sign in to report errors."));
+      }
+      if(body == null)
+      {
+         throw (new AssistantApiException(400, "A JSON object is required."));
+      }
+      String scope = ClientErrors.token(body.get("scope"), ClientErrors.SCOPE_MAX);
+      if(scope == null)
+      {
+         throw (new AssistantApiException(400, "scope is required."));
+      }
+      String message = ClientErrors.text(body.get("message"), ClientErrors.MESSAGE_MAX);
+      if(message == null)
+      {
+         throw (new AssistantApiException(400, "message is required."));
+      }
+      if(!runtime.getClientErrors().tryAcquire(userId, config.getClientErrorsPerUserPerMinute()))
+      {
+         return (Map.of("accepted", false));
+      }
+
+      Integer conversationId = ClientErrors.id(body.get("conversationId"));
+      Integer messageId      = ClientErrors.id(body.get("messageId"));
+      Integer turnId         = ClientErrors.id(body.get("turnId"));
+      AssistantClientError row = new AssistantClientError()
+         .withUserId(userId)
+         .withScope(scope)
+         .withMessage(message)
+         .withErrorName(ClientErrors.token(body.get("errorName"), ClientErrors.ERROR_NAME_MAX))
+         .withStack(ClientErrors.text(body.get("stack"), ClientErrors.STACK_MAX))
+         .withComponentStack(ClientErrors.text(body.get("componentStack"), ClientErrors.COMPONENT_STACK_MAX))
+         .withRequestId(ClientErrors.token(body.get("requestId"), ClientErrors.REQUEST_ID_MAX))
+         .withRoute(ClientErrors.route(body.get("route")))
+         .withConversationId(conversationId != null && store.getConversation(userId, conversationId) != null ? conversationId : null)
+         .withMessageId(messageId != null && store.getMessage(userId, messageId) != null ? messageId : null)
+         .withTurnId(turnId != null && store.getTurn(userId, turnId) != null ? turnId : null)
+         .withPartType(ClientErrors.token(body.get("partType"), ClientErrors.PART_TYPE_MAX))
+         .withRenderType(ClientErrors.token(body.get("renderType"), ClientErrors.RENDER_TYPE_MAX))
+         .withAppVersion(ClientErrors.token(body.get("appVersion"), ClientErrors.APP_VERSION_MAX))
+         .withOccurredAt(runtime.getClientErrors().occurredAt(body.get("occurredAt")));
+      AssistantClientError saved = store.insert(row);
+
+      //////////////////////////////////////////////////////////////////////
+      // structured, no reported text: the row holds the (scrubbed) text //
+      //////////////////////////////////////////////////////////////////////
+      LOG.info("Assistant client error reported", logPair("clientErrorId", saved.getId()), logPair("scope", row.getScope()),
+         logPair("partType", row.getPartType()), logPair("renderType", row.getRenderType()), logPair("conversationId", row.getConversationId()),
+         logPair("messageId", row.getMessageId()), logPair("turnId", row.getTurnId()));
+      return (Map.of("accepted", true));
    }
 
 

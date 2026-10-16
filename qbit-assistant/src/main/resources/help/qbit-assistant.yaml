@@ -358,6 +358,52 @@ entries:
   summary: The conversation the rated answer belongs to.
 - key: table:assistant_feedback;field:rating
   summary: 1 for thumbs up, -1 for thumbs down.
+- key: table:assistant_client_error;slot:help
+  summary: Errors the assistant panel hit in users' browsers, such as a result it could not display.
+  content: |
+    When the assistant panel or one of its results fails to show, the user's browser reports the error here instead of breaking the page. Each row says where it happened (the scope, page and part or render type), the error and its stacks, and links to the conversation, message and turn when they are the user's own.
+
+    Reports are scrubbed before they are stored: e-mail addresses, long numbers, tokens and query strings are removed and every field is cut to a fixed length. Each user can report a limited number per minute; more are dropped. The **Assistant client errors** check in System Health turns degraded when many arrive in an hour.
+
+    Records here are read-only and are deleted after the tool result retention period by **{{label:assistantRetention}}**.
+- key: table:assistant_client_error;section:error
+  summary: What went wrong and when the browser saw it.
+- key: table:assistant_client_error;section:where
+  summary: Where it happened (page, part and render type, build) and the conversation, message and turn it was about.
+- key: table:assistant_client_error;section:stacks
+  summary: The JavaScript and component stacks, scrubbed and shortened.
+- key: table:assistant_client_error;section:dates
+  summary: When the report was stored.
+- key: table:assistant_client_error;field:scope
+  summary: The part of the screen that failed, such as the panel, a message, a part, a render, the stream or a widget.
+- key: table:assistant_client_error;field:message
+  summary: The error message, scrubbed and cut to 500 characters.
+- key: table:assistant_client_error;field:errorName
+  summary: The kind of error the browser raised, such as TypeError.
+- key: table:assistant_client_error;field:stack
+  summary: Where in the client code the error happened, scrubbed and cut to 4,000 characters.
+- key: table:assistant_client_error;field:componentStack
+  summary: Which screen components were showing when it happened, scrubbed and cut to 4,000 characters.
+- key: table:assistant_client_error;field:requestId
+  summary: The request or trace id the client saw, to find the matching server log.
+- key: table:assistant_client_error;field:route
+  summary: The page the user was on (its path only).
+- key: table:assistant_client_error;field:conversationId
+  summary: The conversation being shown, when it is the reporting user's own.
+- key: table:assistant_client_error;field:messageId
+  summary: The message being shown, when it is the reporting user's own.
+- key: table:assistant_client_error;field:turnId
+  summary: The question-and-answer cycle being shown, when it is the reporting user's own.
+- key: table:assistant_client_error;field:partType
+  summary: The type of message part being shown, such as tool or presentation.
+- key: table:assistant_client_error;field:renderType
+  summary: The type of result being shown, such as records or widget.
+- key: table:assistant_client_error;field:appVersion
+  summary: The client build that reported the error.
+- key: table:assistant_client_error;field:occurredAt
+  summary: When the browser says the error happened.
+- key: table:assistant_client_error;field:userId
+  summary: The user whose browser reported the error.
 - key: table:assistant_policy;slot:help
   summary: The one place to set the assistant's spending limits, the kill switch, and which tools and data it may use.
   content: |

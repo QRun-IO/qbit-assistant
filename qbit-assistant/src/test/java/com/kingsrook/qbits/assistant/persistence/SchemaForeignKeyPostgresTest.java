@@ -94,6 +94,9 @@ class SchemaForeignKeyPostgresTest extends BaseAssistantTest
       rule("assistant_tool_call", "pending_action_id", "assistant_pending_action", "n");
       rule("assistant_feedback", "conversation_id", "assistant_conversation", "c");
       rule("assistant_feedback", "message_id", "assistant_message", "c");
+      rule("assistant_client_error", "conversation_id", "assistant_conversation", "n");
+      rule("assistant_client_error", "message_id", "assistant_message", "n");
+      rule("assistant_client_error", "turn_id", "assistant_turn", "n");
       rule("assistant_pending_action", "conversation_id", "assistant_conversation", "c");
       rule("assistant_pending_action", "turn_id", "assistant_turn", "n");
       rule("assistant_data_audit", "conversation_id", "assistant_conversation", "n");
