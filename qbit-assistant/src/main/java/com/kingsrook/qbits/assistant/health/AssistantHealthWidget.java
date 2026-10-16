@@ -42,6 +42,24 @@ public class AssistantHealthWidget extends AbstractWidgetRenderer
 {
    public static final String NAME = "assistantHealth";
 
+   public static final String NOT_CHECKED = "Not checked yet";
+
+
+
+   /*******************************************************************************
+    ** Human words for a health status; unknown means no check has reported yet.
+    *******************************************************************************/
+   static String wording(HealthStatus status)
+   {
+      return (switch(status)
+      {
+         case UP -> "Healthy";
+         case DEGRADED -> "Degraded";
+         case DOWN -> "Down";
+         case UNKNOWN -> NOT_CHECKED;
+      });
+   }
+
 
 
    /*******************************************************************************
@@ -72,8 +90,8 @@ public class AssistantHealthWidget extends AbstractWidgetRenderer
             .map(check -> runner.getLastOutcome(check.getName()))
             .map(outcome -> outcome == null ? HealthStatus.UNKNOWN : outcome.getStatus()).toArray(HealthStatus[]::new));
       }
-      return (new RenderWidgetOutput(new StatisticsData().withCount(status.name())
-         .withCountContext("System Health")
+      return (new RenderWidgetOutput(new StatisticsData().withCount(wording(status))
+         .withCountContext("System Health. Provider checks run every 1 to 5 minutes; model checks every 6 hours")
          .withCountURL(FilterLinkBuilder.href("health_check", List.of(Map.of("fieldName", "component", "operator", "EQUALS", "values", List.of("assistant")))))));
    }
 }
