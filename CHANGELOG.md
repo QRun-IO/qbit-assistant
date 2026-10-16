@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased - Optional provider health
+
+- An enabled provider that is not the default and not the only route for any configured routing (an enabled profile's simple/complex model, a budget downgrade model or a knowledge source's embedding model, with no fallback on another usable provider) is optional: when it is unreachable, its `assistant.provider.<id>` and `assistant.model.<id>` checks report DEGRADED with a message naming the provider requests use instead, so one unfinished local server no longer turns the whole `assistant` component DOWN. The default provider and sole routes still report DOWN. A failed provider probe still carries `reachable=false`, so the circuit breaker keeps refusing the provider.
+- New `assistant_provider.setup_state` (Setup state: Active / Setting up, empty counts as Active). A provider that is Setting up is never routed to (default, profile models, fallbacks, budget downgrades, embeddings) and gets no provider or model health checks; Test connection and Discover models still work. Apply the Provider setup state DDL (UPGRADE.md).
+
 ## Unreleased - Fail soft (UI API extension 1.5.0)
 
 - Every message part, tool render and presentation is validated before it is stored or streamed, and again when stored parts and events are read: all render types (records, record, count, widget, history, pending_action, bulk_load_dry_run) and presentation blocks always carry their lists. A render that cannot be repaired is replaced by an error notice ("This result could not be displayed."); unknown part and render types pass through. Problems are logged with the type and a fixed code only.

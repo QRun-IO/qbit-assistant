@@ -333,6 +333,7 @@ public final class AssistantRecordScreens
          settingsSource("assistant_price_model", modelValues, true, false),
          settingsSource("assistant_provider_kind", kinds, false, false),
          enumSource("assistant_provider_location", List.of(new QPossibleValue<>("LOCAL", "Local"), new QPossibleValue<>("CLOUD", "Cloud"))),
+         enumSource("assistant_provider_setup_state", List.of(new QPossibleValue<>("ACTIVE", "Active"), new QPossibleValue<>("SETTING_UP", "Setting up"))),
          enumSource("assistant_routing_mode", List.of(new QPossibleValue<>("OFF", "Off"), new QPossibleValue<>("HEURISTIC", "Heuristic"), new QPossibleValue<>("CLASSIFIER", "Classifier"))),
          enumSource("assistant_model_kind", List.of(new QPossibleValue<>("CHAT", "Chat"), new QPossibleValue<>("EMBEDDING", "Embedding"))),
          enumSource("assistant_model_source", List.of(new QPossibleValue<>("DISCOVERED", "Discovered"), new QPossibleValue<>("MANUAL", "Manual"))),
@@ -396,6 +397,7 @@ public final class AssistantRecordScreens
       pvs(table, "model", MODEL_PVS_NAME, "Model");
       pvs(table, "kind", "assistant_provider_kind", "Kind");
       pvs(table, "location", "assistant_provider_location", "Location");
+      pvs(table, "setupState", "assistant_provider_setup_state", "Setup state");
       table.getField("hipaaEligible").withLabel("HIPAA-eligible");
       table.getField("apiVersion").withLabel("API version");
       table.getField("connectTimeoutSeconds").withLabel("Connect timeout (s)");
@@ -414,6 +416,7 @@ public final class AssistantRecordScreens
       help(table, "providerType", "Which kind of provider this is. Only the types installed on this server are offered.");
       help(table, "model", "The model answers come from. Empty uses the policy's (or the application's) main model.");
       help(table, "enabled", "Off: the assistant never uses this provider.");
+      help(table, "setupState", "Setting up: the provider is still being built, so the assistant never routes to it and its health checks do not run. Use Active once it works.");
       help(table, "isDefault", "The assistant uses the default enabled provider (else the first enabled one). Marking one default unmarks the others.");
       help(table, "apiKeyEnvName", "The NAME of the environment variable that holds the API key (e.g. ANTHROPIC_API_KEY), never the key itself. "
          + "The key stays in the server's secret store; only allowed variable names are accepted. Empty uses the type's default variable. Bedrock and Vertex require this field to be empty and use server credentials. To replace the key, change it in the secret store.");
@@ -424,7 +427,7 @@ public final class AssistantRecordScreens
       help(table, "maxConcurrentRequests", "How many model calls may run at the same time on this server. Empty: no limit.");
       table.getField(ProviderService.KEY_STATUS_FIELD).withLabel("API Key").withHelpContent(new QHelpContent("Whether the key variable is set on this server, with the key's last four characters. The key itself is never shown or returned."));
       sections(table,
-         section("provider", "Provider", "settings_input_component", Tier.T1, "id", "name", "providerType", "model", "enabled", "isDefault"),
+         section("provider", "Provider", "settings_input_component", Tier.T1, "id", "name", "providerType", "model", "enabled", "setupState", "isDefault"),
          section("connection", "Connection", "key", Tier.T2, "apiKeyEnvName", ProviderService.KEY_STATUS_FIELD, "baseUrl", "tlsCaBundle", "cloudProject"),
          section("limits", "Limits", "speed", Tier.T2, "monthlyCostCapUsd", "maxOutputTokensPerRequest", "maxConcurrentRequests"),
          section("registry", "Provider settings", "settings", Tier.T2, "kind", "location", "hipaaEligible", "region", "apiVersion", "connectTimeoutSeconds", "requestTimeoutSeconds"),

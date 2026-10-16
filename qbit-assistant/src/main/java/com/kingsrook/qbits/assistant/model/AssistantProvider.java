@@ -71,6 +71,12 @@ public class AssistantProvider extends QRecordEntity
 
    public static final String TABLE_NAME = "assistant_provider";
 
+   public static final String SETUP_STATE_ACTIVE     = "ACTIVE";
+   public static final String SETUP_STATE_SETTING_UP = "SETTING_UP";
+
+   @QField(maxLength = 16)
+   private String setupState;
+
    @QField(isEditable = false, maxLength = 8)
    private String healthState;
 
@@ -1217,5 +1223,56 @@ public class AssistantProvider extends QRecordEntity
    {
       this.downUntil = downUntil;
       return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Get setupState: ACTIVE (or empty) when in use, SETTING_UP while an admin
+    ** is still building it (never routed to, no health checks).
+    *******************************************************************************/
+   public String getSetupState()
+   {
+      return (this.setupState);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set setupState.
+    *******************************************************************************/
+   public void setSetupState(String setupState)
+   {
+      this.setupState = setupState;
+   }
+
+
+
+   /*******************************************************************************
+    ** With setupState.
+    *******************************************************************************/
+   public AssistantProvider withSetupState(String setupState)
+   {
+      this.setupState = setupState;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether an admin marked this provider as not set up yet.
+    *******************************************************************************/
+   public boolean isSettingUp()
+   {
+      return (SETUP_STATE_SETTING_UP.equals(setupState));
+   }
+
+
+
+   /*******************************************************************************
+    ** Enabled and set up: the only rows the assistant routes to or health-checks.
+    *******************************************************************************/
+   public boolean isUsable()
+   {
+      return (Boolean.TRUE.equals(enabled) && !isSettingUp());
    }
 }

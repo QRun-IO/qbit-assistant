@@ -562,6 +562,10 @@ entries:
   summary: LOCAL for a server on your own network, or CLOUD for an outside service.
   content: |
     Local providers are probed for health before use. Empty uses the usual value for the kind: Ollama, LM Studio, vLLM and llama.cpp are local; everything else is cloud.
+- key: table:assistant_provider;field:setupState
+  summary: Setting up while you are still building this provider; Active once it works. Empty counts as Active.
+  content: |
+    While a provider is Setting up the assistant never sends questions to it, it is not the default even if marked so, and its provider and model health checks do not run, so an unfinished server does not show the assistant as down. Test connection and Discover models still work, so you can check it before you switch it to Active.
 - key: table:assistant_provider;field:region
   summary: The cloud region to use; only needed for AWS Bedrock and Google Vertex AI.
   content: |
@@ -1397,6 +1401,11 @@ entries:
   content: |
     - **Local**: runs on your network. Its models cost 0 unless priced, and it is the preferred automatic backup.
     - **Cloud**: a hosted service. Costs follow the price list and the monthly cost cap.
+- key: possibleValueSource:assistant_provider_setup_state;slot:help
+  summary: Whether a provider is in use or still being set up.
+  content: |
+    - **Active**: in use. The assistant routes to it and health-checks it.
+    - **Setting up**: not used yet. No routing and no health checks until you switch it to Active.
 - key: possibleValueSource:assistant_routing_mode;slot:help
   summary: How a profile chooses between its simple and complex model for each question.
   content: |

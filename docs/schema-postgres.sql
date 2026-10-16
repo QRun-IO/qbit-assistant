@@ -744,3 +744,9 @@ CREATE INDEX IF NOT EXISTS assistant_client_error_create_date ON assistant_clien
 CREATE INDEX IF NOT EXISTS assistant_client_error_conversation ON assistant_client_error (conversation_id);
 CREATE INDEX IF NOT EXISTS assistant_client_error_message ON assistant_client_error (message_id);
 CREATE INDEX IF NOT EXISTS assistant_client_error_turn ON assistant_client_error (turn_id);
+
+-- Provider setup state: SETTING_UP marks a provider an admin is still building. The
+-- assistant never routes to it and its provider and model health checks do not run.
+-- Existing rows (and NULL) behave as ACTIVE, exactly as before. Safe to re-run.
+ALTER TABLE assistant_provider ADD COLUMN IF NOT EXISTS setup_state VARCHAR(16) DEFAULT 'ACTIVE'
+   CONSTRAINT ck_assistant_provider_setup_state CHECK (setup_state IN ('ACTIVE', 'SETTING_UP'));

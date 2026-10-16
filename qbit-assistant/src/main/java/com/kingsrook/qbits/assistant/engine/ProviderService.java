@@ -158,14 +158,15 @@ public class ProviderService
 
 
    /*******************************************************************************
-    ** The default enabled provider row, or null.
+    ** The default usable (enabled and set up) provider row, else the first
+    ** usable one, or null.
     *******************************************************************************/
    public AssistantProvider activeRow() throws QException
    {
       AssistantProvider first = null;
       for(AssistantProvider row : rows())
       {
-         if(Boolean.TRUE.equals(row.getEnabled()))
+         if(row.isUsable())
          {
             if(Boolean.TRUE.equals(row.getIsDefault()))
             {
@@ -782,7 +783,7 @@ public class ProviderService
          return (null);
       }
       AssistantProvider row = store.getProvider(model.getProviderId());
-      if(row == null || !Boolean.TRUE.equals(row.getEnabled()) || ((requiresHipaa || Boolean.TRUE.equals(config.getHipaaMode())) && !Boolean.TRUE.equals(row.getHipaaEligible())))
+      if(row == null || !row.isUsable() || ((requiresHipaa || Boolean.TRUE.equals(config.getHipaaMode())) && !Boolean.TRUE.equals(row.getHipaaEligible())))
       {
          return (null);
       }
@@ -854,9 +855,9 @@ public class ProviderService
          throw (new ProviderSetupException("Select an enabled EMBEDDING model for this knowledge source."));
       }
       AssistantProvider row = store.getProvider(model.getProviderId());
-      if(row == null || !Boolean.TRUE.equals(row.getEnabled()))
+      if(row == null || !row.isUsable())
       {
-         throw (new ProviderSetupException("The embedding provider is disabled or unavailable."));
+         throw (new ProviderSetupException("The embedding provider is disabled, not set up yet or unavailable."));
       }
       if((requiresHipaa || Boolean.TRUE.equals(config.getHipaaMode())) && !Boolean.TRUE.equals(row.getHipaaEligible()))
       {
