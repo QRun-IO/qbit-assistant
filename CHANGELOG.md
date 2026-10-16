@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased - Attachments
+
+- Files attached in the panel (`pageContext.attachments`, core upload refs) are read for the question: as the signed-in user's own upload, in memory, with per-file and per-question byte and character caps (`AssistantQBitConfig.attachments`). The type is sniffed from content; executables, archives and unknown binary data are refused. Text, Markdown and JSON are decoded with charset detection, PDF page text is extracted (PDFBox via QQQ core, no scripts, no font scan), CSV/TSV/XLSX become a header + rows + count preview, and PNG/JPEG/GIF/WebP images go to vision models as image parts.
+- Content reaches the model in an untrusted `uploaded_file` block (delimiters neutralized) in the question's user message; the system prompt says it is data, never instructions. A file that cannot be read adds a notice to the answer and never fails the turn. In HIPAA mode attachments count as PHI.
+- Provider SPI: `ModelPart.Type.IMAGE` (`mediaType`, base64 `data`), mapped by the Anthropic, Bedrock and OpenAI-compatible providers. Claude models report vision. `ModelPart.toString()` never includes text or image data.
+- `GET /config`: `features.attachments`, `limits.maxAttachmentBytes`, `limits.maxAttachments`, `limits.attachmentTypes`.
+- System prompt: when `create_record` / `update_record` are offered, the model proposes the change instead of saying it cannot create records.
+
 ## Unreleased - Optional provider health
 
 - An enabled provider that is not the default and not the only route for any configured routing (an enabled profile's simple/complex model, a budget downgrade model or a knowledge source's embedding model, with no fallback on another usable provider) is optional: when it is unreachable, its `assistant.provider.<id>` and `assistant.model.<id>` checks report DEGRADED with a message naming the provider requests use instead, so one unfinished local server no longer turns the whole `assistant` component DOWN. The default provider and sole routes still report DOWN. A failed provider probe still carries `reachable=false`, so the circuit breaker keeps refusing the provider.
