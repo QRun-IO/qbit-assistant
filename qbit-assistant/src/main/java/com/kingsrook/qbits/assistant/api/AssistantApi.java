@@ -168,9 +168,31 @@ public class AssistantApi
       profile.put("displayName", persona.displayName());
       profile.put("icon", persona.icon());
       profile.put("greeting", persona.greeting());
-      profile.put("starterPrompts", persona.starterPrompts());
+      profile.put("starterPrompts", reason == null ? starterPrompts(persona) : List.of());
       result.put("profile", profile);
       return (result);
+   }
+
+
+
+   /*******************************************************************************
+    ** The example prompts for this user (see StarterPrompts): built from the
+    ** tables the user may read, plus the configured ones they may see. Never
+    ** throws.
+    *******************************************************************************/
+   private List<String> starterPrompts(ProfileService.Persona persona)
+   {
+      try
+      {
+         PolicyService.EffectivePolicy policy = runtime.getPolicyService().current(false);
+         UiApiToolbox.Context context = new UiApiToolbox.Context(session.getUuid(), session.getValue(QSession.VALUE_KEY_USER_TIMEZONE), runtime.getUiApiGateway(), policy.tools(), null, credentials);
+         boolean historyOffered = runtime.getToolbox().definitions(policy.tools(), false).stream().anyMatch(d -> UiApiToolbox.RECORD_HISTORY.equals(d.getName()));
+         return (runtime.getStarterPrompts().forUser(context, userId, persona.starterPrompts(), historyOffered));
+      }
+      catch(QException | RuntimeException e)
+      {
+         return (List.of());
+      }
    }
 
 

@@ -36,6 +36,7 @@ import com.kingsrook.qbits.assistant.engine.ClientErrors;
 import com.kingsrook.qbits.assistant.engine.ContextBuilder;
 import com.kingsrook.qbits.assistant.engine.PolicyService;
 import com.kingsrook.qbits.assistant.engine.ProfileService;
+import com.kingsrook.qbits.assistant.engine.StarterPrompts;
 import com.kingsrook.qbits.assistant.engine.ProviderService;
 import com.kingsrook.qbits.assistant.engine.RateLimiter;
 import com.kingsrook.qbits.assistant.engine.RunningTurn;
@@ -95,6 +96,7 @@ public class AssistantRuntime
    private final ContextBuilder                   contextBuilder;
    private final DataAccessService                dataAccessService;
    private final ProfileService                   profileService;
+   private final StarterPrompts                   starterPrompts;
    private final AccessExplainer                  accessExplainer;
    private final UiApiToolbox                     toolbox;
    private final UiApiGateway                     uiApiGateway;
@@ -148,6 +150,7 @@ public class AssistantRuntime
       this.accessExplainer = new AccessExplainer(qInstance, dataAccessService);
       this.toolbox = new UiApiToolbox(qInstance, dataAccessService, exposurePolicy, new AiRedactor(settings.getCustomRedactionPatterns()),
          config.getMaxCellChars() == null ? AiToolKernelSettings.DEFAULT_MAX_CELL_CHARS : config.getMaxCellChars());
+      this.starterPrompts = new StarterPrompts(toolbox, clock);
       UiApiGateway delegate = config.getUiApiGateway() != null ? config.getUiApiGateway() : new CoreUiApiGateway(this::uiApiBaseUrl, qInstance);
       this.uiApiGateway = new UiApiGateway()
       {
@@ -255,6 +258,16 @@ public class AssistantRuntime
    public AccessExplainer getAccessExplainer()
    {
       return (accessExplainer);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for starterPrompts (the per-user example prompts, built from what the user may read)
+    *******************************************************************************/
+   public StarterPrompts getStarterPrompts()
+   {
+      return (starterPrompts);
    }
 
 

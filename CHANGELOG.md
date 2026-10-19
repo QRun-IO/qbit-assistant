@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased - Starter prompts follow access
+
+- `profile.starterPrompts` in `GET /assistant/config` is built per user: up to three prompts generated from tables the user can read that have rows (UI API metadata and count as the user, bounded, current access rechecked on every request, stable order for the day), plus configured prompts only when tagged with tables the user can read (`[table] prompt`, `[none] prompt`; untagged lines are dropped). See UPGRADE.md.
+
 ## Unreleased - Chat turns are not jobs
 
 - Ordinary chat turns no longer create core tracking jobs: they stay out of the Jobs tray and Jobs tables, and core no longer sends an "Assistant answer finished" notification for every answer. Crash safety is unchanged; it comes from the assistant's own turn table (leased, heartbeated `assistant_turn` rows, seq-numbered `assistant_turn_event` replay and the abandoned-turn sweep). The panel's Stop (`POST /turns/{id}/cancel`) is unchanged.
