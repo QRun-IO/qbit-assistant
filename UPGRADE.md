@@ -13,6 +13,48 @@ non-admin users see an empty table.
 The panel can link to the table using `conversationsTable` from `GET /config`.
 That field is present only when the user may query the table.
 
+## Starter prompts follow the user's access (Unreleased)
+
+`GET /assistant/config` no longer returns the profile's starter prompts as written.
+`profile.starterPrompts` (same field, still `string[]`) is now built per user:
+
+- Up to three prompts are generated from the tables the signed-in user can read
+  through the assistant and that have rows (a count as the user), using the table
+  labels, a date field when present, and "What changed in ... this week?" when the
+  change-history tool is offered. The pick is stable for the user for the day and
+  rechecked on every request, including table, row and field access. Generation
+  uses bounded UI API calls and no model calls. Any failure yields no generated prompts.
+- A configured starter prompt (Assistant Profile > Starter prompts, one per line) is
+  shown only when it declares the tables it needs and the user can read all of
+  them. Declare them with a leading tag: `[blog_post] Which posts are drafts?`, or
+  `[blog_post, page] ...` for several. `[none] What can you help with?` names no
+  table and is always shown. A line without a tag is no longer shown, because
+  nothing says which tables it mentions: add a tag to keep it.
+- Shown prompts are the permitted configured ones first, then generated ones, three
+  in all (a profile with three or more permitted prompts shows only those).
+
+No schema change and no configuration. The panel needs no change.
+
+## Chat turns are not jobs (Unreleased)
+
+Ordinary chat turns no longer create core tracking jobs, so they no longer appear
+in the Jobs tray or the Jobs tables and no longer trigger a per-answer "finished"
+notification. No schema change and no configuration is needed.
+
+The `AssistantRunTracker` SPI and `JobTrackingRunTracker` are removed, along with
+`AssistantQBitConfig.withRunTracker`, `setRunTracker` and `getRunTracker`. A host
+that called any of them must delete the call: `withRunTracker(AssistantRunTracker.NOOP)`
+is now the only behavior, and a custom tracker has no replacement hook. Turn
+progress, Stop and recovery are available through the assistant's own routes
+(`GET /turns/active`, the turn events stream and `POST /turns/{id}/cancel`).
+
+Bulk loads the assistant launches are still durable jobs. Their confirmed tool
+result now includes `jobHref` (the job's in-app link) and the confirm response's
+`href` points at the job.
+
+Scheduled task notifications now use core `QAlerts.notify`; they reach whatever
+alerts sink the host installed (or core's logging sink when none is).
+
 ## Provider setup state (Unreleased)
 
 Apply the **Provider setup state** block at the end of `docs/schema-postgres.sql`

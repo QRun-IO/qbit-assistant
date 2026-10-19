@@ -50,6 +50,8 @@ import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
@@ -162,6 +164,52 @@ class HipaaStorageTest extends BaseAssistantTest
       String longTitle = "A".repeat(255);
       AssistantConversation longConversation = store.createConversation(AssistantTestFixture.ADMIN, longTitle, null);
       assertThat(store.getConversation(AssistantTestFixture.ADMIN, longConversation.getId()).getTitle()).isEqualTo(longTitle);
+   }
+
+
+
+   /*******************************************************************************
+    ** User titles are plaintext unless they match this record's stored ciphertext.
+    *******************************************************************************/
+   @Test
+   void tableTitleUpdatesEncryptPrefixLookingPlaintext() throws Exception
+   {
+      AssistantStore store = setupProvider();
+      String owner = AssistantTestFixture.ADMIN;
+      AssistantConversation conversation = store.createConversation(owner, "Original title", null);
+      Integer id = conversation.getId();
+      for(String title : List.of("Renamed title", "enc:v1:literal private user text"))
+      {
+         var updated = new UpdateAction().execute(new UpdateInput(AssistantConversation.TABLE_NAME).withInputSource(QInputSource.USER)
+            .withRecord(new QRecord().withValue("id", id).withValue("title", title)));
+         assertThat(updated.getRecords()).hasSize(1).allSatisfy(record -> assertThat(record.getErrors()).isEmpty());
+         assertThat(rawTitle(id)).startsWith("enc:v1:").isNotEqualTo(title).doesNotContain("private user text");
+         assertThat(store.getConversation(owner, id).getTitle()).isEqualTo(title);
+      }
+
+      String storedTitle = rawTitle(id);
+      new UpdateAction().execute(new UpdateInput(AssistantConversation.TABLE_NAME).withInputSource(QInputSource.USER)
+         .withRecord(new QRecord().withValue("id", id).withValue("title", storedTitle).withValue("pinned", true)));
+      assertThat(rawTitle(id)).isEqualTo(storedTitle);
+      assertThat(store.getConversation(owner, id).getTitle()).isEqualTo("enc:v1:literal private user text");
+      assertThat(store.getConversation(owner, id).getPinned()).isTrue();
+
+      AssistantConversation second = store.createConversation(owner, "Another title", null);
+      new UpdateAction().execute(new UpdateInput(AssistantConversation.TABLE_NAME).withInputSource(QInputSource.USER)
+         .withRecord(new QRecord().withValue("id", second.getId()).withValue("title", storedTitle)));
+      assertThat(rawTitle(second.getId())).isNotEqualTo(storedTitle);
+      assertThat(store.getConversation(owner, second.getId()).getTitle()).isEqualTo(storedTitle);
+   }
+
+
+
+   /*******************************************************************************
+    ** Inspect stored bytes without the assistant store's decryption boundary.
+    *******************************************************************************/
+   private String rawTitle(Integer id) throws Exception
+   {
+      return (new QueryAction().execute(new QueryInput(AssistantConversation.TABLE_NAME)
+         .withFilter(new QQueryFilter().withCriteria("id", QCriteriaOperator.EQUALS, id))).getRecords().get(0).getValueString("title"));
    }
 
 

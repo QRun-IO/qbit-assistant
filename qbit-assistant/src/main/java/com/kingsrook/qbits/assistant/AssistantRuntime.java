@@ -29,11 +29,14 @@ import java.util.concurrent.Executors;
 import java.util.regex.Pattern;
 import com.kingsrook.qbits.assistant.access.AccessExplainer;
 import com.kingsrook.qbits.assistant.access.DataAccessService;
+import com.kingsrook.qbits.assistant.attachments.AttachmentService;
+import com.kingsrook.qbits.assistant.attachments.UploadRefSource;
 import com.kingsrook.qbits.assistant.engine.BudgetService;
 import com.kingsrook.qbits.assistant.engine.ClientErrors;
 import com.kingsrook.qbits.assistant.engine.ContextBuilder;
 import com.kingsrook.qbits.assistant.engine.PolicyService;
 import com.kingsrook.qbits.assistant.engine.ProfileService;
+import com.kingsrook.qbits.assistant.engine.StarterPrompts;
 import com.kingsrook.qbits.assistant.engine.ProviderService;
 import com.kingsrook.qbits.assistant.engine.RateLimiter;
 import com.kingsrook.qbits.assistant.engine.RunningTurn;
@@ -78,6 +81,7 @@ public class AssistantRuntime
    private final RagService ragService;
    private final KnowledgeTool knowledgeTool;
    private final BulkLoadTools bulkLoadTools;
+   private final AttachmentService attachmentService;
 
    private final QInstance                        qInstance;
    private final AssistantQBitConfig              config;
@@ -92,6 +96,7 @@ public class AssistantRuntime
    private final ContextBuilder                   contextBuilder;
    private final DataAccessService                dataAccessService;
    private final ProfileService                   profileService;
+   private final StarterPrompts                   starterPrompts;
    private final AccessExplainer                  accessExplainer;
    private final UiApiToolbox                     toolbox;
    private final UiApiGateway                     uiApiGateway;
@@ -145,6 +150,7 @@ public class AssistantRuntime
       this.accessExplainer = new AccessExplainer(qInstance, dataAccessService);
       this.toolbox = new UiApiToolbox(qInstance, dataAccessService, exposurePolicy, new AiRedactor(settings.getCustomRedactionPatterns()),
          config.getMaxCellChars() == null ? AiToolKernelSettings.DEFAULT_MAX_CELL_CHARS : config.getMaxCellChars());
+      this.starterPrompts = new StarterPrompts(toolbox, clock);
       UiApiGateway delegate = config.getUiApiGateway() != null ? config.getUiApiGateway() : new CoreUiApiGateway(this::uiApiBaseUrl, qInstance);
       this.uiApiGateway = new UiApiGateway()
       {
@@ -179,6 +185,7 @@ public class AssistantRuntime
       this.ragService = new RagService(this, vectors);
       this.knowledgeTool = new KnowledgeTool(this, ragService, vectors);
       this.bulkLoadTools = new BulkLoadTools(qInstance, dataAccessService, config.getBulkLoadRunner());
+      this.attachmentService = new AttachmentService(config.getAttachments(), new UploadRefSource());
       this.contextBuilder = new ContextBuilder(config, kernel, toolbox).withKnowledgeTool(knowledgeTool).withBulkLoadTools(bulkLoadTools);
       if(Boolean.TRUE.equals(config.getRegisterShutdownHook()))
       {
@@ -251,6 +258,16 @@ public class AssistantRuntime
    public AccessExplainer getAccessExplainer()
    {
       return (accessExplainer);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for starterPrompts (the per-user example prompts, built from what the user may read)
+    *******************************************************************************/
+   public StarterPrompts getStarterPrompts()
+   {
+      return (starterPrompts);
    }
 
 
@@ -568,6 +585,16 @@ public class AssistantRuntime
    {
       return (scheduledTurn);
    }
+
+
+   /*******************************************************************************
+    ** Reads the files attached to a question (as the signed-in user).
+    *******************************************************************************/
+   public AttachmentService getAttachmentService()
+   {
+      return (attachmentService);
+   }
+
 
 
    /*******************************************************************************

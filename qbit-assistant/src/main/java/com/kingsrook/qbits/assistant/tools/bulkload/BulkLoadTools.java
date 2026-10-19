@@ -30,12 +30,15 @@ import com.kingsrook.qbits.assistant.spi.ModelToolDefinition;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
 import com.kingsrook.qbits.assistant.uiapi.UiApiCall;
 import com.kingsrook.qbits.assistant.uiapi.UiApiResult;
+import com.kingsrook.qqq.backend.core.actions.ai.AiRecordRef;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolOutcome;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolResult;
 import com.kingsrook.qqq.backend.core.actions.ai.output.AiDataEnvelope;
+import com.kingsrook.qqq.backend.core.actions.ai.output.AiLinkBuilder;
 import com.kingsrook.qqq.backend.core.actions.ai.tools.AiJsonSchema;
 import com.kingsrook.qqq.backend.core.actions.ai.tools.AiToolException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.jobs.DurableJobsTables;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
@@ -537,7 +540,9 @@ public class BulkLoadTools
 
 
    /*******************************************************************************
-    ** Confirmed run: through the runner seam.
+    ** Confirmed run: through the runner seam. A launched load is a real job
+    ** (visible in the Jobs tray and tables); its id and in-app link go into the
+    ** result and its record refs, so the conversation links to the job.
     *******************************************************************************/
    private void run(Call call, AiToolResult result, UiApiToolbox.Context context, String tableName, Map<String, Object> values) throws QException
    {
@@ -549,6 +554,13 @@ public class BulkLoadTools
       Map<String, Object> out = new LinkedHashMap<>();
       out.put("status", handle.status());
       out.put("jobId", handle.jobId());
+      if(handle.jobId() != null)
+      {
+         String jobHref = jobHref(handle.jobId());
+         out.put("jobHref", jobHref);
+         result.getRecordRefs().add(new AiRecordRef().withTableName(DurableJobsTables.TABLE_JOB).withTableLabel("Job").withId(handle.jobId())
+            .withLabel("Job " + handle.jobId()).withHref(jobHref));
+      }
       out.put("processUUID", handle.processUUID());
       out.put("summary", handle.summary());
       result.withOutcome(ok ? AiToolOutcome.OK : AiToolOutcome.ERROR).withSummary(shortText(handle.summary())).withPermissionCheck(call.permissionCheck())
@@ -560,6 +572,16 @@ public class BulkLoadTools
    ////////////////////////////////////////////////////////////////////////////
    // helpers                                                                //
    ////////////////////////////////////////////////////////////////////////////
+
+
+
+   /*******************************************************************************
+    ** The in-app link to a durable job's record.
+    *******************************************************************************/
+   public static String jobHref(Long jobId)
+   {
+      return (AiLinkBuilder.recordHref(DurableJobsTables.TABLE_JOB, jobId));
+   }
 
 
 

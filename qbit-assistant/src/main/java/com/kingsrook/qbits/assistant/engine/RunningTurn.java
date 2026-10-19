@@ -40,7 +40,6 @@ public class RunningTurn
    private volatile Thread engineThread;
    private volatile Consumer<String> forceFinalizer;
    private volatile long cancelledNanos;
-   private volatile String trackingId;
    private volatile StreamHandle               currentHandle;
 
 
@@ -262,26 +261,6 @@ public class RunningTurn
    public boolean cancelGraceElapsed(int seconds)
    {
       return (isCancelled() && cancelledNanos != 0 && System.nanoTime() - cancelledNanos >= seconds * 1_000_000_000L);
-   }
-
-
-
-   /*******************************************************************************
-    ** Getter for trackingId
-    *******************************************************************************/
-   public String getTrackingId()
-   {
-      return (trackingId);
-   }
-
-
-
-   /*******************************************************************************
-    ** Setter for trackingId
-    *******************************************************************************/
-   public void setTrackingId(String trackingId)
-   {
-      this.trackingId = trackingId;
    }
 
 }

@@ -83,9 +83,15 @@ public class AssistantConversationCustomizer implements TableCustomizerInterface
          {
             record.addError(new BadInputStatusMessage("Status must be Active or Archived."));
          }
-         if(!isPreview && runtime != null && record.getValue("title") instanceof String title && !AssistantStore.isEncryptedValue(title))
+         if(!isPreview && runtime != null && record.getValue("title") instanceof String title)
          {
-            record.setValue("title", runtime.getStore().encryptForStorage(AssistantConversation.TABLE_NAME, new QRecord().withValue("title", title)).getValue("title"));
+            boolean unchangedStoredCiphertext = AssistantStore.isEncryptedValue(title) && record.getValueInteger("id") != null
+               && oldRecordList.orElse(List.of()).stream().anyMatch(oldRecord -> record.getValueInteger("id").equals(oldRecord.getValueInteger("id"))
+                  && title.equals(oldRecord.getValueString("title")));
+            if(!unchangedStoredCiphertext)
+            {
+               record.setValue("title", runtime.getStore().encryptForStorage(AssistantConversation.TABLE_NAME, new QRecord().withValue("title", title)).getValue("title"));
+            }
          }
       }
       return (records);

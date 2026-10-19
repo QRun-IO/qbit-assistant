@@ -27,6 +27,9 @@ import com.anthropic.core.ObjectMappers;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.provider.fake.ScriptedModelProvider;
+import com.kingsrook.qbits.assistant.spi.CacheHint;
+import com.kingsrook.qbits.assistant.spi.ModelMessage;
+import com.kingsrook.qbits.assistant.spi.ModelPart;
 import com.kingsrook.qbits.assistant.spi.ModelProviderException;
 import com.kingsrook.qbits.assistant.spi.ModelRequest;
 import com.kingsrook.qbits.assistant.spi.ModelToolDefinition;
@@ -90,6 +93,27 @@ class AnthropicRequestContractTest
          List.of(), "How many published posts are there?", Map.of("tableName", "blog_post"));
       String json = ObjectMappers.jsonMapper().writeValueAsString(AnthropicMapping.toParams(request)._body());
       return (JsonUtils.toObject(json, new TypeReference<Map<String, Object>>() {}));
+   }
+
+
+
+   /*******************************************************************************
+    ** An image part becomes a base64 image block; as the last block of the
+    ** newest message it carries the cache hint.
+    *******************************************************************************/
+   @Test
+   @SuppressWarnings("unchecked")
+   void testImagePartMapping() throws Exception
+   {
+      ModelRequest request = new ModelRequest().withModel("claude-test").withMaxTokens(64).withMessages(List.of(new ModelMessage().withRole(ModelMessage.Role.USER)
+         .withPart(ModelPart.text("Describe it")).withPart(ModelPart.image("image/webp", "UklGRg==")).withCacheHint(CacheHint.SHORT)));
+      String              json  = ObjectMappers.jsonMapper().writeValueAsString(AnthropicMapping.toParams(request)._body());
+      Map<String, Object> body  = JsonUtils.toObject(json, new TypeReference<Map<String, Object>>() {});
+      List<Object>        content = (List<Object>) ((Map<String, Object>) ((List<Object>) body.get("messages")).get(0)).get("content");
+      Map<String, Object> image = (Map<String, Object>) content.get(1);
+      assertThat(image).containsEntry("type", "image").containsKey("cache_control");
+      assertThat((Map<String, Object>) image.get("source")).containsEntry("type", "base64").containsEntry("media_type", "image/webp").containsEntry("data", "UklGRg==");
+      assertThat((Map<String, Object>) content.get(0)).doesNotContainKey("cache_control");
    }
 
 

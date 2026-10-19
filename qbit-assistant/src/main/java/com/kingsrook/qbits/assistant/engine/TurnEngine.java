@@ -39,6 +39,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLongArray;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
+import com.kingsrook.qbits.assistant.attachments.AttachmentService;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
 import com.kingsrook.qbits.assistant.model.AssistantPendingAction;
@@ -267,6 +268,10 @@ public class TurnEngine implements Runnable
          toolPolicy = scheduledTask == null ? policy.tools() : ScheduledTurn.tools(runtime, scheduledTask, policy.tools());
          ScheduledTurn.checkCost(runtime, conversation.getId(), turn.getId());
          classification = new TurnClassification(config.getClassificationSource(), conversation, pageContext);
+         if(AttachmentService.hasAttachments(pageContext))
+         {
+            classification.attachedFiles(isHipaaMode());
+         }
          store.saveClassification(userId, conversation.getId(), turn.getId(), classification);
 
 
@@ -314,7 +319,19 @@ public class TurnEngine implements Runnable
          String                  appName = runtime.appNameFor(pageContext);
          ProfileService.Persona  persona = runtime.getProfileService().persona(session, appName, scheduledTask == null ? null : scheduledTask.getProfileId());
          String                  profileText = ProfileService.instructions(persona, runtime.getProfileService().relevantSkills(persona.profileId(), userText, appName));
-         ModelRequest request = runtime.getContextBuilder().build(session, model, route.effort(), history, userText, pageContext, toolPolicy, profileText, turn.getId() == null ? null : String.valueOf(turn.getId()));
+         ///////////////////////////////////////////////////////////////////////
+         // files attached to this question: read as the user, sniffed and    //
+         // bounded; a file that cannot be read becomes a notice, never an    //
+         // error of the turn                                                 //
+         ///////////////////////////////////////////////////////////////////////
+         AttachmentService.Prepared attachments = AttachmentService.Prepared.none();
+         if(AttachmentService.hasAttachments(pageContext))
+         {
+            attachments = runtime.getAttachmentService().prepare(pageContext, caps);
+            attachments.notices().forEach(text -> notice("warning", text));
+         }
+         ModelRequest request = runtime.getContextBuilder().build(session, model, route.effort(), history, userText, pageContext, toolPolicy, profileText,
+            turn.getId() == null ? null : String.valueOf(turn.getId()), attachments.parts());
          Integer maxPerRequest = active.row() == null ? null : active.row().getMaxOutputTokensPerRequest();
          if(maxPerRequest != null && (request.getMaxTokens() == null || request.getMaxTokens() > maxPerRequest))
          {
@@ -775,8 +792,8 @@ public class TurnEngine implements Runnable
       }
       ///////////////////////////////////////////////////////////////////////
       // providers stream on their own (virtual) threads, which have no     //
-      // QContext: run the delta handler in the turn's context, or progress //
-      // writes (JobLogWriter) fail with no instance                        //
+      // QContext: run the delta handler in the turn's context, so phase    //
+      // and text events are recorded with the turn's instance and session //
       ///////////////////////////////////////////////////////////////////////
       CapturedContext turnContext = QContext.capture();
       ModelEventListener listener = new ModelEventListener()
@@ -814,6 +831,11 @@ public class TurnEngine implements Runnable
       {
          TurnDataRouting.beforeModelCall(runtime, classification, turn, active);
          fallback.beforeCall(active);
+         ModelCapabilities selectedCapabilities = provider.getCapabilities(model);
+         if(selectedCapabilities == null || !Boolean.TRUE.equals(selectedCapabilities.getVision()))
+         {
+            AttachmentService.withoutImages(request);
+         }
          modelCallCount++;
          phase("thinking", null);
          StreamHandle handle = provider.stream(request.copy(), fallback.listener(listener));
@@ -1396,30 +1418,21 @@ public class TurnEngine implements Runnable
                runtime.getScheduledTurn().detach(conversation.getId(), session.getUuid());
             }
          });
-         String finalStatus = status;
-         String finalText = errorText;
-         try
+         runtime.unregister(turn.getId());
+         runtime.getRateLimiter().release(userId);
+         if(transcript != null && !engineRunning)
          {
-            safely(() -> config.getRunTracker().finish(running.getTrackingId(), finalStatus, finalText));
+            transcript.close();
          }
-         finally
+         else
          {
-            runtime.unregister(turn.getId());
-            runtime.getRateLimiter().release(userId);
-            if(transcript != null && !engineRunning)
-            {
-               transcript.close();
-            }
-            else
-            {
-               // A wedged provider can still log after forced finalization. The
-               // engine's finally releases its log protection when it returns.
-               TranscriptRedactor.detach();
-            }
-            if(previousTranscript != null && previousTranscript != transcript)
-            {
-               previousTranscript.attach();
-            }
+            // A wedged provider can still log after forced finalization. The
+            // engine's finally releases its log protection when it returns.
+            TranscriptRedactor.detach();
+         }
+         if(previousTranscript != null && previousTranscript != transcript)
+         {
+            previousTranscript.attach();
          }
       }
    }
@@ -1469,7 +1482,6 @@ public class TurnEngine implements Runnable
       running.setPhase(phase, toolName);
       String label = toolName == null ? phase : ToolLabels.running(toolName);
       emit(TurnEvent.TURN_PHASE, map("phase", phase, "toolName", toolName, "label", label));
-      safely(() -> config.getRunTracker().progress(running.getTrackingId(), phase, label));
    }
 
 

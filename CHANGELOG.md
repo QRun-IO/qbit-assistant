@@ -3,10 +3,30 @@
 ## Unreleased - Conversation management (UI API extension 1.6.0)
 
 - `assistant_conversation` is open to every assistant user (`assistant.hasAccess` or `assistant.admin`, through the new `AssistantAccessPermissionChecker`) in the standard table UI. Rows stay locked to their owner by the `userId` record lock, so a user only ever sees, updates and deletes their own conversations; admins with the all-access key still see everyone's. The Assistant app (its nav) and every other assistant table stay admin-only.
-- Users change only a conversation's title, pinned flag and status (Active / Archived) through the table; the other fields are the assistant's own. A new title is encrypted in HIPAA mode, as panel renames are.
+- Users change only a conversation's title, pinned flag and status (Active / Archived) through the table; the other fields are the assistant's own. A new title is encrypted in HIPAA mode, including literal text beginning with `enc:v1:`. Only an exact match to the same record's stored ciphertext is preserved unchanged; internal SYSTEM writes retain their existing storage path.
 - A table delete of a conversation also deletes its messages, turns, turn events, tool calls, feedback, data audits and pending actions (the same rows `DELETE /conversations/{id}` removes), so nothing is orphaned on a database without the cascading foreign keys. A conversation with an answer in progress is refused.
 - New record actions on `assistant_conversation`: **Archive conversations**, **Restore conversations** and **Delete conversations** (standard streamed ETL: selected records, Review, Result; same permission as the table; only rows the user can see; delete skips conversations with an answer in progress).
 - UI API extension assistant 1.6.0: `GET /conversations` items have `running` (an answer in progress: a RUNNING or CANCELLING turn that is not orphaned); `PATCH /conversations/{id}` accepts `{"read": true}` (sets `unreadCount` to 0); `GET /config` has `conversationsTable: "assistant_conversation"` when the session may query that table.
+
+## Unreleased - Starter prompts follow access
+
+- `profile.starterPrompts` in `GET /assistant/config` is built per user: up to three prompts generated from tables the user can read that have rows (UI API metadata and count as the user, bounded, current access rechecked on every request, stable order for the day), plus configured prompts only when tagged with tables the user can read (`[table] prompt`, `[none] prompt`; untagged lines are dropped). See UPGRADE.md.
+
+## Unreleased - Chat turns are not jobs
+
+- Ordinary chat turns no longer create core tracking jobs: they stay out of the Jobs tray and Jobs tables, and core no longer sends an "Assistant answer finished" notification for every answer. Crash safety is unchanged; it comes from the assistant's own turn table (leased, heartbeated `assistant_turn` rows, seq-numbered `assistant_turn_event` replay and the abandoned-turn sweep). The panel's Stop (`POST /turns/{id}/cancel`) is unchanged.
+- Removed the `AssistantRunTracker` SPI, `JobTrackingRunTracker` and `AssistantQBitConfig.withRunTracker` / `setRunTracker` / `getRunTracker` (see UPGRADE.md).
+- Real multi-step work stays a real job: a confirmed bulk load still launches through `POST /qqq/v1/processes/{p}/jobs`, and its tool result now carries `jobHref` (the job's `/app` link) next to `jobId`, plus a record ref to the job; the confirm response's `href` links to the job.
+- Scheduled task notifications (output mode Notification or Both) now go through core `QAlerts.notify` (category Job, the owner as the only audience, a link to the conversation, success/error/warning severity by run status), replacing the reflective call into an older alerts SPI that no longer matched.
+
+## Unreleased - Attachments
+
+- Files attached in the panel (`pageContext.attachments`, core upload refs) are read for the question: as the signed-in user's own upload, in memory, with per-file and per-question byte and character caps (`AssistantQBitConfig.attachments`). The type is sniffed from content; executables, archives and unknown binary data are refused. Text, Markdown and JSON are decoded with charset detection, PDF page text is extracted (PDFBox via QQQ core, no scripts, host font mapper preserved), CSV/TSV/XLSX become a header + rows + count preview, and PNG/JPEG/GIF/WebP images go to vision models as image parts.
+- Images are decoded with ImageIO before provider submission, rejecting truncated data and decoder warnings. A 16-million aggregate pixel / 100-frame budget bounds decoded data; original bytes are forwarded. WebP uses the explicit TwelveMonkeys decoder.
+- Content reaches the model in an untrusted `uploaded_file` block (delimiters neutralized) in the question's user message; the system prompt says it is data, never instructions. A file that cannot be read adds a notice to the answer and never fails the turn. In HIPAA mode attachments count as PHI.
+- Provider SPI: `ModelPart.Type.IMAGE` (`mediaType`, base64 `data`), mapped by the Anthropic, Bedrock and OpenAI-compatible providers. Claude models report vision. `ModelPart.toString()` never includes text or image data.
+- `GET /config`: `features.attachments`, `limits.maxAttachmentBytes`, `limits.maxAttachments`, `limits.attachmentTypes`.
+- System prompt: when `create_record` / `update_record` are offered, the model proposes the change instead of saying it cannot create records.
 
 ## Unreleased - Optional provider health
 

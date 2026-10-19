@@ -195,14 +195,16 @@ public final class AssistantSpecs
       Map<String, Schema> rs = new LinkedHashMap<>();
       rs.put("AssistantProfileV1", object("How the assistant presents itself (admin-configured; text only, it never changes access).",
          "displayName", string("The assistant's name."), "icon", string("A Material icon name."), "greeting", string("Shown on a new conversation.").withNullable(true),
-         "starterPrompts", array(string(null), "Suggested first questions.")));
+         "starterPrompts", array(string(null), "Up to three suggested first questions in total: permitted configured questions first, then generated questions. Table, row and field access are checked on every request.")));
       rs.put("AssistantConfigResponseV1", object("Whether the assistant is available to this user, and how.",
          "enabled", bool("Whether the panel may be used."),
          "reason", string("Why not: DISABLED, NO_PERMISSION, NOT_CONFIGURED or KILL_SWITCH.").withNullable(true),
          "shortcut", string("Keyboard shortcut, e.g. mod+j."),
          "model", string("The model that answers."),
-         "limits", freeObject("maxTurnSeconds and maxToolCallsPerTurn."),
-         "features", freeObject("writes: some table allows writes; pendingActions: writes wait for confirmation."),
+         "limits", freeObject("maxTurnSeconds and maxToolCallsPerTurn. When features.attachments is true also maxAttachmentBytes (the largest file read, in bytes), "
+            + "maxAttachments (files per question) and attachmentTypes (human-readable type names for the file picker hint; images only when the model reads them)."),
+         "features", freeObject("writes: some table allows writes; pendingActions: writes wait for confirmation; attachments: files uploaded with POST /qqq/v1/uploads "
+            + "and sent as pageContext.attachments [{uploadRef, fileName}] are read for the question."),
          "profile", ref("AssistantProfileV1"),
          "conversationsTable", string("Since 1.6.0: the table name of the user's conversations (assistant_conversation) for the standard table UI "
             + "(manage, archive, restore and delete); present only when this session may query that table.").withNullable(true)));
@@ -961,7 +963,8 @@ public final class AssistantSpecs
       @Override
       protected Schema defineRequestBodySchema()
       {
-         return (object("The user's text and the page context hint.", "text", string("The user's message."), "pageContext", freeObject("Where the user is in the app."), "concurrency", string("supersede or concurrent (case-insensitive); defaults to the host configuration.")));
+         return (object("The user's text and the page context hint.", "text", string("The user's message."), "pageContext", freeObject("Where the user is in the app: route, tableName, recordId, filter, selectedIds, and attachments (at most 5 of {uploadRef, fileName}, "
+            + "the user's own uploads; their content is read for this question, as untrusted data)."), "concurrency", string("supersede or concurrent (case-insensitive); defaults to the host configuration.")));
       }
 
 
