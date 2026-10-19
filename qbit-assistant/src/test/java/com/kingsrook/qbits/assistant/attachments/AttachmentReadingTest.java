@@ -43,6 +43,68 @@ class AttachmentReadingTest
 {
 
    /*******************************************************************************
+    ** Real codecs accept complete images and reject truncated pixel data.
+    *******************************************************************************/
+   @Test
+   void validatesImageDataAndDecodeBudgets() throws Exception
+   {
+      for(byte[] bytes : List.of(TestFiles.png(10, 20), TestFiles.jpeg(10, 20), TestFiles.gif(10, 20), TestFiles.webp()))
+      {
+         AttachmentType type = AttachmentSniffer.sniff(bytes, "image").type();
+         assertThat(ImageInfo.size(bytes, type)).isEqualTo(new ImageInfo.Size(10, 20));
+         byte[] cut = java.util.Arrays.copyOf(bytes, Math.min(24, bytes.length / 2));
+         assertThatThrownBy(() -> ImageInfo.size(cut, type)).isInstanceOf(AttachmentException.class);
+      }
+      assertThatThrownBy(() -> ImageInfo.size(TestFiles.png(20, 10), AttachmentType.PNG, 15)).hasMessageContaining("20 x 10 pixels");
+      assertThatThrownBy(() -> ImageInfo.size(TestFiles.png(4001, 4000), AttachmentType.PNG)).hasMessageContaining("decoded pixels");
+      assertThat(ImageInfo.size(TestFiles.animatedGif(2), AttachmentType.GIF)).isEqualTo(new ImageInfo.Size(2, 2));
+      assertThatThrownBy(() -> ImageInfo.size(TestFiles.animatedGif(101), AttachmentType.GIF)).hasMessageContaining("frames");
+   }
+
+
+
+   /*******************************************************************************
+    ** A header without image data must never reach a vision provider.
+    *******************************************************************************/
+   @Test
+   void truncatedImageBecomesPerFileNotice()
+   {
+      byte[] header = new byte[] { (byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10, 0, 0, 0, 13, 'I', 'H', 'D', 'R', 0, 0, 0, 1, 0, 0, 0, 1 };
+      AttachmentService service = new AttachmentService(new AssistantAttachments(), (ref, max) -> new AttachmentSource.Upload("broken.png", header));
+      AttachmentService.Prepared prepared = service.prepare(context("broken"), new ModelCapabilities().withVision(true));
+      assertThat(prepared.filesRead()).isZero();
+      assertThat(prepared.notices()).hasSize(1);
+      assertThat(prepared.parts()).noneMatch(part -> part.getType() == ModelPart.Type.IMAGE);
+   }
+
+
+
+   /*******************************************************************************
+    ** Attachment extraction must preserve the host's configured font mapper.
+    *******************************************************************************/
+   @Test
+   void pdfPreservesHostFontMapper() throws Exception
+   {
+      byte[] pdf = TestFiles.pdf("Hello");
+      org.apache.pdfbox.pdmodel.font.FontMapper original = org.apache.pdfbox.pdmodel.font.FontMappers.instance();
+      org.apache.pdfbox.pdmodel.font.FontMapper host = (org.apache.pdfbox.pdmodel.font.FontMapper) java.lang.reflect.Proxy.newProxyInstance(
+         getClass().getClassLoader(), new Class<?>[] { org.apache.pdfbox.pdmodel.font.FontMapper.class },
+         (proxy, method, args) -> method.invoke(original, args));
+      try
+      {
+         org.apache.pdfbox.pdmodel.font.FontMappers.set(host);
+         PdfText.extract(pdf, 1, 100, 1024 * 1024);
+         assertThat(org.apache.pdfbox.pdmodel.font.FontMappers.instance()).isSameAs(host);
+      }
+      finally
+      {
+         org.apache.pdfbox.pdmodel.font.FontMappers.set(original);
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Sniff with no name hint.
     *******************************************************************************/
    private static AttachmentType type(byte[] bytes, String name) throws AttachmentException
@@ -95,7 +157,7 @@ class AttachmentReadingTest
       assertThat(type(TestFiles.png(10, 20), "photo.jpg")).isEqualTo(AttachmentType.PNG);
       assertThat(type(TestFiles.jpeg(10, 20), "x")).isEqualTo(AttachmentType.JPEG);
       assertThat(type(TestFiles.gif(10, 20), "x")).isEqualTo(AttachmentType.GIF);
-      assertThat(type(TestFiles.webp(10, 20), "x")).isEqualTo(AttachmentType.WEBP);
+      assertThat(type(TestFiles.webp(), "x")).isEqualTo(AttachmentType.WEBP);
       assertThat(type(TestFiles.xlsx(List.of(List.of("a", "b"))), "book.csv")).isEqualTo(AttachmentType.XLSX);
    }
 
@@ -230,7 +292,7 @@ class AttachmentReadingTest
       assertThat(ImageInfo.size(TestFiles.png(640, 480), AttachmentType.PNG)).isEqualTo(new ImageInfo.Size(640, 480));
       assertThat(ImageInfo.size(TestFiles.jpeg(800, 600), AttachmentType.JPEG)).isEqualTo(new ImageInfo.Size(800, 600));
       assertThat(ImageInfo.size(TestFiles.gif(32, 16), AttachmentType.GIF)).isEqualTo(new ImageInfo.Size(32, 16));
-      assertThat(ImageInfo.size(TestFiles.webp(1920, 1080), AttachmentType.WEBP)).isEqualTo(new ImageInfo.Size(1920, 1080));
+      assertThat(ImageInfo.size(TestFiles.webp(), AttachmentType.WEBP)).isEqualTo(new ImageInfo.Size(10, 20));
       assertThatThrownBy(() -> ImageInfo.size(new byte[] { (byte) 0xFF, (byte) 0xD8, (byte) 0xFF }, AttachmentType.JPEG)).hasMessageContaining("header");
       assertThatThrownBy(() -> ImageInfo.size(new byte[] { 0x01 }, AttachmentType.PNG)).hasMessageContaining("header");
    }

@@ -17,16 +17,30 @@
 package com.kingsrook.qbits.assistant.attachments;
 
 
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.util.Iterator;
+import java.util.concurrent.atomic.AtomicBoolean;
+import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.MemoryCacheImageInputStream;
+
+
 /*******************************************************************************
- ** Image width and height read from the header bytes only (PNG IHDR, GIF
- ** screen descriptor, JPEG start-of-frame, WebP VP8/VP8L/VP8X). The image is
- ** never decoded on the server.
+ ** Validate images with ImageIO before sending them to a provider. Dimensions
+ ** and the total frame pixel budget are checked before each decode. Readers
+ ** use memory-only input, preserve host ImageIO settings, and are disposed.
  *******************************************************************************/
 public final class ImageInfo
 {
+   static final long MAX_DECODED_PIXELS = 16_000_000L;
+   static final int MAX_FRAMES = 100;
+
+
 
    /*******************************************************************************
-    ** Width and height in pixels.
+    ** Image width and height.
     *******************************************************************************/
    public record Size(Integer width, Integer height)
    {
@@ -44,133 +58,80 @@ public final class ImageInfo
 
 
    /*******************************************************************************
-    ** The size of a sniffed image; throws when the header is unreadable.
+    ** Validate with the default dimension limit.
     *******************************************************************************/
    public static Size size(byte[] bytes, AttachmentType type) throws AttachmentException
    {
-      Size size = switch(type)
-      {
-         case PNG -> bytes.length >= 24 && TextDecoding.startsWithAt(bytes, 12, 'I', 'H', 'D', 'R') ? new Size(int32be(bytes, 16), int32be(bytes, 20)) : null;
-         case GIF -> bytes.length >= 10 ? new Size(int16le(bytes, 6), int16le(bytes, 8)) : null;
-         case JPEG -> jpeg(bytes);
-         case WEBP -> webp(bytes);
-         default -> null;
-      };
-      if(size == null || size.width() <= 0 || size.height() <= 0)
-      {
-         throw (new AttachmentException("the image header could not be read (the file may be damaged)."));
-      }
-      return (size);
+      return (size(bytes, type, 8000));
    }
 
 
 
    /*******************************************************************************
-    ** Walk the JPEG markers to the first start-of-frame (SOF0-SOF15 except
-    ** DHT, JPG and DAC).
+    ** Decode every frame within a bounded pixel budget. Decoder warnings are
+    ** rejected because JPEG readers may otherwise silently repair truncation.
     *******************************************************************************/
-   private static Size jpeg(byte[] bytes)
+   public static Size size(byte[] bytes, AttachmentType type, int maxDimension) throws AttachmentException
    {
-      int i = 2;
-      while(i + 9 < bytes.length)
+      try(MemoryCacheImageInputStream input = new MemoryCacheImageInputStream(new ByteArrayInputStream(bytes)))
       {
-         if((bytes[i] & 0xFF) != 0xFF)
+         Iterator<ImageReader> readers = ImageIO.getImageReaders(input);
+         if(!readers.hasNext())
          {
-            return (null);
+            throw (new AttachmentException("the image header could not be read (the file may be damaged)."));
          }
-         int marker = bytes[i + 1] & 0xFF;
-         if(marker == 0xFF)
+         ImageReader reader = readers.next();
+         try
          {
-            i++;
-            continue;
+            reader.setInput(input, false, true);
+            if(!reader.getFormatName().equalsIgnoreCase(type.name()))
+            {
+               throw (new AttachmentException("the image format does not match its content."));
+            }
+            AtomicBoolean warning = new AtomicBoolean();
+            reader.addIIOReadWarningListener((source, message) -> warning.set(true));
+            int frames = reader.getNumImages(true);
+            if(frames < 1 || frames > MAX_FRAMES)
+            {
+               throw (new AttachmentException("the image has too many frames to read safely (at most " + MAX_FRAMES + ")."));
+            }
+            long pixels = 0;
+            Size first = null;
+            for(int frame = 0; frame < frames; frame++)
+            {
+               int width = reader.getWidth(frame);
+               int height = reader.getHeight(frame);
+               if(width <= 0 || height <= 0 || width > maxDimension || height > maxDimension)
+               {
+                  throw (new AttachmentException("the image is " + width + " x " + height + " pixels; the most is " + maxDimension
+                     + " on either side. Resize it and attach it again."));
+               }
+               pixels += (long) width * height;
+               if(pixels > MAX_DECODED_PIXELS)
+               {
+                  throw (new AttachmentException("the image has too many decoded pixels to read safely. Resize it and attach it again."));
+               }
+               BufferedImage decoded = reader.read(frame);
+               if(decoded == null || warning.get())
+               {
+                  throw (new AttachmentException("the image could not be decoded completely (the file may be damaged)."));
+               }
+               decoded.flush();
+               if(first == null)
+               {
+                  first = new Size(width, height);
+               }
+            }
+            return (first);
          }
-         if(marker == 0xD8 || (marker >= 0xD0 && marker <= 0xD7) || marker == 0x01)
+         finally
          {
-            i += 2;
-            continue;
+            reader.dispose();
          }
-         int length = int16be(bytes, i + 2);
-         if(marker >= 0xC0 && marker <= 0xCF && marker != 0xC4 && marker != 0xC8 && marker != 0xCC)
-         {
-            return (new Size(int16be(bytes, i + 7), int16be(bytes, i + 5)));
-         }
-         if(length < 2)
-         {
-            return (null);
-         }
-         i += 2 + length;
       }
-      return (null);
-   }
-
-
-
-   /*******************************************************************************
-    ** The WebP chunk after "RIFF....WEBP".
-    *******************************************************************************/
-   private static Size webp(byte[] bytes)
-   {
-      if(bytes.length < 30)
+      catch(IOException | RuntimeException e)
       {
-         return (null);
+         throw (new AttachmentException("the image header or image data could not be read (the file may be damaged).", e));
       }
-      if(TextDecoding.startsWithAt(bytes, 12, 'V', 'P', '8', ' '))
-      {
-         return (new Size(int16le(bytes, 26) & 0x3FFF, int16le(bytes, 28) & 0x3FFF));
-      }
-      if(TextDecoding.startsWithAt(bytes, 12, 'V', 'P', '8', 'L'))
-      {
-         int b0 = bytes[21] & 0xFF;
-         int b1 = bytes[22] & 0xFF;
-         int b2 = bytes[23] & 0xFF;
-         int b3 = bytes[24] & 0xFF;
-         return (new Size(1 + (((b1 & 0x3F) << 8) | b0), 1 + (((b3 & 0x0F) << 10) | (b2 << 2) | ((b1 & 0xC0) >> 6))));
-      }
-      if(TextDecoding.startsWithAt(bytes, 12, 'V', 'P', '8', 'X'))
-      {
-         return (new Size(1 + int24le(bytes, 24), 1 + int24le(bytes, 27)));
-      }
-      return (null);
    }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   private static int int32be(byte[] b, int i)
-   {
-      return (((b[i] & 0xFF) << 24) | ((b[i + 1] & 0xFF) << 16) | ((b[i + 2] & 0xFF) << 8) | (b[i + 3] & 0xFF));
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   private static int int16be(byte[] b, int i)
-   {
-      return (((b[i] & 0xFF) << 8) | (b[i + 1] & 0xFF));
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   private static int int16le(byte[] b, int i)
-   {
-      return ((b[i] & 0xFF) | ((b[i + 1] & 0xFF) << 8));
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   private static int int24le(byte[] b, int i)
-   {
-      return ((b[i] & 0xFF) | ((b[i + 1] & 0xFF) << 8) | ((b[i + 2] & 0xFF) << 16));
-   }
-
 }

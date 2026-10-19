@@ -18,20 +18,10 @@ package com.kingsrook.qbits.assistant.attachments;
 
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.Writer;
-import org.apache.fontbox.FontBoxFont;
-import org.apache.fontbox.ttf.TTFParser;
-import org.apache.fontbox.ttf.TrueTypeFont;
 import org.apache.pdfbox.io.MemoryUsageSetting;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
-import org.apache.pdfbox.pdmodel.font.CIDFontMapping;
-import org.apache.pdfbox.pdmodel.font.FontMapper;
-import org.apache.pdfbox.pdmodel.font.FontMappers;
-import org.apache.pdfbox.pdmodel.font.FontMapping;
-import org.apache.pdfbox.pdmodel.font.PDCIDSystemInfo;
-import org.apache.pdfbox.pdmodel.font.PDFontDescriptor;
 import org.apache.pdfbox.text.PDFTextStripper;
 
 
@@ -40,22 +30,11 @@ import org.apache.pdfbox.text.PDFTextStripper;
  ** on the classpath through qqq-backend-core). Only the page text is read:
  ** nothing is rendered, no JavaScript or form action runs (PDFBox has no
  ** script engine), embedded files and external references are never opened,
- ** and the document is parsed in main memory only (never a temp file), with
- ** a memory cap.
- **
- ** PDFBox looks up fonts a PDF does not embed by scanning the host's system
- ** fonts and writing a font cache file. Text extraction does not need real
- ** glyphs, so the first extraction installs a font mapper that always answers
- ** with PDFBox's bundled fallback font: no disk scan, no cache file.
+ ** and document scratch storage is memory-only and capped. This is not a
+ ** whole-process heap limit. The host's configured font mapper is preserved.
  *******************************************************************************/
 public final class PdfText
 {
-   private static final String FALLBACK_FONT = "/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf";
-
-   private static volatile boolean fontMapperInstalled = false;
-
-
-
    /*******************************************************************************
     ** The text of the first pages and whether anything was cut.
     *******************************************************************************/
@@ -79,7 +58,6 @@ public final class PdfText
     *******************************************************************************/
    public static Extracted extract(byte[] bytes, int maxPages, int maxChars, long maxMemoryBytes) throws AttachmentException
    {
-      installFontMapper();
       try(PDDocument document = PDDocument.load(bytes, "", null, null, MemoryUsageSetting.setupMainMemoryOnly(maxMemoryBytes)))
       {
          if(document.isEncrypted())
@@ -112,104 +90,6 @@ public final class PdfText
       catch(IOException | RuntimeException e)
       {
          throw (new AttachmentException("the PDF could not be parsed (it may be damaged or too complex).", e));
-      }
-   }
-
-
-
-   /*******************************************************************************
-    ** Install the no-scan font mapper once.
-    *******************************************************************************/
-   static void installFontMapper()
-   {
-      if(!fontMapperInstalled)
-      {
-         synchronized(PdfText.class)
-         {
-            if(!fontMapperInstalled)
-            {
-               FontMappers.set(new FallbackOnlyFontMapper());
-               fontMapperInstalled = true;
-            }
-         }
-      }
-   }
-
-
-
-   /*******************************************************************************
-    ** Answers every font lookup with the bundled fallback font (a fallback
-    ** mapping), loaded once from the PDFBox jar.
-    *******************************************************************************/
-   static class FallbackOnlyFontMapper implements FontMapper
-   {
-      private volatile TrueTypeFont fallback;
-
-
-
-      /*******************************************************************************
-       ** The bundled font.
-       *******************************************************************************/
-      private TrueTypeFont fallback()
-      {
-         TrueTypeFont font = fallback;
-         if(font == null)
-         {
-            synchronized(this)
-            {
-               font = fallback;
-               if(font == null)
-               {
-                  try(InputStream stream = PDFTextStripper.class.getResourceAsStream(FALLBACK_FONT))
-                  {
-                     if(stream == null)
-                     {
-                        throw (new IllegalStateException("PDFBox fallback font is missing"));
-                     }
-                     font = new TTFParser().parse(stream);
-                     fallback = font;
-                  }
-                  catch(IOException e)
-                  {
-                     throw (new IllegalStateException("PDFBox fallback font could not be read", e));
-                  }
-               }
-            }
-         }
-         return (font);
-      }
-
-
-
-      /*******************************************************************************
-       ** A TrueType substitute.
-       *******************************************************************************/
-      @Override
-      public FontMapping<TrueTypeFont> getTrueTypeFont(String baseFont, PDFontDescriptor fontDescriptor)
-      {
-         return (new FontMapping<>(fallback(), true));
-      }
-
-
-
-      /*******************************************************************************
-       ** A Type 1 / CFF substitute.
-       *******************************************************************************/
-      @Override
-      public FontMapping<FontBoxFont> getFontBoxFont(String baseFont, PDFontDescriptor fontDescriptor)
-      {
-         return (new FontMapping<>(fallback(), true));
-      }
-
-
-
-      /*******************************************************************************
-       ** A CID font substitute.
-       *******************************************************************************/
-      @Override
-      public CIDFontMapping getCIDFont(String baseFont, PDFontDescriptor fontDescriptor, PDCIDSystemInfo cidSystemInfo)
-      {
-         return (new CIDFontMapping(null, fallback(), true));
       }
    }
 

@@ -60,6 +60,26 @@ class AttachmentTurnTest extends BaseAssistantTest
 {
 
    /*******************************************************************************
+    ** A malformed image does not poison the provider request or the turn.
+    *******************************************************************************/
+   @Test
+   void malformedImageStillCompletesWithReadableText() throws Exception
+   {
+      byte[] broken = java.util.Arrays.copyOf(TestFiles.png(10, 20), 24);
+      String image = upload(qInstance, EDITOR, "broken.png", broken);
+      String text = upload(qInstance, EDITOR, "fine.txt", "Readable companion file");
+      provider.withCapabilities(new ModelCapabilities().withVision(true));
+      provider.thenText("I can read the text file.");
+      TurnRunner.Outcome outcome = runner.run(EDITOR, null, "summarize these", attachments(image, "broken.png", text, "fine.txt"));
+      assertThat(outcome.end()).containsEntry("status", "COMPLETE");
+      assertThat(notices(outcome)).singleElement().satisfies(n -> assertThat(n).contains("broken.png could not be read"));
+      assertThat(newest(provider.getRequests().get(0)).getParts()).noneMatch(p -> p.getType() == ModelPart.Type.IMAGE);
+      assertThat(JsonUtils.toJson(provider.getRequests())).contains("Readable companion file");
+   }
+
+
+
+   /*******************************************************************************
     ** Core uploads on the fixture's memory backend.
     *******************************************************************************/
    @BeforeEach
