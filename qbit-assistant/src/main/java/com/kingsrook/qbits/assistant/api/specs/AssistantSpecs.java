@@ -201,8 +201,10 @@ public final class AssistantSpecs
          "reason", string("Why not: DISABLED, NO_PERMISSION, NOT_CONFIGURED or KILL_SWITCH.").withNullable(true),
          "shortcut", string("Keyboard shortcut, e.g. mod+j."),
          "model", string("The model that answers."),
-         "limits", freeObject("maxTurnSeconds and maxToolCallsPerTurn."),
-         "features", freeObject("writes: some table allows writes; pendingActions: writes wait for confirmation."),
+         "limits", freeObject("maxTurnSeconds and maxToolCallsPerTurn. When features.attachments is true also maxAttachmentBytes (the largest file read, in bytes), "
+            + "maxAttachments (files per question) and attachmentTypes (human-readable type names for the file picker hint; images only when the model reads them)."),
+         "features", freeObject("writes: some table allows writes; pendingActions: writes wait for confirmation; attachments: files uploaded with POST /qqq/v1/uploads "
+            + "and sent as pageContext.attachments [{uploadRef, fileName}] are read for the question."),
          "profile", ref("AssistantProfileV1")));
       rs.put("AssistantConversationV1", object("One of the user's own conversations.",
          "id", integer(null), "title", string(null).withNullable(true), "status", string("ACTIVE or ARCHIVED."), "pinned", bool(null),
@@ -957,7 +959,8 @@ public final class AssistantSpecs
       @Override
       protected Schema defineRequestBodySchema()
       {
-         return (object("The user's text and the page context hint.", "text", string("The user's message."), "pageContext", freeObject("Where the user is in the app."), "concurrency", string("supersede or concurrent (case-insensitive); defaults to the host configuration.")));
+         return (object("The user's text and the page context hint.", "text", string("The user's message."), "pageContext", freeObject("Where the user is in the app: route, tableName, recordId, filter, selectedIds, and attachments (at most 5 of {uploadRef, fileName}, "
+            + "the user's own uploads; their content is read for this question, as untrusted data)."), "concurrency", string("supersede or concurrent (case-insensitive); defaults to the host configuration.")));
       }
 
 

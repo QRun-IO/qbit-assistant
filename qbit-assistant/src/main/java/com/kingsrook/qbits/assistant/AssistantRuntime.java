@@ -29,6 +29,8 @@ import java.util.concurrent.Executors;
 import java.util.regex.Pattern;
 import com.kingsrook.qbits.assistant.access.AccessExplainer;
 import com.kingsrook.qbits.assistant.access.DataAccessService;
+import com.kingsrook.qbits.assistant.attachments.AttachmentService;
+import com.kingsrook.qbits.assistant.attachments.UploadRefSource;
 import com.kingsrook.qbits.assistant.engine.BudgetService;
 import com.kingsrook.qbits.assistant.engine.ClientErrors;
 import com.kingsrook.qbits.assistant.engine.ContextBuilder;
@@ -79,6 +81,7 @@ public class AssistantRuntime
    private final RagService ragService;
    private final KnowledgeTool knowledgeTool;
    private final BulkLoadTools bulkLoadTools;
+   private final AttachmentService attachmentService;
 
    private final QInstance                        qInstance;
    private final AssistantQBitConfig              config;
@@ -182,6 +185,7 @@ public class AssistantRuntime
       this.ragService = new RagService(this, vectors);
       this.knowledgeTool = new KnowledgeTool(this, ragService, vectors);
       this.bulkLoadTools = new BulkLoadTools(qInstance, dataAccessService, config.getBulkLoadRunner());
+      this.attachmentService = new AttachmentService(config.getAttachments(), new UploadRefSource());
       this.contextBuilder = new ContextBuilder(config, kernel, toolbox).withKnowledgeTool(knowledgeTool).withBulkLoadTools(bulkLoadTools);
       if(Boolean.TRUE.equals(config.getRegisterShutdownHook()))
       {
@@ -581,6 +585,16 @@ public class AssistantRuntime
    {
       return (scheduledTurn);
    }
+
+
+   /*******************************************************************************
+    ** Reads the files attached to a question (as the signed-in user).
+    *******************************************************************************/
+   public AttachmentService getAttachmentService()
+   {
+      return (attachmentService);
+   }
+
 
 
    /*******************************************************************************

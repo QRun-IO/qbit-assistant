@@ -32,6 +32,8 @@ import com.kingsrook.qbits.assistant.AssistantRuntime;
 import com.kingsrook.qbits.assistant.AssistantSecurity;
 import com.kingsrook.qbits.assistant.access.AccessExplainer;
 import com.kingsrook.qbits.assistant.access.DataAccessMode;
+import com.kingsrook.qbits.assistant.attachments.AttachmentService;
+import com.kingsrook.qbits.assistant.attachments.UploadRefSource;
 import com.kingsrook.qbits.assistant.engine.AbandonedTurns;
 import com.kingsrook.qbits.assistant.engine.ClientErrors;
 import com.kingsrook.qbits.assistant.engine.ContextBuilder;
@@ -52,6 +54,7 @@ import com.kingsrook.qbits.assistant.model.AssistantTurn;
 import com.kingsrook.qbits.assistant.model.AssistantTurnEvent;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
 import com.kingsrook.qbits.assistant.persistence.TranscriptRedactor;
+import com.kingsrook.qbits.assistant.spi.ModelCapabilities;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
 import com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadTools;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolOutcome;
@@ -150,8 +153,16 @@ public class AssistantApi
       }
       result.put("shortcut", config.getShortcut());
       result.put("model", reason == null ? activeProvider().model() : config.getModels().getMainModel());
-      result.put("limits", Map.of("maxTurnSeconds", config.getMaxTurnSeconds(), "maxToolCallsPerTurn", config.getMaxToolCallsPerTurn()));
-      result.put("features", Map.of("writes", runtime.getToolbox().anyWritableTable(), "pendingActions", true));
+      boolean             attachments = attachmentsSupported();
+      Map<String, Object> limits      = new LinkedHashMap<>(Map.of("maxTurnSeconds", config.getMaxTurnSeconds(), "maxToolCallsPerTurn", config.getMaxToolCallsPerTurn()));
+      if(attachments)
+      {
+         limits.put("maxAttachmentBytes", config.getAttachments().getMaxFileBytes());
+         limits.put("maxAttachments", ContextBuilder.MAX_ATTACHMENTS);
+         limits.put("attachmentTypes", AttachmentService.typeLabels(reason == null && visionModel()));
+      }
+      result.put("limits", limits);
+      result.put("features", Map.of("writes", runtime.getToolbox().anyWritableTable(), "pendingActions", true, "attachments", attachments));
       ProfileService.Persona persona = runtime.getProfileService().persona(session, null);
       Map<String, Object>    profile = new LinkedHashMap<>();
       profile.put("displayName", persona.displayName());
@@ -491,21 +502,6 @@ public class AssistantApi
          RunningTurn runningTurn = new RunningTurn(turn.getId(), userId);
          TurnEngine  engine      = new TurnEngine(runtime, session, userId, conversation, userMessage, assistantMessage, turn, text, pageContext, policy, runningTurn,
             budget.softExceeded() ? budget.message() : null).withCredentials(credentials).withTranscript(transcript);
-         try
-         {
-            if(config.getRunTracker() != null)
-            {
-               ///////////////////////////////////////////////////////////////////
-               // never the conversation title: it is derived from the prompt  //
-               ///////////////////////////////////////////////////////////////////
-               runningTurn.setTrackingId(config.getRunTracker().start(userId, turn.getId(), conversationId, "Assistant answer"));
-               config.getRunTracker().onCancel(runningTurn.getTrackingId(), () -> runningTurn.cancel("USER"));
-            }
-         }
-         catch(Exception e)
-         {
-            LOG.warn("Assistant run tracker start failed", logPair("turnId", turn.getId()));
-         }
          runtime.register(runningTurn);
          if(!runningTurn.isFinalized())
          {
@@ -930,6 +926,13 @@ public class AssistantApi
       {
          rs.put("href", outcome.getAuditHref());
       }
+      else if(!result.getRecordRefs().isEmpty() && TurnEngine.isAppHref(result.getRecordRefs().get(0).getHref()))
+      {
+         //////////////////////////////////////////////////////////////
+         // e.g. the job a confirmed bulk load launched              //
+         //////////////////////////////////////////////////////////////
+         rs.put("href", result.getRecordRefs().get(0).getHref());
+      }
       return (rs);
    }
 
@@ -1193,6 +1196,33 @@ public class AssistantApi
    private static String truncate(String value, int max)
    {
       return (value == null || value.length() <= max ? value : value.substring(0, max));
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether files attached in the panel are read: enabled in the QBit config
+    ** and uploads configured in core (an uploads storage table).
+    *******************************************************************************/
+   private boolean attachmentsSupported()
+   {
+      return (Boolean.TRUE.equals(config.getAttachments().getEnabled()) && UploadRefSource.configured());
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the model that answers reads images.
+    *******************************************************************************/
+   private boolean visionModel() throws QException
+   {
+      ProviderService.Active active = activeProvider();
+      if(active == null || active.provider() == null)
+      {
+         return (false);
+      }
+      ModelCapabilities capabilities = active.provider().getCapabilities(active.model());
+      return (capabilities != null && Boolean.TRUE.equals(capabilities.getVision()));
    }
 
 

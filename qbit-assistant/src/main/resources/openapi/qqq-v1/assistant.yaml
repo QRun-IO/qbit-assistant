@@ -186,12 +186,17 @@ components:
           type: "string"
         limits:
           additionalProperties: true
-          description: "maxTurnSeconds and maxToolCallsPerTurn."
+          description: "maxTurnSeconds and maxToolCallsPerTurn. When features.attachments\
+            \ is true also maxAttachmentBytes (the largest file read, in bytes), maxAttachments\
+            \ (files per question) and attachmentTypes (human-readable type names\
+            \ for the file picker hint; images only when the model reads them)."
           type: "object"
         features:
           additionalProperties: true
           description: "writes: some table allows writes; pendingActions: writes wait\
-            \ for confirmation."
+            \ for confirmation; attachments: files uploaded with POST /qqq/v1/uploads\
+            \ and sent as pageContext.attachments [{uploadRef, fileName}] are read\
+            \ for the question."
           type: "object"
         profile:
           $ref: "#/components/schemas/AssistantProfileV1"
@@ -936,7 +941,10 @@ paths:
                   type: "string"
                 pageContext:
                   additionalProperties: true
-                  description: "Where the user is in the app."
+                  description: "Where the user is in the app: route, tableName, recordId,\
+                    \ filter, selectedIds, and attachments (at most 5 of {uploadRef,\
+                    \ fileName}, the user's own uploads; their content is read for\
+                    \ this question, as untrusted data)."
                   type: "object"
                 concurrency:
                   description: "supersede or concurrent (case-insensitive); defaults\

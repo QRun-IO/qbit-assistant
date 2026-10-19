@@ -2,7 +2,23 @@
 
 ## Unreleased - Starter prompts follow access
 
-- `profile.starterPrompts` in `GET /assistant/config` is built per user: up to three prompts generated from tables the user can read that have rows (UI API metadata and count as the user, bounded, cached five minutes, stable for the day), plus configured prompts only when tagged with tables the user can read (`[table] prompt`, `[none] prompt`; untagged lines are dropped). See UPGRADE.md.
+- `profile.starterPrompts` in `GET /assistant/config` is built per user: up to three prompts generated from tables the user can read that have rows (UI API metadata and count as the user, bounded, current access rechecked on every request, stable order for the day), plus configured prompts only when tagged with tables the user can read (`[table] prompt`, `[none] prompt`; untagged lines are dropped). See UPGRADE.md.
+
+## Unreleased - Chat turns are not jobs
+
+- Ordinary chat turns no longer create core tracking jobs: they stay out of the Jobs tray and Jobs tables, and core no longer sends an "Assistant answer finished" notification for every answer. Crash safety is unchanged; it comes from the assistant's own turn table (leased, heartbeated `assistant_turn` rows, seq-numbered `assistant_turn_event` replay and the abandoned-turn sweep). The panel's Stop (`POST /turns/{id}/cancel`) is unchanged.
+- Removed the `AssistantRunTracker` SPI, `JobTrackingRunTracker` and `AssistantQBitConfig.withRunTracker` / `setRunTracker` / `getRunTracker` (see UPGRADE.md).
+- Real multi-step work stays a real job: a confirmed bulk load still launches through `POST /qqq/v1/processes/{p}/jobs`, and its tool result now carries `jobHref` (the job's `/app` link) next to `jobId`, plus a record ref to the job; the confirm response's `href` links to the job.
+- Scheduled task notifications (output mode Notification or Both) now go through core `QAlerts.notify` (category Job, the owner as the only audience, a link to the conversation, success/error/warning severity by run status), replacing the reflective call into an older alerts SPI that no longer matched.
+
+## Unreleased - Attachments
+
+- Files attached in the panel (`pageContext.attachments`, core upload refs) are read for the question: as the signed-in user's own upload, in memory, with per-file and per-question byte and character caps (`AssistantQBitConfig.attachments`). The type is sniffed from content; executables, archives and unknown binary data are refused. Text, Markdown and JSON are decoded with charset detection, PDF page text is extracted (PDFBox via QQQ core, no scripts, host font mapper preserved), CSV/TSV/XLSX become a header + rows + count preview, and PNG/JPEG/GIF/WebP images go to vision models as image parts.
+- Images are decoded with ImageIO before provider submission, rejecting truncated data and decoder warnings. A 16-million aggregate pixel / 100-frame budget bounds decoded data; original bytes are forwarded. WebP uses the explicit TwelveMonkeys decoder.
+- Content reaches the model in an untrusted `uploaded_file` block (delimiters neutralized) in the question's user message; the system prompt says it is data, never instructions. A file that cannot be read adds a notice to the answer and never fails the turn. In HIPAA mode attachments count as PHI.
+- Provider SPI: `ModelPart.Type.IMAGE` (`mediaType`, base64 `data`), mapped by the Anthropic, Bedrock and OpenAI-compatible providers. Claude models report vision. `ModelPart.toString()` never includes text or image data.
+- `GET /config`: `features.attachments`, `limits.maxAttachmentBytes`, `limits.maxAttachments`, `limits.attachmentTypes`.
+- System prompt: when `create_record` / `update_record` are offered, the model proposes the change instead of saying it cannot create records.
 
 ## Unreleased - Optional provider health
 

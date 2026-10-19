@@ -241,6 +241,22 @@ public class TurnClassification
 
 
    /*******************************************************************************
+    ** Files attached to the question are user content of unknown
+    ** classification. In HIPAA mode they are treated as PHI (so they only ever
+    ** reach HIPAA-eligible providers, and the conversation stays PHI); otherwise
+    ** they follow the rules for the user's own text, which raises nothing.
+    *******************************************************************************/
+   public void attachedFiles(boolean hipaaMode)
+   {
+      if(hipaaMode)
+      {
+         classification = Classifications.max(classification, DataClassification.PHI);
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** The maximum classification so far.
     *******************************************************************************/
    public DataClassification getClassification()

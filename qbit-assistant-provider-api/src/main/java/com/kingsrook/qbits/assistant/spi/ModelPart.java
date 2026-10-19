@@ -22,8 +22,10 @@ import java.util.Map;
 
 
 /*******************************************************************************
- ** One content part of a model message: text, a tool_use (assistant) or a
- ** tool_result (user). Tool results that report a failure set isError.
+ ** One content part of a model message: text, a tool_use (assistant), a
+ ** tool_result (user) or an image (user; base64 data plus its media type).
+ ** Tool results that report a failure set isError. toString never includes
+ ** text or image data, so a part can never leak content into a log line.
  *******************************************************************************/
 public class ModelPart
 {
@@ -34,7 +36,8 @@ public class ModelPart
    {
       TEXT,
       TOOL_USE,
-      TOOL_RESULT
+      TOOL_RESULT,
+      IMAGE
    }
 
    private Type                type;
@@ -43,6 +46,8 @@ public class ModelPart
    private String              toolName;
    private Map<String, Object> input;
    private Boolean             isError = false;
+   private String              mediaType;
+   private String              data;
 
 
 
@@ -72,6 +77,30 @@ public class ModelPart
    public static ModelPart toolResult(String toolUseId, String content, boolean isError)
    {
       return (new ModelPart().withType(Type.TOOL_RESULT).withToolUseId(toolUseId).withText(content).withIsError(isError));
+   }
+
+
+
+   /*******************************************************************************
+    ** An image part: the media type (image/png, image/jpeg, image/gif or
+    ** image/webp) and the base64-encoded bytes. Only for models whose
+    ** capabilities report vision.
+    *******************************************************************************/
+   public static ModelPart image(String mediaType, String base64Data)
+   {
+      return (new ModelPart().withType(Type.IMAGE).withMediaType(mediaType).withData(base64Data));
+   }
+
+
+
+   /*******************************************************************************
+    ** The kind and sizes only; never the text, input or image data.
+    *******************************************************************************/
+   @Override
+   public String toString()
+   {
+      return ("ModelPart{type=" + type + ", textChars=" + (text == null ? 0 : text.length()) + ", toolName=" + toolName
+         + (mediaType == null ? "" : ", mediaType=" + mediaType) + (data == null ? "" : ", dataChars=" + data.length()) + "}");
    }
 
 
@@ -257,6 +286,69 @@ public class ModelPart
    public ModelPart withIsError(Boolean isError)
    {
       this.isError = isError;
+      return (this);
+   }
+
+
+
+
+   /*******************************************************************************
+    ** Getter for mediaType
+    *******************************************************************************/
+   public String getMediaType()
+   {
+      return (this.mediaType);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for mediaType
+    *******************************************************************************/
+   public void setMediaType(String mediaType)
+   {
+      this.mediaType = mediaType;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for mediaType
+    *******************************************************************************/
+   public ModelPart withMediaType(String mediaType)
+   {
+      this.mediaType = mediaType;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for data (base64)
+    *******************************************************************************/
+   public String getData()
+   {
+      return (this.data);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for data (base64)
+    *******************************************************************************/
+   public void setData(String data)
+   {
+      this.data = data;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for data (base64)
+    *******************************************************************************/
+   public ModelPart withData(String data)
+   {
+      this.data = data;
       return (this);
    }
 

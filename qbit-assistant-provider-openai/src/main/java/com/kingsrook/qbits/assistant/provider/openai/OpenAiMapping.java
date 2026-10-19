@@ -94,7 +94,32 @@ final class OpenAiMapping
             }
             if(part.getType() == ModelPart.Type.TEXT)
             {
-               current.put("content", current.path("content").asText() + part.getText());
+               if(current.get("content").isArray())
+               {
+                  ((ArrayNode) current.get("content")).addObject().put("type", "text").put("text", part.getText());
+               }
+               else
+               {
+                  current.put("content", current.path("content").asText() + part.getText());
+               }
+            }
+            else if(part.getType() == ModelPart.Type.IMAGE)
+            {
+               ///////////////////////////////////////////////////////////////////
+               // a message with an image switches to the content-part array    //
+               // form; messages without images keep the plain string content   //
+               ///////////////////////////////////////////////////////////////////
+               if(!current.get("content").isArray())
+               {
+                  String    text  = current.path("content").asText();
+                  ArrayNode array = current.putArray("content");
+                  if(!text.isEmpty())
+                  {
+                     array.addObject().put("type", "text").put("text", text);
+                  }
+               }
+               ((ArrayNode) current.get("content")).addObject().put("type", "image_url").putObject("image_url")
+                  .put("url", "data:" + part.getMediaType() + ";base64," + part.getData());
             }
             else if(part.getType() == ModelPart.Type.TOOL_USE)
             {

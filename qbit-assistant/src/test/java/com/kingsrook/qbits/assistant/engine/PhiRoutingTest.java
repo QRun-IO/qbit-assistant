@@ -34,12 +34,14 @@ import com.kingsrook.qbits.assistant.processes.AssistantRetentionStep;
 import com.kingsrook.qbits.assistant.spi.AssistantModelProvider;
 import com.kingsrook.qbits.assistant.spi.AssistantProviderType;
 import com.kingsrook.qbits.assistant.testing.AssistantTestFixture;
+import com.kingsrook.qbits.assistant.testing.AttachmentTestSupport;
 import com.kingsrook.qbits.assistant.testing.BaseAssistantTest;
 import com.kingsrook.qbits.assistant.testing.TurnRunner;
 import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -254,6 +256,66 @@ class PhiRoutingTest extends BaseAssistantTest
       });
       assertThat(runner.run(AssistantTestFixture.EDITOR, "read patients").errorCode()).isEqualTo("PHI_BLOCKED");
       assertThat(provider.getRequests()).hasSize(1);
+   }
+
+
+
+   /*******************************************************************************
+    ** In HIPAA mode an attached file is PHI: it goes only to an eligible
+    ** provider, and the conversation stays PHI, so a later turn after HIPAA
+    ** mode is turned off still never reaches a non-eligible provider.
+    *******************************************************************************/
+   @Test
+   void attachmentsArePhiInHipaaMode() throws Exception
+   {
+      AttachmentTestSupport.enableUploads(qInstance);
+      providers(true);
+      config.setHipaaMode(true);
+      String ref = AttachmentTestSupport.upload(qInstance, AssistantTestFixture.EDITOR, "visit.txt", "ATTACHED_CHART_SENTINEL");
+      provider.thenText("summary");
+      TurnRunner.Outcome outcome = runner.run(AssistantTestFixture.EDITOR, null, "summarize this", AttachmentTestSupport.attachments(ref, "visit.txt"));
+      assertThat(outcome.errorCode()).isNull();
+      assertThat(JsonUtils.toJson(provider.getRequests())).contains("ATTACHED_CHART_SENTINEL");
+      admin();
+      assertThat(config.getRuntime().getStore().getConversation(AssistantTestFixture.EDITOR, outcome.conversationId()).getMaxClassification()).isEqualTo("PHI");
+      assertThat(audits()).singleElement().satisfies(audit ->
+      {
+         assertThat(audit.getClassification()).isEqualTo("PHI");
+         assertThat(audit.getDecision()).isEqualTo("ALLOWED");
+      });
+
+      config.setHipaaMode(false);
+      admin();
+      AssistantStore store = config.getRuntime().getStore();
+      for(AssistantProvider row : store.query(AssistantProvider.TABLE_NAME, new QQueryFilter(), AssistantProvider.class))
+      {
+         store.updateFields(AssistantProvider.TABLE_NAME, new QRecord().withValue("id", row.getId()).withValue("isDefault", !Boolean.TRUE.equals(row.getHipaaEligible())));
+      }
+      config.getRuntime().getProviderService().invalidate();
+      QContext.clear();
+      TurnRunner.Outcome followup = runner.run(AssistantTestFixture.EDITOR, outcome.conversationId(), "and now?", null);
+      assertThat(followup.errorCode()).isEqualTo("PHI_BLOCKED");
+      assertThat(provider.getRequests()).hasSize(1);
+   }
+
+
+
+   /*******************************************************************************
+    ** Outside HIPAA mode an attachment is user content: it raises nothing and
+    ** may go to a non-eligible provider.
+    *******************************************************************************/
+   @Test
+   void attachmentsFollowTheNormalRulesOutsideHipaaMode() throws Exception
+   {
+      AttachmentTestSupport.enableUploads(qInstance);
+      providers(false);
+      String ref = AttachmentTestSupport.upload(qInstance, AssistantTestFixture.EDITOR, "notes.txt", "plain notes");
+      provider.thenText("ok");
+      TurnRunner.Outcome outcome = runner.run(AssistantTestFixture.EDITOR, null, "read this", AttachmentTestSupport.attachments(ref, "notes.txt"));
+      assertThat(outcome.errorCode()).isNull();
+      assertThat(JsonUtils.toJson(provider.getRequests())).contains("plain notes");
+      admin();
+      assertThat(config.getRuntime().getStore().getTurn(AssistantTestFixture.EDITOR, outcome.turnId()).getClassification()).isEqualTo("PUBLIC");
    }
 
 
