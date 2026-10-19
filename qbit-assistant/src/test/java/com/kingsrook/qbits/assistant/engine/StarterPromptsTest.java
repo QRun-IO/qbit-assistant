@@ -19,12 +19,14 @@ package com.kingsrook.qbits.assistant.engine;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import com.kingsrook.qbits.assistant.testing.AssistantTestFixture;
+import com.kingsrook.qbits.assistant.api.AssistantApi;
+import com.kingsrook.qbits.assistant.model.AssistantDataAccess;
 import com.kingsrook.qbits.assistant.testing.BaseAssistantTest;
 import com.kingsrook.qbits.assistant.testing.UiApiTestServer;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
@@ -32,6 +34,8 @@ import com.kingsrook.qbits.assistant.uiapi.UiApiCall;
 import com.kingsrook.qbits.assistant.uiapi.UiApiGateway;
 import com.kingsrook.qbits.assistant.uiapi.UiApiResult;
 import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
+import com.kingsrook.qqq.backend.core.actions.ai.AiExposure;
+import com.kingsrook.qqq.backend.core.actions.ai.AiFieldMetaData;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
@@ -43,7 +47,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /*******************************************************************************
  ** The per-user starter prompts: built only from tables the user can read and
- ** that have rows, stable for the day, cached, and never failing.
+ ** that have rows, stable for the day, freshly authorized, and never failing.
  *******************************************************************************/
 class StarterPromptsTest extends BaseAssistantTest
 {
@@ -183,10 +187,10 @@ class StarterPromptsTest extends BaseAssistantTest
 
 
    /*******************************************************************************
-    ** The answer is cached per user for a few minutes, and rebuilt after.
+    ** Every request rechecks access with bounded tool calls.
     *******************************************************************************/
    @Test
-   void cachedBriefly() throws Exception
+   void accessIsRecheckedWithBoundedCalls() throws Exception
    {
       UiApiTestServer.serve(qInstance, config);
       UiApiGateway  delegate = config.getRuntime().getUiApiGateway();
@@ -214,51 +218,12 @@ class StarterPromptsTest extends BaseAssistantTest
             return (delegate.invoke(call));
          }
       };
-      Instant[] now = { NOW };
-      Clock clock = new Clock()
-      {
-         /*******************************************************************************
-          **
-          *******************************************************************************/
-         @Override
-         public ZoneId getZone()
-         {
-            return (ZoneOffset.UTC);
-         }
-
-
-
-         /*******************************************************************************
-          **
-          *******************************************************************************/
-         @Override
-         public Clock withZone(ZoneId zone)
-         {
-            return (this);
-         }
-
-
-
-         /*******************************************************************************
-          **
-          *******************************************************************************/
-         @Override
-         public Instant instant()
-         {
-            return (now[0]);
-         }
-      };
-      StarterPrompts starter = new StarterPrompts(config.getRuntime().getToolbox(), clock);
+      StarterPrompts starter = new StarterPrompts(config.getRuntime().getToolbox(), Clock.fixed(NOW, ZoneOffset.UTC));
 
       starter.forUser(context(AssistantTestFixture.EDITOR, counting), AssistantTestFixture.EDITOR, List.of(), false);
       int firstCalls = calls.get();
       assertThat(firstCalls).isBetween(2, 1 + StarterPrompts.MAX_COUNT_CALLS + StarterPrompts.MAX_DESCRIBE_CALLS);
 
-      now[0] = NOW.plusSeconds(60);
-      starter.forUser(context(AssistantTestFixture.EDITOR, counting), AssistantTestFixture.EDITOR, List.of(), false);
-      assertThat(calls.get()).isEqualTo(firstCalls);
-
-      now[0] = NOW.plusSeconds(StarterPrompts.CACHE_TTL.toSeconds() + 1);
       starter.forUser(context(AssistantTestFixture.EDITOR, counting), AssistantTestFixture.EDITOR, List.of(), false);
       assertThat(calls.get()).isEqualTo(firstCalls * 2);
 
@@ -286,6 +251,113 @@ class StarterPromptsTest extends BaseAssistantTest
       assertThat(StarterPrompts.plural("Blog Post")).isEqualTo("blog posts");
       assertThat(StarterPrompts.plural("Category")).isEqualTo("categories");
       assertThat(StarterPrompts.plural("Media")).isEqualTo("media");
+   }
+
+
+
+   /*******************************************************************************
+    ** Configured prompts and generated prompts share the same total limit.
+    *******************************************************************************/
+   @Test
+   void configuredPromptsRespectTotalLimit() throws Exception
+   {
+      StarterPrompts starter = prompts(NOW);
+      List<String> result = starter.forUser(context(AssistantTestFixture.LIMITED, config.getRuntime().getUiApiGateway()), AssistantTestFixture.LIMITED,
+         List.of("[blog_post] Denied", "[none] One", "[none] Two", "[media] Denied too", "[none] Three", "[none] Four"), false);
+      assertThat(result).containsExactly("One", "Two", "Three");
+   }
+
+
+
+   /*******************************************************************************
+    ** A data-access update invalidates eligibility on the next config request.
+    *******************************************************************************/
+   @Test
+   void nextConfigReflectsRevokedDataAccess() throws Exception
+   {
+      UiApiTestServer.serve(qInstance, config);
+      context(AssistantTestFixture.ANALYST, config.getRuntime().getUiApiGateway());
+      AssistantApi api = new AssistantApi(config.getRuntime(), QContext.getQSession());
+      assertThat(String.valueOf(((Map<?, ?>) api.config().get("profile")).get("starterPrompts"))).contains("daily stats");
+
+      QContext.init(qInstance, AssistantTestFixture.sessionFor(AssistantTestFixture.ADMIN));
+      config.getRuntime().getStore().insert(new AssistantDataAccess().withObjectType(AssistantDataAccess.TYPE_TABLE)
+         .withObjectName("analytics_daily_stat").withMode("NONE"));
+      config.getRuntime().getDataAccessService().invalidate();
+      context(AssistantTestFixture.ANALYST, config.getRuntime().getUiApiGateway());
+      assertThat(((Map<?, ?>) api.config().get("profile")).get("starterPrompts")).isEqualTo(List.of());
+   }
+
+
+
+   /*******************************************************************************
+    ** A user cannot retain suggestions from an earlier permission context.
+    *******************************************************************************/
+   @Test
+   void changedSessionPermissionsAndToolPolicyAreRechecked() throws Exception
+   {
+      StarterPrompts starter = prompts(NOW);
+      UiApiGateway gateway = config.getRuntime().getUiApiGateway();
+      assertThat(starter.forUser(context(AssistantTestFixture.EDITOR, gateway), "same-user", List.of(), false)).isNotEmpty();
+      assertThat(starter.forUser(context(AssistantTestFixture.LIMITED, gateway), "same-user", List.of("[blog_post] Old access"), false)).isEmpty();
+
+      UiApiToolbox.Context allowed = context(AssistantTestFixture.ANALYST, gateway);
+      assertThat(starter.forUser(allowed, "same-user", List.of(), false)).isNotEmpty();
+      UiApiToolbox.Context denied = new UiApiToolbox.Context(allowed.sessionUUID(), null, gateway,
+         new PolicyService.ToolPolicy(true, Set.of(UiApiToolbox.DESCRIBE_TABLE), 50, true), null);
+      assertThat(starter.forUser(denied, "same-user", List.of(), false)).isEmpty();
+   }
+
+
+
+   /*******************************************************************************
+    ** Removing the history tool immediately removes its generated suggestions.
+    *******************************************************************************/
+   @Test
+   void historyAvailabilityIsNotCached() throws Exception
+   {
+      StarterPrompts starter = prompts(NOW);
+      UiApiToolbox.Context context = context(AssistantTestFixture.ANALYST, config.getRuntime().getUiApiGateway());
+      assertThat(String.join("|", starter.forUser(context, AssistantTestFixture.ANALYST, List.of(), true))).contains("What changed");
+      assertThat(String.join("|", starter.forUser(context, AssistantTestFixture.ANALYST, List.of(), false))).doesNotContain("What changed");
+   }
+
+
+
+   /*******************************************************************************
+    ** A date field that becomes private no longer supports recency prompts.
+    *******************************************************************************/
+   @Test
+   void revokedDateFieldRemovesRecencyPrompts() throws Exception
+   {
+      StarterPrompts starter = prompts(NOW);
+      UiApiToolbox.Context context = context(AssistantTestFixture.ANALYST, config.getRuntime().getUiApiGateway());
+      String described = config.getRuntime().getToolbox().execute(context, "describe-date-fixture", UiApiToolbox.DESCRIBE_TABLE,
+         Map.of("table", "analytics_daily_stat")).getResult().getModelContent();
+      assertThat(described).contains("\"name\":\"statDate\"", "\"type\":\"DATE\"");
+      assertThat(String.join("|", starter.forUser(context, AssistantTestFixture.ANALYST, List.of(), false))).contains("recent");
+      for(String name : List.of("statDate", "createDate", "modifyDate"))
+      {
+         qInstance.getTable("analytics_daily_stat").getField(name)
+            .withSupplementalMetaData(new AiFieldMetaData().withExposure(AiExposure.NONE));
+      }
+      assertThat(starter.forUser(context, AssistantTestFixture.ANALYST, List.of(), false)).containsExactly("How many daily stats are there?");
+   }
+
+
+
+   /*******************************************************************************
+    ** Tables with no currently visible rows are removed on the next request.
+    *******************************************************************************/
+   @Test
+   void changedVisibleRowsAreRechecked() throws Exception
+   {
+      StarterPrompts starter = prompts(NOW);
+      UiApiGateway gateway = config.getRuntime().getUiApiGateway();
+      assertThat(starter.forUser(context(AssistantTestFixture.ANALYST, gateway), AssistantTestFixture.ANALYST, List.of(), false)).isNotEmpty();
+      QContext.init(qInstance, AssistantTestFixture.sessionFor("seeder-0"));
+      new DeleteAction().execute(new DeleteInput("analytics_daily_stat").withQueryFilter(new QQueryFilter()));
+      assertThat(starter.forUser(context(AssistantTestFixture.ANALYST, gateway), AssistantTestFixture.ANALYST, List.of(), false)).isEmpty();
    }
 
 }

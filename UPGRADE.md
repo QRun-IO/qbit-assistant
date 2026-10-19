@@ -9,7 +9,8 @@
   through the assistant and that have rows (a count as the user), using the table
   labels, a date field when present, and "What changed in ... this week?" when the
   change-history tool is offered. The pick is stable for the user for the day and
-  cached for five minutes. Any failure yields no generated prompts.
+  rechecked on every request, including table, row and field access. Generation
+  uses bounded UI API calls and no model calls. Any failure yields no generated prompts.
 - A configured starter prompt (Assistant Profile > Starter prompts, one per line) is
   shown only when it declares the tables it needs and the user can read all of
   them. Declare them with a leading tag: `[blog_post] Which posts are drafts?`, or

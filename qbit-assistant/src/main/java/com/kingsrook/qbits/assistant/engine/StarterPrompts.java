@@ -31,7 +31,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
 import com.kingsrook.qbits.assistant.uiapi.UiApiCall;
@@ -60,7 +59,7 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
  ** dropped, because there is no way to tell which tables it mentions.
  **
  ** The result is stable for a user for the day (the pick is seeded by user id
- ** and date, not random), cached for a few minutes, bounded in work and time,
+ ** and date, not random), rechecked on every request, bounded in work and time,
  ** and never throws: any failure yields no generated prompts.
  *******************************************************************************/
 public class StarterPrompts
@@ -72,26 +71,22 @@ public class StarterPrompts
    public static final int      MAX_DESCRIBE_CALLS = 3;
    public static final Duration CALL_TIMEOUT       = Duration.ofSeconds(3);
    public static final Duration TOTAL_BUDGET       = Duration.ofSeconds(8);
-   public static final Duration CACHE_TTL          = Duration.ofMinutes(5);
-   public static final Duration FAILURE_TTL        = Duration.ofSeconds(30);
    public static final String   NO_TABLE_TAG       = "none";
 
-   private static final int MAX_CACHED_USERS = 2000;
    private static final int MAX_PROMPT_CHARS = 200;
 
    private static final ObjectMapper MAPPER = new ObjectMapper();
 
    private final UiApiToolbox               toolbox;
    private final Clock                      clock;
-   private final Map<String, CachedPrompts> cache = new ConcurrentHashMap<>();
 
 
 
    /*******************************************************************************
     ** What was worked out for a user: the tables they may read and the
-    ** generated prompts, good until the expiry and only for that day.
+    ** generated prompts for this request.
     *******************************************************************************/
-   private record CachedPrompts(Instant expires, LocalDate day, Set<String> readableTables, List<String> generated)
+   private record PromptSelection(Set<String> readableTables, List<String> generated)
    {
    }
 
@@ -131,7 +126,7 @@ public class StarterPrompts
     ** generated ones up to {@link #MAX_PROMPTS} in all. Never throws.
     **
     ** @param context where the calls run: the user's session and the policy
-    ** @param userId the cache key; with none, there are no generated prompts
+    ** @param userId the daily selection seed; with none, there are no generated prompts
     ** @param configured the profile's starter lines, tags included
     ** @param historyOffered whether the change-history tool is available
     *******************************************************************************/
@@ -139,10 +134,14 @@ public class StarterPrompts
    {
       try
       {
-         CachedPrompts entry = entryFor(context, userId, historyOffered);
+         PromptSelection entry = entryFor(context, userId, historyOffered);
          List<String>  rs    = new ArrayList<>();
          for(String line : configured == null ? List.<String>of() : configured)
          {
+            if(rs.size() >= MAX_PROMPTS)
+            {
+               break;
+            }
             String prompt = allowedConfigured(line, entry.readableTables());
             if(prompt != null)
             {
@@ -169,52 +168,26 @@ public class StarterPrompts
 
 
    /*******************************************************************************
-    ** Drop every cached entry (tests, or after a change to data access).
+    ** Recompute eligibility with the current session, permissions and data.
+    ** Table, row and field access may change without a new session or user id.
     *******************************************************************************/
-   public void invalidate()
+   private PromptSelection entryFor(UiApiToolbox.Context context, String userId, boolean historyOffered)
    {
-      cache.clear();
-   }
-
-
-
-   /*******************************************************************************
-    ** The cached entry, or a fresh one.
-    *******************************************************************************/
-   private CachedPrompts entryFor(UiApiToolbox.Context context, String userId, boolean historyOffered)
-   {
-      Instant   now   = clock.instant();
+      Instant now = clock.instant();
       LocalDate today = LocalDate.ofInstant(now, ZoneOffset.UTC);
       if(userId == null)
       {
-         return (new CachedPrompts(now, today, Set.of(), List.of()));
+         return (new PromptSelection(Set.of(), List.of()));
       }
-      CachedPrompts cached = cache.get(userId);
-      if(cached != null && cached.expires().isAfter(now) && cached.day().equals(today))
-      {
-         return (cached);
-      }
-
-      CachedPrompts fresh;
       try
       {
-         fresh = build(limited(context), userId, today, now, historyOffered);
+         return (build(limited(context), userId, today, now, historyOffered));
       }
       catch(RuntimeException e)
       {
          LOG.warn("Could not read what the user can access for starter prompts", e);
-         fresh = new CachedPrompts(now.plus(FAILURE_TTL), today, Set.of(), List.of());
+         return (new PromptSelection(Set.of(), List.of()));
       }
-      if(cache.size() >= MAX_CACHED_USERS)
-      {
-         cache.values().removeIf(c -> !c.expires().isAfter(now));
-         if(cache.size() >= MAX_CACHED_USERS)
-         {
-            cache.clear();
-         }
-      }
-      cache.put(userId, fresh);
-      return (fresh);
    }
 
 
@@ -255,11 +228,11 @@ public class StarterPrompts
    /*******************************************************************************
     ** Work out the readable tables and the generated prompts.
     *******************************************************************************/
-   private CachedPrompts build(UiApiToolbox.Context context, String userId, LocalDate today, Instant now, boolean historyOffered)
+   private PromptSelection build(UiApiToolbox.Context context, String userId, LocalDate today, Instant now, boolean historyOffered)
    {
-      Instant        deadline = now.plus(TOTAL_BUDGET);
+      Instant deadline = now.plus(TOTAL_BUDGET);
       List<TableRef> readable = readableTables(context);
-      Set<String>    names    = new LinkedHashSet<>();
+      Set<String> names = new LinkedHashSet<>();
       readable.forEach(t -> names.add(t.name()));
 
       List<TableRef> order = new ArrayList<>(readable);
@@ -280,7 +253,7 @@ public class StarterPrompts
          }
       }
 
-      return (new CachedPrompts(now.plus(CACHE_TTL), today, names, promptsFor(withRows, userId, today, historyOffered)));
+      return (new PromptSelection(names, promptsFor(withRows, userId, today, historyOffered)));
    }
 
 
