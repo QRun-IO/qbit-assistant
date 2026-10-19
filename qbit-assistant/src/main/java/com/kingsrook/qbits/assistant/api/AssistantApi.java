@@ -480,21 +480,6 @@ public class AssistantApi
          RunningTurn runningTurn = new RunningTurn(turn.getId(), userId);
          TurnEngine  engine      = new TurnEngine(runtime, session, userId, conversation, userMessage, assistantMessage, turn, text, pageContext, policy, runningTurn,
             budget.softExceeded() ? budget.message() : null).withCredentials(credentials).withTranscript(transcript);
-         try
-         {
-            if(config.getRunTracker() != null)
-            {
-               ///////////////////////////////////////////////////////////////////
-               // never the conversation title: it is derived from the prompt  //
-               ///////////////////////////////////////////////////////////////////
-               runningTurn.setTrackingId(config.getRunTracker().start(userId, turn.getId(), conversationId, "Assistant answer"));
-               config.getRunTracker().onCancel(runningTurn.getTrackingId(), () -> runningTurn.cancel("USER"));
-            }
-         }
-         catch(Exception e)
-         {
-            LOG.warn("Assistant run tracker start failed", logPair("turnId", turn.getId()));
-         }
          runtime.register(runningTurn);
          if(!runningTurn.isFinalized())
          {
@@ -918,6 +903,13 @@ public class AssistantApi
       if(outcome.getAuditHref() != null)
       {
          rs.put("href", outcome.getAuditHref());
+      }
+      else if(!result.getRecordRefs().isEmpty() && TurnEngine.isAppHref(result.getRecordRefs().get(0).getHref()))
+      {
+         //////////////////////////////////////////////////////////////
+         // e.g. the job a confirmed bulk load launched              //
+         //////////////////////////////////////////////////////////////
+         rs.put("href", result.getRecordRefs().get(0).getHref());
       }
       return (rs);
    }

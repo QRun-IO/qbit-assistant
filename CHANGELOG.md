@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased - Chat turns are not jobs
+
+- Ordinary chat turns no longer create core tracking jobs: they stay out of the Jobs tray and Jobs tables, and core no longer sends an "Assistant answer finished" notification for every answer. Crash safety is unchanged; it comes from the assistant's own turn table (leased, heartbeated `assistant_turn` rows, seq-numbered `assistant_turn_event` replay and the abandoned-turn sweep). The panel's Stop (`POST /turns/{id}/cancel`) is unchanged.
+- Removed the `AssistantRunTracker` SPI, `JobTrackingRunTracker` and `AssistantQBitConfig.withRunTracker` / `setRunTracker` / `getRunTracker` (see UPGRADE.md).
+- Real multi-step work stays a real job: a confirmed bulk load still launches through `POST /qqq/v1/processes/{p}/jobs`, and its tool result now carries `jobHref` (the job's `/app` link) next to `jobId`, plus a record ref to the job; the confirm response's `href` links to the job.
+- Scheduled task notifications (output mode Notification or Both) now go through core `QAlerts.notify` (category Job, the owner as the only audience, a link to the conversation, success/error/warning severity by run status), replacing the reflective call into an older alerts SPI that no longer matched.
+
 ## Unreleased - Attachments
 
 - Files attached in the panel (`pageContext.attachments`, core upload refs) are read for the question: as the signed-in user's own upload, in memory, with per-file and per-question byte and character caps (`AssistantQBitConfig.attachments`). The type is sniffed from content; executables, archives and unknown binary data are refused. Text, Markdown and JSON are decoded with charset detection, PDF page text is extracted (PDFBox via QQQ core, no scripts, host font mapper preserved), CSV/TSV/XLSX become a header + rows + count preview, and PNG/JPEG/GIF/WebP images go to vision models as image parts.
