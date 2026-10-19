@@ -30,6 +30,7 @@ import com.kingsrook.qbits.assistant.model.AssistantProvider;
 import com.kingsrook.qbits.assistant.provider.anthropic.AnthropicModelProvider;
 import com.kingsrook.qbits.assistant.spi.ModelEventListener;
 import com.kingsrook.qbits.assistant.spi.ModelMessage;
+import com.kingsrook.qbits.assistant.spi.ModelPart;
 import com.kingsrook.qbits.assistant.spi.ModelProviderException;
 import com.kingsrook.qbits.assistant.spi.ModelRequest;
 import com.kingsrook.qbits.assistant.spi.ModelToolDefinition;
@@ -133,6 +134,37 @@ class BedrockContractTest
             assertThat(body.path("max_tokens").asInt()).isEqualTo(1024);
             assertThat(body.path("messages").get(0).path("role").asText()).isEqualTo("user");
             assertThat(body.path("tools").get(0).path("strict").asBoolean()).isTrue();
+         }
+         finally
+         {
+            provider.close();
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** An image part reaches Bedrock as an Anthropic base64 image block.
+    *******************************************************************************/
+   @Test
+   void imagePartContract() throws Exception
+   {
+      try(CloudProviderTestServer server = new CloudProviderTestServer())
+      {
+         server.enqueue(200, "application/vnd.amazon.eventstream", BedrockEventStream.encode(CloudProviderTestServer.anthropicEvents(MODEL, "A chart.", null)));
+         AnthropicModelProvider provider = provider(server);
+         try
+         {
+            ModelRequest request = new ModelRequest().withModel(MODEL).withMaxTokens(256).withMessages(List.of(new ModelMessage().withRole(ModelMessage.Role.USER)
+               .withPart(ModelPart.image("image/jpeg", "/9j/4AAQ")).withPart(ModelPart.text("Describe it"))));
+            assertThat(provider.getCapabilities(MODEL).getVision()).isTrue();
+            provider.stream(request, delta -> {}).await(Duration.ofSeconds(10));
+            var block = JSON.readTree(server.requests.getFirst().body()).path("messages").get(0).path("content").get(0);
+            assertThat(block.path("type").asText()).isEqualTo("image");
+            assertThat(block.path("source").path("type").asText()).isEqualTo("base64");
+            assertThat(block.path("source").path("media_type").asText()).isEqualTo("image/jpeg");
+            assertThat(block.path("source").path("data").asText()).isEqualTo("/9j/4AAQ");
          }
          finally
          {

@@ -238,6 +238,20 @@ public class ContextBuilder
    public ModelRequest build(QSession session, String model, String effort, List<AssistantMessage> history, String userText, Map<String, Object> pageContext, PolicyService.ToolPolicy toolPolicy,
       String profileInstructions, String turnId)
    {
+      return (build(session, model, effort, history, userText, pageContext, toolPolicy, profileInstructions, turnId, List.of()));
+   }
+
+
+
+   /*******************************************************************************
+    ** The request with the parts of the files attached to this question
+    ** (AttachmentService: untrusted uploaded_file blocks and image parts). They
+    ** go into the new user message, before the user's text - after both cache
+    ** breakpoints of the system prompt, so the shared prefix never changes.
+    *******************************************************************************/
+   public ModelRequest build(QSession session, String model, String effort, List<AssistantMessage> history, String userText, Map<String, Object> pageContext, PolicyService.ToolPolicy toolPolicy,
+      String profileInstructions, String turnId, List<ModelPart> attachmentParts)
+   {
       ModelRequest request = new ModelRequest()
          .withModel(model)
          .withEffort(effort)
@@ -272,6 +286,10 @@ public class ContextBuilder
       }
 
       ModelMessage newMessage = new ModelMessage().withRole(ModelMessage.Role.USER);
+      if(attachmentParts != null)
+      {
+         attachmentParts.forEach(newMessage::withPart);
+      }
       newMessage.withPart(ModelPart.text(userText));
       if(pageContext != null && !pageContext.isEmpty())
       {
