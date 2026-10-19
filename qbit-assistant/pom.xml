@@ -45,7 +45,7 @@
       <dependency>
          <groupId>com.twelvemonkeys.imageio</groupId>
          <artifactId>imageio-webp</artifactId>
-         <version>3.12.0</version>
+         <version>3.15.3</version>
       </dependency>
 
       <!-- The REST + SSE routes (/qqq/v1/assistant/*). Hosts that serve QQQ -->
@@ -84,7 +84,7 @@
       <dependency>
          <groupId>com.h2database</groupId>
          <artifactId>h2</artifactId>
-         <version>2.3.232</version>
+         <version>2.5.252</version>
          <scope>test</scope>
       </dependency>
       <!-- ...through real Liquibase (the version kof22 runs), so preconditions and bookkeeping are exercised. -->
