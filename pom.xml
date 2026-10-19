@@ -25,9 +25,9 @@
       <maven.compiler.target>21</maven.compiler.target>
       <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
       <jacoco.version>0.8.15</jacoco.version>
-      <anthropic.version>2.71.0</anthropic.version>
+      <anthropic.version>2.73.0</anthropic.version>
       <archunit.version>1.5.1</archunit.version>
-      <jackson.version>2.21.7</jackson.version>
+      <jackson.version>2.22.3</jackson.version>
       <!-- optional email delivery; qbit-email from Maven Central -->
       <qbit-email.version>0.1.0-RC.2</qbit-email.version>
       <!-- live evals call the real API; run them with -Dtest.excludedGroups= -Dgroups=live -->
@@ -37,7 +37,7 @@
    <parent>
       <groupId>com.kingsrook</groupId>
       <artifactId>qbit-build-parent</artifactId>
-      <version>2.1.1</version>
+      <version>2.1.2</version>
    </parent>
 
    <groupId>com.kingsrook.qbits</groupId>
@@ -157,12 +157,12 @@
             <plugin>
                <groupId>org.apache.maven.plugins</groupId>
                <artifactId>maven-surefire-plugin</artifactId>
-               <version>3.5.4</version>
+               <version>3.6.0</version>
             </plugin>
             <plugin>
                <groupId>org.apache.maven.plugins</groupId>
                <artifactId>maven-jar-plugin</artifactId>
-               <version>3.4.2</version>
+               <version>3.5.1</version>
             </plugin>
             <plugin>
                <groupId>org.jacoco</groupId>
@@ -176,7 +176,7 @@
          <plugin>
             <groupId>org.codehaus.mojo</groupId>
             <artifactId>flatten-maven-plugin</artifactId>
-            <version>1.7.3</version>
+            <version>1.8.0</version>
             <configuration>
                <updatePomFile>true</updatePomFile>
                <flattenMode>resolveCiFriendliesOnly</flattenMode>
