@@ -19,10 +19,12 @@ package com.kingsrook.qbits.assistant;
 
 import java.util.ArrayList;
 import java.util.List;
+import com.kingsrook.qbits.assistant.metadata.AssistantAccessPermissionChecker;
 import com.kingsrook.qbits.assistant.metadata.AssistantAdminPermissionChecker;
 import com.kingsrook.qbits.assistant.metadata.AssistantInstanceMetaData;
 import com.kingsrook.qbits.assistant.metadata.AssistantMetaDataBuilder;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
+import com.kingsrook.qbits.assistant.model.AssistantMessage;
 import com.kingsrook.qbits.assistant.model.AssistantPolicy;
 import com.kingsrook.qbits.assistant.model.AssistantUsageDaily;
 import com.kingsrook.qbits.assistant.testing.AssistantTestFixture;
@@ -78,7 +80,8 @@ class AssistantQBitProducerTest extends BaseAssistantTest
          RecordSecurityLock lock = table.getRecordSecurityLocks().get(0);
          assertThat(lock.getFieldName()).isEqualTo("userId");
          assertThat(lock.getSecurityKeyType()).isEqualTo(AssistantQBitConfig.DEFAULT_OWNER_KEY_TYPE);
-         assertThat(table.getPermissionRules().getCustomPermissionChecker().getName()).isEqualTo(AssistantAdminPermissionChecker.class.getName());
+         assertThat(table.getPermissionRules().getCustomPermissionChecker().getName()).isEqualTo(AssistantConversation.TABLE_NAME.equals(name)
+            ? AssistantAccessPermissionChecker.class.getName() : AssistantAdminPermissionChecker.class.getName());
       }
       assertThat(qInstance.getTable(AssistantUsageDaily.TABLE_NAME).getRecordSecurityLocks().get(0).getNullValueBehavior()).isEqualTo(RecordSecurityLock.NullValueBehavior.ALLOW);
       assertThat(qInstance.getTable(AssistantPolicy.TABLE_NAME).getRecordSecurityLocks()).isNullOrEmpty();
@@ -163,7 +166,7 @@ class AssistantQBitProducerTest extends BaseAssistantTest
       new QInstanceEnricher(host).enrich();
 
       List<MetaDataWithPermissionRules> adminObjects = List.of(host.getApp(AssistantMetaDataBuilder.APP_NAME),
-         host.getProcess(AssistantMetaDataBuilder.RETENTION_PROCESS_NAME), host.getTable(AssistantPolicy.TABLE_NAME), host.getTable(AssistantConversation.TABLE_NAME));
+         host.getProcess(AssistantMetaDataBuilder.RETENTION_PROCESS_NAME), host.getTable(AssistantPolicy.TABLE_NAME), host.getTable(AssistantMessage.TABLE_NAME));
 
       QContext.init(host, AssistantTestFixture.sessionFor(AssistantTestFixture.EDITOR));
       for(MetaDataWithPermissionRules object : adminObjects)
@@ -177,6 +180,15 @@ class AssistantQBitProducerTest extends BaseAssistantTest
       {
          assertThat(PermissionsHelper.getPermissionCheckResult(new MetaDataInput(), object)).as(object.getName()).isEqualTo(PermissionCheckResult.ALLOW);
       }
+      QContext.clear();
+
+      ////////////////////////////////////////////////////////////////////////
+      // the conversation table is for every assistant user (own rows only) //
+      ////////////////////////////////////////////////////////////////////////
+      QContext.init(host, AssistantTestFixture.sessionFor(AssistantTestFixture.EDITOR));
+      assertThat(PermissionsHelper.getPermissionCheckResult(new MetaDataInput(), host.getTable(AssistantConversation.TABLE_NAME))).isEqualTo(PermissionCheckResult.ALLOW);
+      QContext.init(host, AssistantTestFixture.sessionFor(AssistantTestFixture.NO_ACCESS));
+      assertThat(PermissionsHelper.getPermissionCheckResult(new MetaDataInput(), host.getTable(AssistantConversation.TABLE_NAME))).isEqualTo(PermissionCheckResult.DENY_HIDE);
       QContext.clear();
    }
 

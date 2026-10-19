@@ -20,6 +20,7 @@ package com.kingsrook.qbits.assistant.metadata;
 import java.util.ArrayList;
 import java.util.List;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
+import com.kingsrook.qbits.assistant.api.AssistantConversationCustomizer;
 import com.kingsrook.qbits.assistant.health.AssistantHealthWidget;
 import com.kingsrook.qbits.assistant.home.AssistantAccessWidget;
 import com.kingsrook.qbits.assistant.home.AssistantHome;
@@ -90,7 +91,10 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
  ** - The key type's all-access key (assistant_user_id_all_access) lets admins see
  **   everyone's rows; hosts grant it to users holding assistant.admin with
  **   AssistantSecurity.applySessionKeys in their authentication customizer.
- ** - Tables, app and process need assistant.admin in the generic UI / API.
+ ** - Tables, app and process need assistant.admin in the generic UI / API,
+ **   except assistant_conversation and its record actions (archive, restore,
+ **   delete), which every assistant user may use on their own rows. The app
+ **   (its nav) stays admin-only.
  ** - assistant_usage_daily rows with a null userId are the INSTANCE rollup and
  **   are readable by any session (the lock allows null).
  ** - The assistant's own tool kernel never exposes assistant_* tables to the
@@ -160,10 +164,15 @@ public class AssistantMetaDataBuilder
    {
       List<QTableMetaData> tables = new ArrayList<>();
 
+      QCodeReference conversationCustomizer = new QCodeReference(AssistantConversationCustomizer.class);
       tables.add(owned(base(AssistantConversation.TABLE_NAME, "Assistant Conversation", "forum", AssistantConversation.class), false)
          .withRecordLabelFormat("%s")
          .withRecordLabelFields("title")
-         .withoutCapabilities(Capability.TABLE_INSERT));
+         .withoutCapabilities(Capability.TABLE_INSERT)
+         .withPermissionRules(accessRules())
+         .withCustomizer(TableCustomizers.PRE_UPDATE_RECORD, conversationCustomizer)
+         .withCustomizer(TableCustomizers.PRE_DELETE_RECORD, conversationCustomizer)
+         .withCustomizer(TableCustomizers.POST_DELETE_RECORD, conversationCustomizer));
       text(tables.get(0), "contextJson");
 
       tables.add(text(readOnly(owned(base(AssistantMessage.TABLE_NAME, "Assistant Message", "chat", AssistantMessage.class), false)), "partsJson")
@@ -411,6 +420,21 @@ public class AssistantMetaDataBuilder
          .withLevel(PermissionLevel.HAS_ACCESS_PERMISSION)
          .withDenyBehavior(DenyBehavior.HIDDEN)
          .withCustomPermissionChecker(new QCodeReference(AssistantAdminPermissionChecker.class)));
+   }
+
+
+
+   /*******************************************************************************
+    ** assistant access or assistant.admin, through the custom checker (explicit
+    ** level and deny behavior, as in adminRules): for the conversation table
+    ** and its record actions, which users use on their own (record-locked) rows.
+    *******************************************************************************/
+   public static QPermissionRules accessRules()
+   {
+      return (new QPermissionRules()
+         .withLevel(PermissionLevel.HAS_ACCESS_PERMISSION)
+         .withDenyBehavior(DenyBehavior.HIDDEN)
+         .withCustomPermissionChecker(new QCodeReference(AssistantAccessPermissionChecker.class)));
    }
 
 
