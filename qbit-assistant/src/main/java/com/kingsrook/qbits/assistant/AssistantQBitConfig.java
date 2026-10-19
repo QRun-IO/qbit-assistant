@@ -116,6 +116,7 @@ public class AssistantQBitConfig implements QBitConfig
    private Integer               maxUserMessageChars        = 8000;
    private Integer               historyMessageLimit        = 40;
    private AssistantBudgets      budgets                    = new AssistantBudgets();
+   private AssistantAttachments  attachments                = new AssistantAttachments();
    private Integer               maxTurnsPerUserPerMinute   = 10;
    private Integer               maxConcurrentTurnsPerUser  = 3;
    private Integer               conversationRetentionDays  = 90;
@@ -207,6 +208,14 @@ public class AssistantQBitConfig implements QBitConfig
       if(budgets != null)
       {
          budgets.validate(errors);
+      }
+      if(attachments == null)
+      {
+         errors.add("attachments must not be null.");
+      }
+      else
+      {
+         attachments.validate(errors);
       }
 
       if(defaultExposure == null)
@@ -903,6 +912,37 @@ public class AssistantQBitConfig implements QBitConfig
    public AssistantQBitConfig withHistoryMessageLimit(Integer historyMessageLimit)
    {
       this.historyMessageLimit = historyMessageLimit;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for attachments (limits for files attached in the panel).
+    *******************************************************************************/
+   public AssistantAttachments getAttachments()
+   {
+      return (this.attachments);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for attachments
+    *******************************************************************************/
+   public void setAttachments(AssistantAttachments attachments)
+   {
+      this.attachments = attachments;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for attachments
+    *******************************************************************************/
+   public AssistantQBitConfig withAttachments(AssistantAttachments attachments)
+   {
+      this.attachments = attachments;
       return (this);
    }
 
