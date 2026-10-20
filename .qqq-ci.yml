@@ -1,5 +1,5 @@
 profile: qbit
-orb_version: dev:central-4364498f77c80360
+orb_version: dev:central-3595d9f51b4aa36d
 default_branch: develop
 java_version: '21'
 browsers: true
