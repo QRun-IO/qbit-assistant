@@ -1,12 +1,12 @@
 version: 2.1
 setup: true
 orbs:
-  qqq-orb: kingsrook/qqq-orb@dev:central-f51201fe87aefbf4
+  qqq-orb: kingsrook/qqq-orb@dev:central-4364498f77c80360
 workflows:
   setup:
     jobs:
     - qqq-orb/generate_pipeline:
-        orb_version: dev:central-f51201fe87aefbf4
+        orb_version: dev:central-4364498f77c80360
         filters:
           branches:
             ignore: automation/qbit-rc-pending
