@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased - Clear reason without a model provider (UI API extension 1.7.0)
+
+- `GET /config` checks the server-wide causes before the user's permission: `DISABLED`, then `NOT_CONFIGURED` (no usable model provider), then `NO_PERMISSION`, then `KILL_SWITCH`. A server with no provider no longer tells users to ask for access (#82).
+- UI API extension assistant 1.7.0: `GET /config` has `message` whenever `reason` is set: a sentence for the user. For `NOT_CONFIGURED` it says what an administrator configures (an enabled row on **Assistant > Providers**, for example Anthropic with `ANTHROPIC_API_KEY` set in the server environment, or a local OpenAI-compatible server such as Ollama).
+- Without a usable provider, calls from a user who also lacks `assistant.hasAccess` answer `503 NOT_CONFIGURED` with that message instead of `403 NO_PERMISSION`; users with access keep their conversations, and a new question answers `503 NOT_CONFIGURED`.
+- Verified the OpenAI-compatible adapter (kind `OLLAMA`) live against a local Ollama `llama3.3:70b-instruct-q4_K_M`, including a tool call (`LiveOpenAiCompatibleTest`).
+
 ## Unreleased - Conversation management (UI API extension 1.6.0)
 
 - `assistant_conversation` is open to every assistant user (`assistant.hasAccess` or `assistant.admin`, through the new `AssistantAccessPermissionChecker`) in the standard table UI. Rows stay locked to their owner by the `userId` record lock, so a user only ever sees, updates and deletes their own conversations; admins with the all-access key still see everyone's. The Assistant app (its nav) and every other assistant table stay admin-only.

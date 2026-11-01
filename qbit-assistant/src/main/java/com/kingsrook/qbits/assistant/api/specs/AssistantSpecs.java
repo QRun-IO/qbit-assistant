@@ -63,7 +63,7 @@ import io.javalin.http.HttpStatus;
 public final class AssistantSpecs
 {
    public static final String EXTENSION_NAME    = "assistant";
-   public static final String EXTENSION_VERSION = "1.6.0";
+   public static final String EXTENSION_VERSION = "1.7.0";
    public static final String PREFIX            = "/assistant";
 
 
@@ -198,7 +198,8 @@ public final class AssistantSpecs
          "starterPrompts", array(string(null), "Up to three suggested first questions in total: permitted configured questions first, then generated questions. Table, row and field access are checked on every request.")));
       rs.put("AssistantConfigResponseV1", object("Whether the assistant is available to this user, and how.",
          "enabled", bool("Whether the panel may be used."),
-         "reason", string("Why not: DISABLED, NO_PERMISSION, NOT_CONFIGURED or KILL_SWITCH.").withNullable(true),
+         "reason", string("Why not: DISABLED, NOT_CONFIGURED (no usable model provider on the server), NO_PERMISSION or KILL_SWITCH, checked in that order.").withNullable(true),
+         "message", string("Since 1.7.0: when reason is set, a sentence for the user that names the cause (for NOT_CONFIGURED, what an administrator configures).").withNullable(true),
          "shortcut", string("Keyboard shortcut, e.g. mod+j."),
          "model", string("The model that answers."),
          "limits", freeObject("maxTurnSeconds and maxToolCallsPerTurn. When features.attachments is true also maxAttachmentBytes (the largest file read, in bytes), "

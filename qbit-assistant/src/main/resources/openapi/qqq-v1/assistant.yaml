@@ -175,7 +175,13 @@ components:
           description: "Whether the panel may be used."
           type: "boolean"
         reason:
-          description: "Why not: DISABLED, NO_PERMISSION, NOT_CONFIGURED or KILL_SWITCH."
+          description: "Why not: DISABLED, NOT_CONFIGURED (no usable model provider\
+            \ on the server), NO_PERMISSION or KILL_SWITCH, checked in that order."
+          nullable: true
+          type: "string"
+        message:
+          description: "Since 1.7.0: when reason is set, a sentence for the user that\
+            \ names the cause (for NOT_CONFIGURED, what an administrator configures)."
           nullable: true
           type: "string"
         shortcut:
@@ -305,7 +311,9 @@ components:
           nullable: true
           type: "string"
         starterPrompts:
-          description: "Up to three suggested first questions in total: permitted configured questions first, then generated questions. Table, row and field access are checked on every request."
+          description: "Up to three suggested first questions in total: permitted\
+            \ configured questions first, then generated questions. Table, row and\
+            \ field access are checked on every request."
           items:
             type: "string"
           type: "array"
@@ -468,7 +476,7 @@ info:
   description: "QQQ Assistant: conversations, streamed turns, feedback, pending actions\
     \ and data access explanations"
   title: "QQQ Middleware API extension: assistant"
-  version: "1.6.0"
+  version: "1.7.0"
 openapi: "3.0.3"
 paths:
   /qqq/v1/assistant/config:

@@ -44,7 +44,7 @@ Guards:
 `ProviderService.resolve(policyModel)`:
 1. The enabled row marked default (marking one default unmarks the others), else the first enabled row.
 2. With no enabled row, the provider registered in code (`withModelProvider`) and the policy's main model: hosts that never add a row keep working.
-3. A row that cannot be used (no key, a disallowed name or URL, an uninstalled type) makes the assistant report `NOT_CONFIGURED` rather than fall back silently.
+3. A row that cannot be used (no key, a disallowed name or URL, an uninstalled type) makes the assistant report `NOT_CONFIGURED` rather than fall back silently. `GET /config` reports it before `NO_PERMISSION`, with a `message` naming what to configure (#82).
 
 The model is the row's, else the policy's main model. The rows and prices are cached for `policyCacheSeconds` and dropped on any change.
 
