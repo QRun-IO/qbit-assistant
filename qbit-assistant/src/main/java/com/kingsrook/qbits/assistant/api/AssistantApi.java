@@ -86,6 +86,20 @@ public class AssistantApi
 
    public static final int TITLE_MAX_CHARS = 60;
 
+   /////////////////////////////////////////////////////////////////////////////
+   // GET /config reason (and error code) when no model provider is usable:   //
+   // no enabled provider row that can be built (a missing key, a disallowed  //
+   // variable or URL, an uninstalled type) and no provider registered in code //
+   /////////////////////////////////////////////////////////////////////////////
+   public static final String NOT_CONFIGURED = "NOT_CONFIGURED";
+
+   public static final String NO_MODEL_PROVIDER_MESSAGE = "No model provider is configured on this server. An administrator adds an enabled provider on "
+      + "Assistant > Providers (for example type Anthropic, whose API key variable ANTHROPIC_API_KEY must be set in the server environment, or a local "
+      + "OpenAI-compatible server such as Ollama).";
+   public static final String NO_PERMISSION_MESSAGE     = "You do not have access to the assistant.";
+   public static final String DISABLED_MESSAGE          = "The assistant is turned off for this application.";
+   public static final String KILL_SWITCH_MESSAGE       = "The assistant has been turned off by an administrator.";
+
    private final AssistantRuntime    runtime;
    private final AssistantQBitConfig config;
    private final AssistantStore      store;
@@ -134,27 +148,39 @@ public class AssistantApi
       Map<String, Object> result = new LinkedHashMap<>();
       String              reason = null;
 
+      String              message = null;
+
+      /////////////////////////////////////////////////////////////////////////
+      // server-wide causes come before the user's own permission, so a      //
+      // server without a usable model provider says so (QRun-IO/qbit-       //
+      // assistant#82) instead of sending the user to ask for access         //
+      /////////////////////////////////////////////////////////////////////////
       if(!config.isEffectivelyEnabled())
       {
          reason = "DISABLED";
+         message = DISABLED_MESSAGE;
+      }
+      else if(activeProvider() == null)
+      {
+         reason = NOT_CONFIGURED;
+         message = NO_MODEL_PROVIDER_MESSAGE;
       }
       else if(!hasAccess())
       {
          reason = "NO_PERMISSION";
-      }
-      else if(activeProvider() == null)
-      {
-         reason = "NOT_CONFIGURED";
+         message = NO_PERMISSION_MESSAGE;
       }
       else if(runtime.getPolicyService().current(false).killSwitch())
       {
          reason = "KILL_SWITCH";
+         message = KILL_SWITCH_MESSAGE;
       }
 
       result.put("enabled", reason == null);
       if(reason != null)
       {
          result.put("reason", reason);
+         result.put("message", message);
       }
       result.put("shortcut", config.getShortcut());
       result.put("model", reason == null ? activeProvider().model() : config.getModels().getMainModel());
@@ -425,11 +451,11 @@ public class AssistantApi
       ProviderService.Active        active = runtime.getProviderService().resolve(policy.mainModel());
       if(active == null)
       {
-         throw (new AssistantApiException(503, "NOT_CONFIGURED", "The assistant is not configured on this server."));
+         throw (new AssistantApiException(503, NOT_CONFIGURED, NO_MODEL_PROVIDER_MESSAGE));
       }
       if(policy.killSwitch())
       {
-         throw (new AssistantApiException(503, "KILL_SWITCH", "The assistant has been turned off by an administrator."));
+         throw (new AssistantApiException(503, "KILL_SWITCH", KILL_SWITCH_MESSAGE));
       }
 
       Long capMicros = ProviderService.capMicros(active.row());
@@ -1165,11 +1191,33 @@ public class AssistantApi
    {
       if(!config.isEffectivelyEnabled())
       {
-         throw (new AssistantApiException(503, "DISABLED", "The assistant is turned off for this application."));
+         throw (new AssistantApiException(503, "DISABLED", DISABLED_MESSAGE));
       }
       if(!hasAccess())
       {
-         throw (new AssistantApiException(403, "NO_PERMISSION", "You do not have access to the assistant."));
+         if(activeProviderOrNull() == null)
+         {
+            throw (new AssistantApiException(503, NOT_CONFIGURED, NO_MODEL_PROVIDER_MESSAGE));
+         }
+         throw (new AssistantApiException(403, "NO_PERMISSION", NO_PERMISSION_MESSAGE));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** The active provider, or null when none is usable or it cannot be read
+    ** (only used to pick the clearer refusal).
+    *******************************************************************************/
+   private ProviderService.Active activeProviderOrNull()
+   {
+      try
+      {
+         return (activeProvider());
+      }
+      catch(QException | RuntimeException e)
+      {
+         return (null);
       }
    }
 

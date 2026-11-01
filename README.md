@@ -479,6 +479,17 @@ OLLAMA, LM_STUDIO, VLLM, LLAMA_CPP or OPENAI_COMPATIBLE as their kind.
   Registry prices override type/model prices, then configured prices. Unpriced
   local models cost zero. Capabilities can be adjusted per registered model.
 
+For a local Ollama with no key (the live test ran against `llama3.3:70b-instruct-q4_K_M`):
+
+```java
+config.withProviderType(new OpenAiCompatibleProviderType());
+// provider row: type openai-compatible, kind OLLAMA, model llama3.3:70b-instruct-q4_K_M,
+// base URL empty (http://localhost:11434/v1) or an allow-listed override such as http://127.0.0.1:11434/v1
+```
+
+Without any usable provider `GET /config` answers `enabled: false, reason: NOT_CONFIGURED` with a
+`message` that says what to configure, before any permission check.
+
 For Ollama behind a TLS proxy with a private CA and bearer authentication:
 
 ```java

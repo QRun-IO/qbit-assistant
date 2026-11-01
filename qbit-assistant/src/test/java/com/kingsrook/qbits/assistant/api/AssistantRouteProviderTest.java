@@ -167,6 +167,45 @@ class AssistantRouteProviderTest extends BaseAssistantTest
 
 
    /*******************************************************************************
+    ** No usable model provider (QRun-IO/qbit-assistant#82): the probe names the
+    ** server's configuration, for users with and without access, and calls
+    ** answer 503 NOT_CONFIGURED instead of 403 NO_PERMISSION.
+    *******************************************************************************/
+   @Test
+   void testNoModelProviderIsNotAPermissionProblem() throws Exception
+   {
+      String providerName = config.getProviderName();
+      config.setProviderName("no-such-provider");
+      try
+      {
+         for(String user : new String[] {EDITOR, NO_ACCESS})
+         {
+            Map<String, Object> probe = json(send("GET", "/config", user, null));
+            assertThat(probe).containsEntry("enabled", false).containsEntry("reason", "NOT_CONFIGURED");
+            assertThat((String) probe.get("message")).contains("No model provider").contains("Assistant > Providers").contains("ANTHROPIC_API_KEY");
+         }
+
+         HttpResponse<String> denied = send("GET", "/conversations", NO_ACCESS, null);
+         assertThat(denied.statusCode()).isEqualTo(503);
+         assertThat(json(denied)).containsEntry("code", "NOT_CONFIGURED");
+         assertThat((String) json(denied).get("message")).contains("No model provider");
+
+         assertThat(send("GET", "/conversations", EDITOR, null).statusCode()).isEqualTo(200);
+         HttpResponse<String> turn = send("POST", "/conversations", EDITOR, "{}");
+         Object id = json(turn).get("id");
+         HttpResponse<String> ask = send("POST", "/conversations/" + id + "/turns", EDITOR, "{\"text\":\"hi\"}");
+         assertThat(ask.statusCode()).isEqualTo(503);
+         assertThat(json(ask)).containsEntry("code", "NOT_CONFIGURED");
+      }
+      finally
+      {
+         config.setProviderName(providerName);
+      }
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    @Test
@@ -178,7 +217,8 @@ class AssistantRouteProviderTest extends BaseAssistantTest
       assertThat((Map<String, Object>) config.get("limits")).containsEntry("maxTurnSeconds", 300).containsEntry("maxToolCallsPerTurn", 25);
       assertThat((Map<String, Object>) config.get("features")).containsEntry("writes", false);
 
-      assertThat(json(send("GET", "/config", NO_ACCESS, null))).containsEntry("enabled", false).containsEntry("reason", "NO_PERMISSION");
+      assertThat(json(send("GET", "/config", NO_ACCESS, null))).containsEntry("enabled", false).containsEntry("reason", "NO_PERMISSION")
+         .containsEntry("message", "You do not have access to the assistant.");
       HttpResponse<String> denied = send("GET", "/conversations", NO_ACCESS, null);
       assertThat(denied.statusCode()).isEqualTo(403);
       assertThat(json(denied)).containsEntry("code", "NO_PERMISSION")
