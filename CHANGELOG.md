@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased - Answer visible at the end of the stream
+
+- The turn's redacted transcript (the question and answer parts, pending actions, stored events) is now written before `message.end` is sent. The panel reloads the conversation the moment the stream ends, and used to read the empty placeholders (`[]`) the transcript redactor stores until its flush, so the newest question and answer showed as empty bubbles until the panel was closed and reopened.
+
 ## Unreleased - Optional provider health
 
 - An enabled provider that is not the default and not the only route for any configured routing (an enabled profile's simple/complex model, a budget downgrade model or a knowledge source's embedding model, with no fallback on another usable provider) is optional: when it is unreachable, its `assistant.provider.<id>` and `assistant.model.<id>` checks report DEGRADED with a message naming the provider requests use instead, so one unfinished local server no longer turns the whole `assistant` component DOWN. The default provider and sole routes still report DOWN. A failed provider probe still carries `reachable=false`, so the circuit breaker keeps refusing the provider.
