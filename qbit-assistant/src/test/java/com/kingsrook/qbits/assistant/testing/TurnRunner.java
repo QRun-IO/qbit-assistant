@@ -27,6 +27,7 @@ import com.kingsrook.qbits.assistant.AssistantRuntime;
 import com.kingsrook.qbits.assistant.api.AssistantApi;
 import com.kingsrook.qbits.assistant.engine.RunningTurn;
 import com.kingsrook.qbits.assistant.engine.TurnEvent;
+import com.kingsrook.qbits.assistant.model.AssistantMessage;
 import com.kingsrook.qbits.assistant.model.AssistantToolCall;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -46,6 +47,8 @@ public class TurnRunner
 {
    private final QInstance           qInstance;
    private final AssistantQBitConfig config;
+
+   private List<AssistantMessage> messagesAtEnd = List.of();
 
 
 
@@ -169,6 +172,10 @@ public class TurnRunner
       {
          List<TurnEvent> batch = running.getLog().after(last, 1000);
          events.addAll(batch);
+         if(batch.stream().anyMatch(e -> TurnEvent.MESSAGE_END.equals(e.getType())))
+         {
+            messagesAtEnd = messagesOf(userId, convId);
+         }
          if(!batch.isEmpty())
          {
             last = batch.get(batch.size() - 1).getSeq();
@@ -190,6 +197,36 @@ public class TurnRunner
       }
 
       return (new Outcome(convId, running.getTurnId(), events, toolCalls(userId, running.getTurnId())));
+   }
+
+
+
+   /*******************************************************************************
+    ** The conversation's stored messages, read the moment the run's message.end
+    ** was seen: what the panel finds when it reloads the conversation at the end
+    ** of the stream.
+    *******************************************************************************/
+   public List<AssistantMessage> messagesAtEnd()
+   {
+      return (messagesAtEnd);
+   }
+
+
+
+   /*******************************************************************************
+    ** The stored messages of a conversation (read as the user).
+    *******************************************************************************/
+   private List<AssistantMessage> messagesOf(String userId, Integer conversationId) throws Exception
+   {
+      QContext.init(qInstance, AssistantTestFixture.ownerSession(userId, config));
+      try
+      {
+         return (new AssistantStore().listMessages(userId, conversationId, null, 50));
+      }
+      finally
+      {
+         QContext.clear();
+      }
    }
 
 

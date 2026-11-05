@@ -1343,6 +1343,17 @@ public class TurnEngine implements Runnable
             String finalErrorText = errorText;
             safely(() -> emit(TurnEvent.ERROR, map("code", finalErrorCode, "message", finalErrorText)));
          }
+
+         ///////////////////////////////////////////////////////////////////////
+         // the stream ends at message.end and the panel reloads the          //
+         // conversation at once, so the redacted transcript (message parts,  //
+         // pending actions, events) must be stored before that event is sent //
+         ///////////////////////////////////////////////////////////////////////
+         if(!alreadyTerminal)
+         {
+            safely(this::persistPendingEvents);
+            safely(() -> transcript.flush(store));
+         }
          safely(() -> emit(TurnEvent.MESSAGE_END, map("messageId", assistantMessage.getId(), "status", finalStatus, "stopReason", finalStopReason)));
          if(!alreadyTerminal)
          {

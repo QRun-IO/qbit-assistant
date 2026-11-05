@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased - Answer visible at the end of the stream
+
+- The turn's redacted transcript (the question and answer parts, pending actions, stored events) is now written before `message.end` is sent. The panel reloads the conversation the moment the stream ends, and used to read the empty placeholders (`[]`) the transcript redactor stores until its flush, so the newest question and answer showed as empty bubbles until the panel was closed and reopened.
+
 ## Unreleased - Clear reason without a model provider (UI API extension 1.7.0)
 
 - `GET /config` checks the server-wide causes before the user's permission: `DISABLED`, then `NOT_CONFIGURED` (no usable model provider), then `NO_PERMISSION`, then `KILL_SWITCH`. A server with no provider no longer tells users to ask for access (#82).
@@ -34,6 +38,7 @@
 - Provider SPI: `ModelPart.Type.IMAGE` (`mediaType`, base64 `data`), mapped by the Anthropic, Bedrock and OpenAI-compatible providers. Claude models report vision. `ModelPart.toString()` never includes text or image data.
 - `GET /config`: `features.attachments`, `limits.maxAttachmentBytes`, `limits.maxAttachments`, `limits.attachmentTypes`.
 - System prompt: when `create_record` / `update_record` are offered, the model proposes the change instead of saying it cannot create records.
+||||||| parent of c5125f9 (fix(assistant): store the transcript before message.end so the panel shows the answer)
 
 ## Unreleased - Optional provider health
 

@@ -142,6 +142,27 @@ class TurnEngineTest extends BaseAssistantTest
 
 
    /*******************************************************************************
+    ** The panel reloads the conversation as soon as message.end arrives, so the
+    ** question and the answer must already be stored then, not after it.
+    *******************************************************************************/
+   @Test
+   void testMessagesAreStoredBeforeMessageEnd() throws Exception
+   {
+      provider.thenText("Four posts are published.");
+
+      TurnRunner.Outcome outcome = runner.run(EDITOR, "how many published posts?");
+      assertThat(outcome.end()).containsEntry("status", "COMPLETE");
+
+      List<AssistantMessage> stored = runner.messagesAtEnd();
+      assertThat(stored).hasSize(2);
+      assertThat(stored).extracting(AssistantMessage::getPartsJson).allSatisfy(parts -> assertThat(parts).isNotEqualTo("[]"));
+      assertThat(stored.get(0).getPartsJson()).contains("how many published posts?");
+      assertThat(stored.get(1).getPartsJson()).contains("Four posts are published.");
+   }
+
+
+
+   /*******************************************************************************
     ** Parallel tool calls: all results in ONE user message, in order.
     *******************************************************************************/
    @Test
