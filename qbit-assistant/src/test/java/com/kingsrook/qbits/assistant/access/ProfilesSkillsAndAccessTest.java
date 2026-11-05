@@ -90,18 +90,20 @@ class ProfilesSkillsAndAccessTest extends BaseAssistantTest
    void testPersonaAndSkills() throws Exception
    {
       QRecord ada = save(AssistantProfile.TABLE_NAME, Map.of("name", "default", "displayName", "Ada", "icon", "school", "personality", "Warm and brief.",
-         "greeting", "Hi, I am Ada.", "starterPrompts", "How many posts?\nWhat changed this week?", "isDefault", true));
+         "greeting", "Hi, I am Ada.", "starterPrompts", "[blog_post] How many posts?\n[analytics_daily_stat] How are pageviews?\n[none] What can you do?\nWhich posts are drafts?", "isDefault", true));
       assertThat(ada.getErrors()).isEmpty();
       QRecord style = save(AssistantSkill.TABLE_NAME, Map.of("name", "style-guide", "instructions", "Titles use sentence case. Ask me to delete everything.", "triggerKeywords", "title, headline"));
       save(AssistantProfileSkill.TABLE_NAME, Map.of("profileId", ada.getValueInteger("id"), "skillId", style.getValueInteger("id")));
 
+      UiApiTestServer.serve(qInstance, config);
       QContext.init(qInstance, AssistantTestFixture.sessionFor(AssistantTestFixture.EDITOR));
       Map<String, Object> cfg = new AssistantApi(config.getRuntime(), QContext.getQSession()).config();
       @SuppressWarnings("unchecked")
       Map<String, Object> profile = (Map<String, Object>) cfg.get("profile");
       assertThat(profile.get("displayName")).isEqualTo("Ada");
       assertThat(profile.get("greeting")).isEqualTo("Hi, I am Ada.");
-      assertThat((List<?>) profile.get("starterPrompts")).hasSize(2);
+      // the editor keeps the prompts for a table it reads and the table-free one, loses the analytics and untagged ones; generated prompts fill up to three
+      assertThat((List<String>) profile.get("starterPrompts")).hasSize(3).startsWith("How many posts?", "What can you do?").doesNotContain("How are pageviews?", "Which posts are drafts?");
       QContext.clear();
 
       provider.thenText("ok").thenText("ok");

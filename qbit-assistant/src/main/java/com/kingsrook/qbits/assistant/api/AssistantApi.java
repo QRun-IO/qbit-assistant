@@ -26,12 +26,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
 import com.kingsrook.qbits.assistant.AssistantSecurity;
 import com.kingsrook.qbits.assistant.access.AccessExplainer;
 import com.kingsrook.qbits.assistant.access.DataAccessMode;
+import com.kingsrook.qbits.assistant.attachments.AttachmentService;
+import com.kingsrook.qbits.assistant.attachments.UploadRefSource;
 import com.kingsrook.qbits.assistant.engine.AbandonedTurns;
 import com.kingsrook.qbits.assistant.engine.ClientErrors;
 import com.kingsrook.qbits.assistant.engine.ContextBuilder;
@@ -52,13 +55,18 @@ import com.kingsrook.qbits.assistant.model.AssistantTurn;
 import com.kingsrook.qbits.assistant.model.AssistantTurnEvent;
 import com.kingsrook.qbits.assistant.persistence.AssistantStore;
 import com.kingsrook.qbits.assistant.persistence.TranscriptRedactor;
+import com.kingsrook.qbits.assistant.spi.ModelCapabilities;
 import com.kingsrook.qbits.assistant.tools.UiApiToolbox;
 import com.kingsrook.qbits.assistant.tools.bulkload.BulkLoadTools;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolOutcome;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolResult;
 import com.kingsrook.qqq.backend.core.actions.ai.output.AiRedactor;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
@@ -77,6 +85,20 @@ public class AssistantApi
    private static final QLogger LOG = QLogger.getLogger(AssistantApi.class);
 
    public static final int TITLE_MAX_CHARS = 60;
+
+   /////////////////////////////////////////////////////////////////////////////
+   // GET /config reason (and error code) when no model provider is usable:   //
+   // no enabled provider row that can be built (a missing key, a disallowed  //
+   // variable or URL, an uninstalled type) and no provider registered in code //
+   /////////////////////////////////////////////////////////////////////////////
+   public static final String NOT_CONFIGURED = "NOT_CONFIGURED";
+
+   public static final String NO_MODEL_PROVIDER_MESSAGE = "No model provider is configured on this server. An administrator adds an enabled provider on "
+      + "Assistant > Providers (for example type Anthropic, whose API key variable ANTHROPIC_API_KEY must be set in the server environment, or a local "
+      + "OpenAI-compatible server such as Ollama).";
+   public static final String NO_PERMISSION_MESSAGE     = "You do not have access to the assistant.";
+   public static final String DISABLED_MESSAGE          = "The assistant is turned off for this application.";
+   public static final String KILL_SWITCH_MESSAGE       = "The assistant has been turned off by an administrator.";
 
    private final AssistantRuntime    runtime;
    private final AssistantQBitConfig config;
@@ -126,40 +148,86 @@ public class AssistantApi
       Map<String, Object> result = new LinkedHashMap<>();
       String              reason = null;
 
+      String              message = null;
+
+      /////////////////////////////////////////////////////////////////////////
+      // server-wide causes come before the user's own permission, so a      //
+      // server without a usable model provider says so (QRun-IO/qbit-       //
+      // assistant#82) instead of sending the user to ask for access         //
+      /////////////////////////////////////////////////////////////////////////
       if(!config.isEffectivelyEnabled())
       {
          reason = "DISABLED";
+         message = DISABLED_MESSAGE;
+      }
+      else if(activeProvider() == null)
+      {
+         reason = NOT_CONFIGURED;
+         message = NO_MODEL_PROVIDER_MESSAGE;
       }
       else if(!hasAccess())
       {
          reason = "NO_PERMISSION";
-      }
-      else if(activeProvider() == null)
-      {
-         reason = "NOT_CONFIGURED";
+         message = NO_PERMISSION_MESSAGE;
       }
       else if(runtime.getPolicyService().current(false).killSwitch())
       {
          reason = "KILL_SWITCH";
+         message = KILL_SWITCH_MESSAGE;
       }
 
       result.put("enabled", reason == null);
       if(reason != null)
       {
          result.put("reason", reason);
+         result.put("message", message);
       }
       result.put("shortcut", config.getShortcut());
       result.put("model", reason == null ? activeProvider().model() : config.getModels().getMainModel());
-      result.put("limits", Map.of("maxTurnSeconds", config.getMaxTurnSeconds(), "maxToolCallsPerTurn", config.getMaxToolCallsPerTurn()));
-      result.put("features", Map.of("writes", runtime.getToolbox().anyWritableTable(), "pendingActions", true));
+      boolean             attachments = attachmentsSupported();
+      Map<String, Object> limits      = new LinkedHashMap<>(Map.of("maxTurnSeconds", config.getMaxTurnSeconds(), "maxToolCallsPerTurn", config.getMaxToolCallsPerTurn()));
+      if(attachments)
+      {
+         limits.put("maxAttachmentBytes", config.getAttachments().getMaxFileBytes());
+         limits.put("maxAttachments", ContextBuilder.MAX_ATTACHMENTS);
+         limits.put("attachmentTypes", AttachmentService.typeLabels(reason == null && visionModel()));
+      }
+      result.put("limits", limits);
+      result.put("features", Map.of("writes", runtime.getToolbox().anyWritableTable(), "pendingActions", true, "attachments", attachments));
       ProfileService.Persona persona = runtime.getProfileService().persona(session, null);
       Map<String, Object>    profile = new LinkedHashMap<>();
       profile.put("displayName", persona.displayName());
       profile.put("icon", persona.icon());
       profile.put("greeting", persona.greeting());
-      profile.put("starterPrompts", persona.starterPrompts());
+      profile.put("starterPrompts", reason == null ? starterPrompts(persona) : List.of());
       result.put("profile", profile);
+      if(mayQueryConversationsTable())
+      {
+         result.put("conversationsTable", AssistantConversation.TABLE_NAME);
+      }
       return (result);
+   }
+
+
+
+   /*******************************************************************************
+    ** The example prompts for this user (see StarterPrompts): built from the
+    ** tables the user may read, plus the configured ones they may see. Never
+    ** throws.
+    *******************************************************************************/
+   private List<String> starterPrompts(ProfileService.Persona persona)
+   {
+      try
+      {
+         PolicyService.EffectivePolicy policy = runtime.getPolicyService().current(false);
+         UiApiToolbox.Context context = new UiApiToolbox.Context(session.getUuid(), session.getValue(QSession.VALUE_KEY_USER_TIMEZONE), runtime.getUiApiGateway(), policy.tools(), null, credentials);
+         boolean historyOffered = runtime.getToolbox().definitions(policy.tools(), false).stream().anyMatch(d -> UiApiToolbox.RECORD_HISTORY.equals(d.getName()));
+         return (runtime.getStarterPrompts().forUser(context, userId, persona.starterPrompts(), historyOffered));
+      }
+      catch(QException | RuntimeException e)
+      {
+         return (List.of());
+      }
    }
 
 
@@ -171,10 +239,13 @@ public class AssistantApi
    {
       requireAccess();
       String effective = "ARCHIVED".equalsIgnoreCase(status) ? "ARCHIVED" : "ACTIVE";
+      Set<Integer> running = runningConversationIds();
       List<Map<String, Object>> list = new ArrayList<>();
       for(AssistantConversation conversation : store.listConversations(userId, effective))
       {
-         list.add(toJson(conversation));
+         Map<String, Object> item = toJson(conversation);
+         item.put("running", running.contains(conversation.getId()));
+         list.add(item);
       }
       return (Map.of("conversations", list));
    }
@@ -304,6 +375,18 @@ public class AssistantApi
          update.setValue("status", status);
          conversation.setStatus((String) status);
       }
+      if(body.containsKey("read"))
+      {
+         ////////////////////////////////////////////////////////////////////
+         // the panel watched the reply stream in: clear the unread count //
+         ////////////////////////////////////////////////////////////////////
+         if(!Boolean.TRUE.equals(body.get("read")))
+         {
+            throw (new AssistantApiException(400, "read can only be true."));
+         }
+         update.setValue("unreadCount", 0);
+         conversation.setUnreadCount(0);
+      }
 
       store.updateFields(AssistantConversation.TABLE_NAME, update);
       return (toJson(conversation));
@@ -368,11 +451,11 @@ public class AssistantApi
       ProviderService.Active        active = runtime.getProviderService().resolve(policy.mainModel());
       if(active == null)
       {
-         throw (new AssistantApiException(503, "NOT_CONFIGURED", "The assistant is not configured on this server."));
+         throw (new AssistantApiException(503, NOT_CONFIGURED, NO_MODEL_PROVIDER_MESSAGE));
       }
       if(policy.killSwitch())
       {
-         throw (new AssistantApiException(503, "KILL_SWITCH", "The assistant has been turned off by an administrator."));
+         throw (new AssistantApiException(503, "KILL_SWITCH", KILL_SWITCH_MESSAGE));
       }
 
       Long capMicros = ProviderService.capMicros(active.row());
@@ -469,21 +552,6 @@ public class AssistantApi
          RunningTurn runningTurn = new RunningTurn(turn.getId(), userId);
          TurnEngine  engine      = new TurnEngine(runtime, session, userId, conversation, userMessage, assistantMessage, turn, text, pageContext, policy, runningTurn,
             budget.softExceeded() ? budget.message() : null).withCredentials(credentials).withTranscript(transcript);
-         try
-         {
-            if(config.getRunTracker() != null)
-            {
-               ///////////////////////////////////////////////////////////////////
-               // never the conversation title: it is derived from the prompt  //
-               ///////////////////////////////////////////////////////////////////
-               runningTurn.setTrackingId(config.getRunTracker().start(userId, turn.getId(), conversationId, "Assistant answer"));
-               config.getRunTracker().onCancel(runningTurn.getTrackingId(), () -> runningTurn.cancel("USER"));
-            }
-         }
-         catch(Exception e)
-         {
-            LOG.warn("Assistant run tracker start failed", logPair("turnId", turn.getId()));
-         }
          runtime.register(runningTurn);
          if(!runningTurn.isFinalized())
          {
@@ -654,6 +722,53 @@ public class AssistantApi
    static boolean isRunning(AssistantTurn turn)
    {
       return (turn != null && ("RUNNING".equals(turn.getStatus()) || "CANCELLING".equals(turn.getStatus())));
+   }
+
+
+
+   /*******************************************************************************
+    ** Ids of the user's conversations with an answer in progress: a RUNNING or
+    ** CANCELLING turn that is not orphaned (orphans are recovered on the way,
+    ** as in GET /turns/active).
+    *******************************************************************************/
+   Set<Integer> runningConversationIds() throws QException
+   {
+      Set<Integer> ids = new HashSet<>();
+      for(AssistantTurn turn : store.listRunningTurns(userId))
+      {
+         turn = reapIfOrphaned(turn);
+         if(isRunning(turn) && turn.getConversationId() != null)
+         {
+            ids.add(turn.getConversationId());
+         }
+      }
+      return (ids);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether a turn row (of any owner) is an answer still in progress: running
+    ** here, or running elsewhere and not orphaned. Read-only (no recovery).
+    *******************************************************************************/
+   boolean inProgress(AssistantTurn turn)
+   {
+      return (isRunning(turn) && (runtime.getRunningTurn(turn.getId()) != null || !orphaned(turn)));
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether this session may query the conversation table in the standard
+    ** table UI (assistant access or admin; rows stay owner-locked).
+    *******************************************************************************/
+   private boolean mayQueryConversationsTable()
+   {
+      if(userId == null || QContext.getQInstance() == null || QContext.getQInstance().getTable(AssistantConversation.TABLE_NAME) == null)
+      {
+         return (false);
+      }
+      return (PermissionsHelper.hasTablePermission(new QueryInput(AssistantConversation.TABLE_NAME), AssistantConversation.TABLE_NAME, TablePermissionSubType.READ));
    }
 
 
@@ -908,6 +1023,13 @@ public class AssistantApi
       {
          rs.put("href", outcome.getAuditHref());
       }
+      else if(!result.getRecordRefs().isEmpty() && TurnEngine.isAppHref(result.getRecordRefs().get(0).getHref()))
+      {
+         //////////////////////////////////////////////////////////////
+         // e.g. the job a confirmed bulk load launched              //
+         //////////////////////////////////////////////////////////////
+         rs.put("href", result.getRecordRefs().get(0).getHref());
+      }
       return (rs);
    }
 
@@ -1069,11 +1191,33 @@ public class AssistantApi
    {
       if(!config.isEffectivelyEnabled())
       {
-         throw (new AssistantApiException(503, "DISABLED", "The assistant is turned off for this application."));
+         throw (new AssistantApiException(503, "DISABLED", DISABLED_MESSAGE));
       }
       if(!hasAccess())
       {
-         throw (new AssistantApiException(403, "NO_PERMISSION", "You do not have access to the assistant."));
+         if(activeProviderOrNull() == null)
+         {
+            throw (new AssistantApiException(503, NOT_CONFIGURED, NO_MODEL_PROVIDER_MESSAGE));
+         }
+         throw (new AssistantApiException(403, "NO_PERMISSION", NO_PERMISSION_MESSAGE));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** The active provider, or null when none is usable or it cannot be read
+    ** (only used to pick the clearer refusal).
+    *******************************************************************************/
+   private ProviderService.Active activeProviderOrNull()
+   {
+      try
+      {
+         return (activeProvider());
+      }
+      catch(QException | RuntimeException e)
+      {
+         return (null);
       }
    }
 
@@ -1171,6 +1315,33 @@ public class AssistantApi
    private static String truncate(String value, int max)
    {
       return (value == null || value.length() <= max ? value : value.substring(0, max));
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether files attached in the panel are read: enabled in the QBit config
+    ** and uploads configured in core (an uploads storage table).
+    *******************************************************************************/
+   private boolean attachmentsSupported()
+   {
+      return (Boolean.TRUE.equals(config.getAttachments().getEnabled()) && UploadRefSource.configured());
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the model that answers reads images.
+    *******************************************************************************/
+   private boolean visionModel() throws QException
+   {
+      ProviderService.Active active = activeProvider();
+      if(active == null || active.provider() == null)
+      {
+         return (false);
+      }
+      ModelCapabilities capabilities = active.provider().getCapabilities(active.model());
+      return (capabilities != null && Boolean.TRUE.equals(capabilities.getVision()));
    }
 
 

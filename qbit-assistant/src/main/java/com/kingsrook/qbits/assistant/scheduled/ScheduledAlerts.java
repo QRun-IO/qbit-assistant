@@ -21,14 +21,24 @@
 package com.kingsrook.qbits.assistant.scheduled;
 
 
+import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantScheduledRun;
+import com.kingsrook.qqq.backend.core.alerts.AlertLink;
+import com.kingsrook.qqq.backend.core.alerts.NotificationAudience;
+import com.kingsrook.qqq.backend.core.alerts.NotificationCategory;
+import com.kingsrook.qqq.backend.core.alerts.NotificationSeverity;
+import com.kingsrook.qqq.backend.core.alerts.NotificationSignal;
+import com.kingsrook.qqq.backend.core.alerts.QAlerts;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
- ** Optional Alerts notification SPI bridge. The audience is exactly one user;
- ** notification bodies contain only status and a link, never answer text.
+ ** The one notification a scheduled task's owner asked for (output mode
+ ** NOTIFICATION or BOTH): through core's non-throwing QAlerts.notify, so it
+ ** reaches whatever alerts sink the host installed (or core's logging sink).
+ ** The audience is exactly the task's owner; the body has only the status and
+ ** the link, never answer text.
  *******************************************************************************/
 public class ScheduledAlerts
 {
@@ -37,36 +47,36 @@ public class ScheduledAlerts
 
 
    /*******************************************************************************
-    ** Reflection keeps the optional notification implementation out of the ABI.
+    ** Notify the run's owner. Never throws.
     *******************************************************************************/
    public void raise(AssistantScheduledRun run)
    {
       LOG.info("Scheduled assistant result", logPair("runId", run.getId()), logPair("status", run.getStatus()));
-      try
+      QAlerts.notify(signal(run));
+   }
+
+
+
+   /*******************************************************************************
+    ** The notification for a finished run.
+    *******************************************************************************/
+   static NotificationSignal signal(AssistantScheduledRun run)
+   {
+      String status = run.getStatus() == null ? "FINISHED" : run.getStatus();
+      NotificationSignal signal = new NotificationSignal()
+         .withTitle("OK".equals(status) ? "Scheduled assistant task finished" : "Scheduled assistant task did not finish")
+         .withBody("Status: " + status + ". See the conversation.")
+         .withSeverity("OK".equals(status) ? NotificationSeverity.SUCCESS : "FAILED".equals(status) ? NotificationSeverity.ERROR : NotificationSeverity.WARNING)
+         .withCategory(NotificationCategory.JOB)
+         .withSourceName("assistant")
+         .withSourceKey("assistant/scheduled/run/" + run.getId())
+         .withAudience(NotificationAudience.user(run.getUserId()));
+      if(run.getConversationId() != null)
       {
-         String prefix = "com.kingsrook.qbits.alerts.spi.";
-         Class<?> type = Class.forName(prefix + "NotificationSignal");
-         Object signal = type.getConstructor(String.class).newInstance("Scheduled assistant task finished");
-         type.getMethod("withSourceName", String.class).invoke(signal, "assistant");
-         type.getMethod("withSourceKey", String.class).invoke(signal, "assistant/scheduled/run/" + run.getId());
-         type.getMethod("withBody", String.class).invoke(signal, "Status: " + run.getStatus() + ". See conversation.");
-         Class<?> audienceType = Class.forName(prefix + "NotificationAudience");
-         Object audience = audienceType.getMethod("user", String.class).invoke(null, run.getUserId());
-         type.getMethod("withAudience", audienceType).invoke(signal, audience);
-         if(run.getConversationId() != null)
-         {
-            Class<?> linkType = Class.forName(prefix + "AlertLink");
-            Object link = linkType.getMethod("toPath", String.class, String.class).invoke(null,
-               "/app/assistantAdmin/assistant_conversation/" + run.getConversationId(), "See conversation");
-            type.getMethod("withLink", linkType).invoke(signal, link);
-         }
-         Object runtime = Class.forName("com.kingsrook.qbits.alerts.AlertsRuntime").getMethod("get").invoke(null);
-         Object sink = runtime.getClass().getMethod("sink").invoke(runtime);
-         sink.getClass().getMethod("notify", type).invoke(sink, signal);
+         signal.withSourceTableName(AssistantConversation.TABLE_NAME)
+            .withSourceRecordId(String.valueOf(run.getConversationId()))
+            .withLink(AlertLink.toRecord(AssistantConversation.TABLE_NAME, run.getConversationId(), "Open the conversation"));
       }
-      catch(Exception | LinkageError e)
-      {
-         LOG.info("Scheduled assistant notification unavailable", logPair("runId", run.getId()));
-      }
+      return (signal);
    }
 }

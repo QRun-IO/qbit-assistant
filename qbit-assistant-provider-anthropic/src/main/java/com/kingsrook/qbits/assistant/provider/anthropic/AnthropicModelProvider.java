@@ -245,7 +245,7 @@ public class AnthropicModelProvider implements AssistantModelProvider
 
    /*******************************************************************************
     ** Claude 5.5 models: tools, parallel tools, prompt caching, (adaptive)
-    ** thinking.
+    ** thinking and vision (image input).
     *******************************************************************************/
    @Override
    public ModelCapabilities getCapabilities(String modelId)
@@ -255,6 +255,7 @@ public class AnthropicModelProvider implements AssistantModelProvider
          .withParallelToolCalls(true)
          .withPromptCaching(true)
          .withThinking(true)
+         .withVision(true)
          .withMaxContextTokens(200_000));
    }
 

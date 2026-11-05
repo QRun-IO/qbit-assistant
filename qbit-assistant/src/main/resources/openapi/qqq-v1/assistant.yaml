@@ -175,7 +175,13 @@ components:
           description: "Whether the panel may be used."
           type: "boolean"
         reason:
-          description: "Why not: DISABLED, NO_PERMISSION, NOT_CONFIGURED or KILL_SWITCH."
+          description: "Why not: DISABLED, NOT_CONFIGURED (no usable model provider\
+            \ on the server), NO_PERMISSION or KILL_SWITCH, checked in that order."
+          nullable: true
+          type: "string"
+        message:
+          description: "Since 1.7.0: when reason is set, a sentence for the user that\
+            \ names the cause (for NOT_CONFIGURED, what an administrator configures)."
           nullable: true
           type: "string"
         shortcut:
@@ -186,15 +192,26 @@ components:
           type: "string"
         limits:
           additionalProperties: true
-          description: "maxTurnSeconds and maxToolCallsPerTurn."
+          description: "maxTurnSeconds and maxToolCallsPerTurn. When features.attachments\
+            \ is true also maxAttachmentBytes (the largest file read, in bytes), maxAttachments\
+            \ (files per question) and attachmentTypes (human-readable type names\
+            \ for the file picker hint; images only when the model reads them)."
           type: "object"
         features:
           additionalProperties: true
           description: "writes: some table allows writes; pendingActions: writes wait\
-            \ for confirmation."
+            \ for confirmation; attachments: files uploaded with POST /qqq/v1/uploads\
+            \ and sent as pageContext.attachments [{uploadRef, fileName}] are read\
+            \ for the question."
           type: "object"
         profile:
           $ref: "#/components/schemas/AssistantProfileV1"
+        conversationsTable:
+          description: "Since 1.6.0: the table name of the user's conversations (assistant_conversation)\
+            \ for the standard table UI (manage, archive, restore and delete); present\
+            \ only when this session may query that table."
+          nullable: true
+          type: "string"
       type: "object"
     AssistantConversationDetailResponseV1:
       description: "A conversation and a page of its messages, oldest first."
@@ -237,6 +254,11 @@ components:
           description: "ISO-8601 instant."
           nullable: true
           type: "string"
+        running:
+          description: "Since 1.6.0, in GET /conversations items only: whether an\
+            \ answer is in progress (a RUNNING or CANCELLING turn that is not orphaned)."
+          nullable: true
+          type: "boolean"
       type: "object"
     AssistantErrorV1:
       description: "Deprecated since 1.3.0: errors use BasicErrorResponseV1."
@@ -289,7 +311,9 @@ components:
           nullable: true
           type: "string"
         starterPrompts:
-          description: "Suggested first questions."
+          description: "Up to three suggested first questions in total: permitted\
+            \ configured questions first, then generated questions. Table, row and\
+            \ field access are checked on every request."
           items:
             type: "string"
           type: "array"
@@ -452,7 +476,7 @@ info:
   description: "QQQ Assistant: conversations, streamed turns, feedback, pending actions\
     \ and data access explanations"
   title: "QQQ Middleware API extension: assistant"
-  version: "1.5.0"
+  version: "1.7.0"
 openapi: "3.0.3"
 paths:
   /qqq/v1/assistant/config:
@@ -828,7 +852,7 @@ paths:
       tags:
       - "assistant"
     patch:
-      description: "Rename, pin or archive a conversation"
+      description: "Rename, pin, archive or mark read a conversation"
       operationId: "patchAssistantConversationsById"
       parameters:
       - description: "The conversation id."
@@ -850,6 +874,10 @@ paths:
                 status:
                   description: "ACTIVE or ARCHIVED."
                   type: "string"
+                read:
+                  description: "Since 1.6.0: true sets unreadCount to 0 (the user\
+                    \ watched the reply stream in). Only true is accepted."
+                  type: "boolean"
               type: "object"
         required: true
       responses:
@@ -911,7 +939,7 @@ paths:
         - "openid"
         - "profile"
         - "email"
-      summary: "Rename, pin or archive a conversation"
+      summary: "Rename, pin, archive or mark read a conversation"
       tags:
       - "assistant"
   /qqq/v1/assistant/conversations/{id}/turns:
@@ -936,7 +964,10 @@ paths:
                   type: "string"
                 pageContext:
                   additionalProperties: true
-                  description: "Where the user is in the app."
+                  description: "Where the user is in the app: route, tableName, recordId,\
+                    \ filter, selectedIds, and attachments (at most 5 of {uploadRef,\
+                    \ fileName}, the user's own uploads; their content is read for\
+                    \ this question, as untrusted data)."
                   type: "object"
                 concurrency:
                   description: "supersede or concurrent (case-insensitive); defaults\

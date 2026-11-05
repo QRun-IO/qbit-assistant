@@ -22,6 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.access.DataAccessMode;
 import com.kingsrook.qbits.assistant.api.AssistantApi;
@@ -336,6 +337,14 @@ class BulkLoadToolsTest extends BaseAssistantTest
       assertThat(runs.get(0).savedBulkLoadProfileId()).isEqualTo(7);
       assertThat(runs.get(0).uploadRef()).isEqualTo("up_1");
       assertThat(runs.get(0).tableName()).isEqualTo("blog_post");
+
+      //////////////////////////////////////////////////////////////////
+      // the load is a real job: the result carries its id and link, //
+      // and the confirmation links the conversation to it           //
+      //////////////////////////////////////////////////////////////////
+      assertThat(ran.get("href")).isEqualTo("/app/jobs_job/42");
+      Map<String, Object> message = JsonUtils.toObject(String.valueOf(ran.get("message")), new TypeReference<Map<String, Object>>() {});
+      assertThat(message).containsEntry("jobId", 42).containsEntry("jobHref", "/app/jobs_job/42");
    }
 
 

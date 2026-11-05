@@ -90,6 +90,16 @@ final class ConversationEncryption
 
 
    /*******************************************************************************
+    ** Whether a stored value is in this codec's encrypted form.
+    *******************************************************************************/
+   public static boolean isEncrypted(String value)
+   {
+      return (value != null && value.startsWith(PREFIX));
+   }
+
+
+
+   /*******************************************************************************
     ** Always encrypt plaintext, even strings that happen to start with enc:v1:.
     *******************************************************************************/
    String encrypt(String value)

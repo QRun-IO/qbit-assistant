@@ -314,6 +314,20 @@ public class AssistantStore
     *******************************************************************************/
    public void deleteConversation(String userId, Integer conversationId) throws QException
    {
+      deleteConversationChildren(userId, conversationId);
+      delete(AssistantConversation.TABLE_NAME, owned(userId).withCriteria("id", QCriteriaOperator.EQUALS, conversationId));
+   }
+
+
+
+   /*******************************************************************************
+    ** Delete a conversation's child rows (turns and their events, messages,
+    ** tool calls, feedback, data audits, pending actions), not the conversation
+    ** itself. A table delete of the conversation calls this afterwards, so
+    ** nothing is orphaned on a database without the cascading foreign keys.
+    *******************************************************************************/
+   public void deleteConversationChildren(String userId, Integer conversationId) throws QException
+   {
       List<Serializable> turnIds = new ArrayList<>();
       for(AssistantTurn turn : query(AssistantTurn.TABLE_NAME, owned(userId).withCriteria("conversationId", QCriteriaOperator.EQUALS, conversationId), AssistantTurn.class))
       {
@@ -329,7 +343,6 @@ public class AssistantStore
       }
       delete(AssistantDataAudit.TABLE_NAME, owned(userId).withCriteria("conversationId", QCriteriaOperator.EQUALS, conversationId));
       delete(AssistantPendingAction.TABLE_NAME, owned(userId).withCriteria("conversationId", QCriteriaOperator.EQUALS, conversationId));
-      delete(AssistantConversation.TABLE_NAME, owned(userId).withCriteria("id", QCriteriaOperator.EQUALS, conversationId));
    }
 
 
@@ -954,6 +967,27 @@ public class AssistantStore
    public AssistantStore(AssistantQBitConfig config)
    {
       encryption = new ConversationEncryption(config);
+   }
+
+
+
+   /*******************************************************************************
+    ** A copy of a record with the stored-encrypted fields encrypted (HIPAA
+    ** mode), for writes that do not go through this store (the table UI).
+    *******************************************************************************/
+   public QRecord encryptForStorage(String tableName, QRecord record)
+   {
+      return (cryptRecord(tableName, record, true));
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether a stored value is in the encrypted form (HIPAA mode).
+    *******************************************************************************/
+   public static boolean isEncryptedValue(String value)
+   {
+      return (ConversationEncryption.isEncrypted(value));
    }
 
 

@@ -37,6 +37,8 @@ import com.kingsrook.qbits.assistant.testing.UiApiTestServer;
 import com.kingsrook.qbits.assistant.uiapi.UiApiCall;
 import com.kingsrook.qbits.assistant.uiapi.UiApiResult;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolOutcome;
+import com.kingsrook.qqq.backend.core.actions.ai.AiExposure;
+import com.kingsrook.qqq.backend.core.actions.ai.AiFieldMetaData;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
@@ -62,6 +64,26 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *******************************************************************************/
 class UiApiToolsSecurityTest extends BaseAssistantTest
 {
+   /*******************************************************************************
+    ** Flat v1 metadata is described without exposing hidden or NONE fields.
+    *******************************************************************************/
+   @Test
+   void describeReadsFlatMetadataAndKeepsExposureFiltering() throws Exception
+   {
+      qInstance.getTable("blog_post").getField("metaDescription")
+         .withSupplementalMetaData(new AiFieldMetaData().withExposure(AiExposure.NONE));
+      HttpResponse<String> response = ui("GET", "/metaData/table/blog_post", AssistantTestFixture.EDITOR, null);
+      assertThat(response.statusCode()).isEqualTo(200);
+      Map<String, Object> metadata = new UiApiResult(response.statusCode(), response.body()).json();
+      assertThat(metadata).containsKeys("name", "fields").doesNotContainKey("table");
+      UiApiToolbox.Outcome outcome = tool(AssistantTestFixture.EDITOR, null, UiApiToolbox.DESCRIBE_TABLE, input("table", "blog_post"));
+      assertThat(outcome.getResult().getOutcome()).isEqualTo(AiToolOutcome.OK);
+      assertThat(outcome.getResult().getModelContent()).contains("\"name\":\"title\"", "\"type\":\"STRING\"")
+         .doesNotContain("metaDescription", "internalNotes", "apiSecret");
+   }
+
+
+
    /*******************************************************************************
     ** The default channel wall hides history, even when the user can read audits.
     *******************************************************************************/

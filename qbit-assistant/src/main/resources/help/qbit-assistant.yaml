@@ -19,9 +19,11 @@ entries:
   content: |
     A conversation is created when a user asks their first question in the assistant panel. Everything that follows (messages, turns, tool calls, feedback, model calls) hangs off it and is listed on its screen.
 
-    Most fields are filled in automatically and cannot be edited. You can only change the **{{label:assistant_conversation.title}}** and whether it is **{{label:assistant_conversation.pinned}}**.
+    Most fields are filled in automatically and cannot be edited. You can only change the **{{label:assistant_conversation.title}}**, whether it is **{{label:assistant_conversation.pinned}}** and its **{{label:assistant_conversation.status}}** (Active or Archived).
 
-    Use this list to see who is using the assistant, how much it costs, and to open a conversation when you need to find out why an answer went wrong. Conversations are not kept forever: the **{{label:assistantRetention}}** action deletes conversations that have passed the configured inactivity period (90 days by default), together with their messages, turns, tool calls and feedback.
+    Every assistant user can open this table to manage their own conversations: only their own rows are listed. They can archive, restore and delete conversations with **{{label:assistantConversationArchive}}**, **{{label:assistantConversationRestore}}** and **{{label:assistantConversationDelete}}**. Deleting a conversation also deletes its messages, turns, tool calls, feedback and pending actions. A conversation whose answer is still in progress cannot be deleted until the answer is stopped.
+
+    Administrators see every user's conversations here. Use this list to see who is using the assistant, how much it costs, and to open a conversation when you need to find out why an answer went wrong. Conversations are not kept forever: the **{{label:assistantRetention}}** action deletes conversations that have passed the configured inactivity period (90 days by default), together with their messages, turns, tool calls and feedback.
 
     See also **{{label:assistant_policy}}** for limits and **{{label:assistant_provider}}** for where answers come from.
 - key: table:assistant_conversation;section:conversation
@@ -1555,6 +1557,21 @@ entries:
   summary: When the worker last reported that this answer was still running.
 - key: table:assistant_turn;field:cancelRequestedAt
   summary: When a request to stop this answer was recorded.
+- key: process:assistantConversationArchive;slot:help
+  summary: Archive the selected conversations. They leave the assistant's list, and nothing is deleted.
+  content: |
+    Select conversations in **{{label:assistant_conversation}}** and choose **Archive conversations**. Review shows how many will be archived and how many are already archived. You can only act on conversations you can see: your own, or everyone's if you are an assistant administrator.
+
+- key: process:assistantConversationRestore;slot:help
+  summary: Restore the selected archived conversations to the assistant's list.
+  content: |
+    Select archived conversations in **{{label:assistant_conversation}}** and choose **Restore conversations**. Conversations that are not archived are skipped.
+
+- key: process:assistantConversationDelete;slot:help
+  summary: Delete the selected conversations with their messages. This cannot be undone.
+  content: |
+    Select conversations in **{{label:assistant_conversation}}** and choose **Delete conversations**. Each conversation is deleted with its messages, turns, tool calls, feedback and pending actions. A conversation whose answer is still in progress is skipped. Stop the answer first, then delete it.
+
 - key: process:assistantDataAccessAddDefaults;slot:help
   summary: Add missing data access rules for application tables using their current effective access.
   content: |

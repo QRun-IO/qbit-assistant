@@ -77,6 +77,24 @@ class ProviderApiTest
 
 
    /*******************************************************************************
+    ** An image part keeps its media type and data through JSON, and toString
+    ** never shows text or image data.
+    *******************************************************************************/
+   @Test
+   void imagePartRoundTripAndSafeToString() throws Exception
+   {
+      ModelPart image = ModelPart.image("image/png", "iVBORw0KGgoSECRETDATA");
+      assertThat(image.getType()).isEqualTo(ModelPart.Type.IMAGE);
+      ModelPart restored = mapper.readValue(mapper.writeValueAsString(image), ModelPart.class);
+      assertThat(restored.getMediaType()).isEqualTo("image/png");
+      assertThat(restored.getData()).isEqualTo("iVBORw0KGgoSECRETDATA");
+      assertThat(image.toString()).contains("IMAGE", "image/png").doesNotContain("SECRETDATA");
+      assertThat(ModelPart.text("private words").toString()).doesNotContain("private words");
+   }
+
+
+
+   /*******************************************************************************
     ** Response helpers retain tool ordering, text, usage and safe metadata.
     *******************************************************************************/
    @Test

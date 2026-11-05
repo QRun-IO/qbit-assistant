@@ -63,7 +63,7 @@ import io.javalin.http.HttpStatus;
 public final class AssistantSpecs
 {
    public static final String EXTENSION_NAME    = "assistant";
-   public static final String EXTENSION_VERSION = "1.5.0";
+   public static final String EXTENSION_VERSION = "1.7.0";
    public static final String PREFIX            = "/assistant";
 
 
@@ -195,18 +195,24 @@ public final class AssistantSpecs
       Map<String, Schema> rs = new LinkedHashMap<>();
       rs.put("AssistantProfileV1", object("How the assistant presents itself (admin-configured; text only, it never changes access).",
          "displayName", string("The assistant's name."), "icon", string("A Material icon name."), "greeting", string("Shown on a new conversation.").withNullable(true),
-         "starterPrompts", array(string(null), "Suggested first questions.")));
+         "starterPrompts", array(string(null), "Up to three suggested first questions in total: permitted configured questions first, then generated questions. Table, row and field access are checked on every request.")));
       rs.put("AssistantConfigResponseV1", object("Whether the assistant is available to this user, and how.",
          "enabled", bool("Whether the panel may be used."),
-         "reason", string("Why not: DISABLED, NO_PERMISSION, NOT_CONFIGURED or KILL_SWITCH.").withNullable(true),
+         "reason", string("Why not: DISABLED, NOT_CONFIGURED (no usable model provider on the server), NO_PERMISSION or KILL_SWITCH, checked in that order.").withNullable(true),
+         "message", string("Since 1.7.0: when reason is set, a sentence for the user that names the cause (for NOT_CONFIGURED, what an administrator configures).").withNullable(true),
          "shortcut", string("Keyboard shortcut, e.g. mod+j."),
          "model", string("The model that answers."),
-         "limits", freeObject("maxTurnSeconds and maxToolCallsPerTurn."),
-         "features", freeObject("writes: some table allows writes; pendingActions: writes wait for confirmation."),
-         "profile", ref("AssistantProfileV1")));
+         "limits", freeObject("maxTurnSeconds and maxToolCallsPerTurn. When features.attachments is true also maxAttachmentBytes (the largest file read, in bytes), "
+            + "maxAttachments (files per question) and attachmentTypes (human-readable type names for the file picker hint; images only when the model reads them)."),
+         "features", freeObject("writes: some table allows writes; pendingActions: writes wait for confirmation; attachments: files uploaded with POST /qqq/v1/uploads "
+            + "and sent as pageContext.attachments [{uploadRef, fileName}] are read for the question."),
+         "profile", ref("AssistantProfileV1"),
+         "conversationsTable", string("Since 1.6.0: the table name of the user's conversations (assistant_conversation) for the standard table UI "
+            + "(manage, archive, restore and delete); present only when this session may query that table.").withNullable(true)));
       rs.put("AssistantConversationV1", object("One of the user's own conversations.",
          "id", integer(null), "title", string(null).withNullable(true), "status", string("ACTIVE or ARCHIVED."), "pinned", bool(null),
-         "lastMessageAt", string("ISO-8601 instant.").withNullable(true), "unreadCount", integer(null), "createDate", string("ISO-8601 instant.").withNullable(true)));
+         "lastMessageAt", string("ISO-8601 instant.").withNullable(true), "unreadCount", integer(null), "createDate", string("ISO-8601 instant.").withNullable(true),
+         "running", bool("Since 1.6.0, in GET /conversations items only: whether an answer is in progress (a RUNNING or CANCELLING turn that is not orphaned).").withNullable(true)));
       rs.put("AssistantConversationListResponseV1", object("The user's conversations, newest first.", "conversations", array(ref("AssistantConversationV1"), null)));
       rs.put("AssistantMessageV1", object("A message: the user's text or the assistant's reply as parts (text, tool, record_refs, navigate, notice).",
          "id", integer(null), "role", string("USER or ASSISTANT."), "status", string(null), "turnId", integer(null).withNullable(true),
@@ -816,7 +822,7 @@ public final class AssistantSpecs
       @Override
       protected String summary()
       {
-         return ("Rename, pin or archive a conversation");
+         return ("Rename, pin, archive or mark read a conversation");
       }
 
 
@@ -832,7 +838,8 @@ public final class AssistantSpecs
       @Override
       protected Schema defineRequestBodySchema()
       {
-         return (object("The changed properties.", "title", string(null), "pinned", bool(null), "status", string("ACTIVE or ARCHIVED.")));
+         return (object("The changed properties.", "title", string(null), "pinned", bool(null), "status", string("ACTIVE or ARCHIVED."),
+            "read", bool("Since 1.6.0: true sets unreadCount to 0 (the user watched the reply stream in). Only true is accepted.")));
       }
 
 
@@ -957,7 +964,8 @@ public final class AssistantSpecs
       @Override
       protected Schema defineRequestBodySchema()
       {
-         return (object("The user's text and the page context hint.", "text", string("The user's message."), "pageContext", freeObject("Where the user is in the app."), "concurrency", string("supersede or concurrent (case-insensitive); defaults to the host configuration.")));
+         return (object("The user's text and the page context hint.", "text", string("The user's message."), "pageContext", freeObject("Where the user is in the app: route, tableName, recordId, filter, selectedIds, and attachments (at most 5 of {uploadRef, fileName}, "
+            + "the user's own uploads; their content is read for this question, as untrusted data)."), "concurrency", string("supersede or concurrent (case-insensitive); defaults to the host configuration.")));
       }
 
 

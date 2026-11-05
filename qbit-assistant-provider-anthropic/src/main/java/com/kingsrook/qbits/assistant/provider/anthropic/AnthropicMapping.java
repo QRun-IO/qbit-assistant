@@ -24,9 +24,11 @@ import java.util.Map;
 import com.anthropic.core.JsonValue;
 import com.anthropic.errors.AnthropicIoException;
 import com.anthropic.errors.AnthropicServiceException;
+import com.anthropic.models.messages.Base64ImageSource;
 import com.anthropic.models.messages.CacheControlEphemeral;
 import com.anthropic.models.messages.ContentBlock;
 import com.anthropic.models.messages.ContentBlockParam;
+import com.anthropic.models.messages.ImageBlockParam;
 import com.anthropic.models.messages.Message;
 import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.MessageParam;
@@ -222,6 +224,18 @@ public class AnthropicMapping
                   result.cacheControl(cache);
                }
                blocks.add(ContentBlockParam.ofToolResult(result.build()));
+            }
+            case IMAGE ->
+            {
+               ImageBlockParam.Builder image = ImageBlockParam.builder().source(Base64ImageSource.builder()
+                  .mediaType(Base64ImageSource.MediaType.of(part.getMediaType()))
+                  .data(part.getData() == null ? "" : part.getData())
+                  .build());
+               if(cache != null)
+               {
+                  image.cacheControl(cache);
+               }
+               blocks.add(ContentBlockParam.ofImage(image.build()));
             }
             default -> throw (new IllegalStateException("Unknown part type"));
          }

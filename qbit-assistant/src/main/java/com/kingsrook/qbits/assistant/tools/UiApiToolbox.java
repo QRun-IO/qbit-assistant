@@ -607,7 +607,7 @@ public class UiApiToolbox
       {
          return;
       }
-      Map<String, Object>       described = asMap(asMap(response.json()).get("table"));
+      Map<String, Object>       described = asMap(response.json());
       Map<String, Object>       fields    = asMap(described.get("fields"));
       List<Map<String, Object>> rows      = new ArrayList<>();
       for(Map.Entry<String, Object> entry : fields.entrySet())

@@ -32,6 +32,7 @@ import com.kingsrook.qbits.assistant.metadata.AssistantInstanceMetaData;
 import com.kingsrook.qbits.assistant.metadata.AssistantMetaDataBuilder;
 import com.kingsrook.qbits.assistant.metadata.AssistantRecordScreens;
 import com.kingsrook.qbits.assistant.model.AssistantBudget;
+import com.kingsrook.qbits.assistant.processes.ConversationActionsProcess;
 import com.kingsrook.qbits.assistant.processes.DataAccessDefaultsProcess;
 import com.kingsrook.qbits.assistant.processes.DiscoverModelsProcess;
 import com.kingsrook.qbits.assistant.processes.KnowledgeIndexProcess;
@@ -184,6 +185,11 @@ public class AssistantQBitProducer implements QBitMetaDataProducer<AssistantQBit
       QProcessMetaData testConnection = TestConnectionProcess.process();
       testConnection.setSourceQBitName(qBitMetaData.getName());
       qInstance.addProcess(testConnection);
+      for(QProcessMetaData process : ConversationActionsProcess.processes())
+      {
+         process.setSourceQBitName(qBitMetaData.getName());
+         qInstance.addProcess(process);
+      }
       for(QProcessMetaData process : List.of(DiscoverModelsProcess.process(), TestModelConnectionProcess.process(), DataAccessDefaultsProcess.process()))
       {
          process.setSourceQBitName(qBitMetaData.getName());

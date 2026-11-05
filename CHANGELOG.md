@@ -4,6 +4,42 @@
 
 - The turn's redacted transcript (the question and answer parts, pending actions, stored events) is now written before `message.end` is sent. The panel reloads the conversation the moment the stream ends, and used to read the empty placeholders (`[]`) the transcript redactor stores until its flush, so the newest question and answer showed as empty bubbles until the panel was closed and reopened.
 
+## Unreleased - Clear reason without a model provider (UI API extension 1.7.0)
+
+- `GET /config` checks the server-wide causes before the user's permission: `DISABLED`, then `NOT_CONFIGURED` (no usable model provider), then `NO_PERMISSION`, then `KILL_SWITCH`. A server with no provider no longer tells users to ask for access (#82).
+- UI API extension assistant 1.7.0: `GET /config` has `message` whenever `reason` is set: a sentence for the user. For `NOT_CONFIGURED` it says what an administrator configures (an enabled row on **Assistant > Providers**, for example Anthropic with `ANTHROPIC_API_KEY` set in the server environment, or a local OpenAI-compatible server such as Ollama).
+- Without a usable provider, calls from a user who also lacks `assistant.hasAccess` answer `503 NOT_CONFIGURED` with that message instead of `403 NO_PERMISSION`; users with access keep their conversations, and a new question answers `503 NOT_CONFIGURED`.
+- Verified the OpenAI-compatible adapter (kind `OLLAMA`) live against a local Ollama `llama3.3:70b-instruct-q4_K_M`, including a tool call (`LiveOpenAiCompatibleTest`).
+
+## Unreleased - Conversation management (UI API extension 1.6.0)
+
+- `assistant_conversation` is open to every assistant user (`assistant.hasAccess` or `assistant.admin`, through the new `AssistantAccessPermissionChecker`) in the standard table UI. Rows stay locked to their owner by the `userId` record lock, so a user only ever sees, updates and deletes their own conversations; admins with the all-access key still see everyone's. The Assistant app (its nav) and every other assistant table stay admin-only.
+- Users change only a conversation's title, pinned flag and status (Active / Archived) through the table; the other fields are the assistant's own. A new title is encrypted in HIPAA mode, including literal text beginning with `enc:v1:`. Only an exact match to the same record's stored ciphertext is preserved unchanged; internal SYSTEM writes retain their existing storage path.
+- A table delete of a conversation also deletes its messages, turns, turn events, tool calls, feedback, data audits and pending actions (the same rows `DELETE /conversations/{id}` removes), so nothing is orphaned on a database without the cascading foreign keys. A conversation with an answer in progress is refused.
+- New record actions on `assistant_conversation`: **Archive conversations**, **Restore conversations** and **Delete conversations** (standard streamed ETL: selected records, Review, Result; same permission as the table; only rows the user can see; delete skips conversations with an answer in progress).
+- UI API extension assistant 1.6.0: `GET /conversations` items have `running` (an answer in progress: a RUNNING or CANCELLING turn that is not orphaned); `PATCH /conversations/{id}` accepts `{"read": true}` (sets `unreadCount` to 0); `GET /config` has `conversationsTable: "assistant_conversation"` when the session may query that table.
+
+## Unreleased - Starter prompts follow access
+
+- `profile.starterPrompts` in `GET /assistant/config` is built per user: up to three prompts generated from tables the user can read that have rows (UI API metadata and count as the user, bounded, current access rechecked on every request, stable order for the day), plus configured prompts only when tagged with tables the user can read (`[table] prompt`, `[none] prompt`; untagged lines are dropped). See UPGRADE.md.
+
+## Unreleased - Chat turns are not jobs
+
+- Ordinary chat turns no longer create core tracking jobs: they stay out of the Jobs tray and Jobs tables, and core no longer sends an "Assistant answer finished" notification for every answer. Crash safety is unchanged; it comes from the assistant's own turn table (leased, heartbeated `assistant_turn` rows, seq-numbered `assistant_turn_event` replay and the abandoned-turn sweep). The panel's Stop (`POST /turns/{id}/cancel`) is unchanged.
+- Removed the `AssistantRunTracker` SPI, `JobTrackingRunTracker` and `AssistantQBitConfig.withRunTracker` / `setRunTracker` / `getRunTracker` (see UPGRADE.md).
+- Real multi-step work stays a real job: a confirmed bulk load still launches through `POST /qqq/v1/processes/{p}/jobs`, and its tool result now carries `jobHref` (the job's `/app` link) next to `jobId`, plus a record ref to the job; the confirm response's `href` links to the job.
+- Scheduled task notifications (output mode Notification or Both) now go through core `QAlerts.notify` (category Job, the owner as the only audience, a link to the conversation, success/error/warning severity by run status), replacing the reflective call into an older alerts SPI that no longer matched.
+
+## Unreleased - Attachments
+
+- Files attached in the panel (`pageContext.attachments`, core upload refs) are read for the question: as the signed-in user's own upload, in memory, with per-file and per-question byte and character caps (`AssistantQBitConfig.attachments`). The type is sniffed from content; executables, archives and unknown binary data are refused. Text, Markdown and JSON are decoded with charset detection, PDF page text is extracted (PDFBox via QQQ core, no scripts, host font mapper preserved), CSV/TSV/XLSX become a header + rows + count preview, and PNG/JPEG/GIF/WebP images go to vision models as image parts.
+- Images are decoded with ImageIO before provider submission, rejecting truncated data and decoder warnings. A 16-million aggregate pixel / 100-frame budget bounds decoded data; original bytes are forwarded. WebP uses the explicit TwelveMonkeys decoder.
+- Content reaches the model in an untrusted `uploaded_file` block (delimiters neutralized) in the question's user message; the system prompt says it is data, never instructions. A file that cannot be read adds a notice to the answer and never fails the turn. In HIPAA mode attachments count as PHI.
+- Provider SPI: `ModelPart.Type.IMAGE` (`mediaType`, base64 `data`), mapped by the Anthropic, Bedrock and OpenAI-compatible providers. Claude models report vision. `ModelPart.toString()` never includes text or image data.
+- `GET /config`: `features.attachments`, `limits.maxAttachmentBytes`, `limits.maxAttachments`, `limits.attachmentTypes`.
+- System prompt: when `create_record` / `update_record` are offered, the model proposes the change instead of saying it cannot create records.
+||||||| parent of c5125f9 (fix(assistant): store the transcript before message.end so the panel shows the answer)
+
 ## Unreleased - Optional provider health
 
 - An enabled provider that is not the default and not the only route for any configured routing (an enabled profile's simple/complex model, a budget downgrade model or a knowledge source's embedding model, with no fallback on another usable provider) is optional: when it is unreachable, its `assistant.provider.<id>` and `assistant.model.<id>` checks report DEGRADED with a message naming the provider requests use instead, so one unfinished local server no longer turns the whole `assistant` component DOWN. The default provider and sole routes still report DOWN. A failed provider probe still carries `reachable=false`, so the circuit breaker keeps refusing the provider.

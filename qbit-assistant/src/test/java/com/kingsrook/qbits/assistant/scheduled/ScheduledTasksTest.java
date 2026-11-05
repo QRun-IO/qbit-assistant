@@ -60,6 +60,8 @@ import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qqq.backend.core.actions.ai.AiFieldMetaData;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
+import com.kingsrook.qqq.backend.core.alerts.NotificationSeverity;
+import com.kingsrook.qqq.backend.core.alerts.NotificationSignal;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
@@ -421,6 +423,15 @@ class ScheduledTasksTest extends BaseAssistantTest
       assertThat(failed.getStatus()).isEqualTo("FAILED");
       assertThat(failed.getError()).doesNotContain("Private provider detail");
       new ScheduledAlerts().raise(failed);
+
+      NotificationSignal signal = ScheduledAlerts.signal(failed);
+      assertThat(signal.getAudience().getValues()).containsExactly(AssistantTestFixture.EDITOR);
+      assertThat(signal.getSeverity()).isEqualTo(NotificationSeverity.ERROR);
+      assertThat(signal.getBody()).contains("FAILED").doesNotContain("Private provider detail");
+      assertThat(signal.getLink().getTableName()).isEqualTo("assistant_conversation");
+      assertThat(signal.getLink().getRecordId()).isEqualTo(failed.getConversationId());
+      assertThat(ScheduledAlerts.signal(new AssistantScheduledRun().withId(1).withUserId(AssistantTestFixture.EDITOR).withStatus("OK")).getSeverity())
+         .isEqualTo(NotificationSeverity.SUCCESS);
    }
 
 

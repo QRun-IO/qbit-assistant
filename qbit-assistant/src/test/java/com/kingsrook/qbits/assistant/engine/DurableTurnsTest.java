@@ -32,7 +32,6 @@ import com.kingsrook.qbits.assistant.AssistantQBitConfig;
 import com.kingsrook.qbits.assistant.AssistantRuntime;
 import com.kingsrook.qbits.assistant.api.AssistantApi;
 import com.kingsrook.qbits.assistant.api.AssistantApiException;
-import com.kingsrook.qbits.assistant.jobs.AssistantRunTracker;
 import com.kingsrook.qbits.assistant.model.AssistantConversation;
 import com.kingsrook.qbits.assistant.model.AssistantMessage;
 import com.kingsrook.qbits.assistant.model.AssistantTurn;
@@ -209,42 +208,6 @@ class DurableTurnsTest extends BaseAssistantTest
 
 
    /*******************************************************************************
-    ** Streamed text arrives on the provider's own thread; the "writing" progress
-    ** it triggers still runs in the turn's QContext (the job tracker writes
-    ** through QQQ, which needs the instance).
-    *******************************************************************************/
-   @Test
-   void streamedProgressRunsInTheTurnContext() throws Exception
-   {
-      List<String> contexts = new CopyOnWriteArrayList<>();
-      config.setRunTracker(new AssistantRunTracker()
-      {
-         @Override
-         public String start(String userId, Integer turnId, Integer conversationId, String label)
-         {
-            return ("job-" + turnId);
-         }
-
-         @Override
-         public void progress(String trackingId, String phase, String message)
-         {
-            contexts.add(phase + ":" + (QContext.getQInstance() != null));
-         }
-
-         @Override
-         public void finish(String trackingId, String status, String message)
-         {
-         }
-      });
-      provider.thenText("A streamed answer on the provider's thread");
-      AssistantTurn row = completed(api.startTurn(conversation(), Map.of("text", "hello")));
-      assertThat(row.getStatus()).isEqualTo("COMPLETE");
-      assertThat(contexts).contains("writing:true").doesNotContain("writing:false");
-   }
-
-
-
-   /*******************************************************************************
     ** A throwing post-processing collaborator cannot strand a streamed answer.
     *******************************************************************************/
    @Test
@@ -360,8 +323,6 @@ class DurableTurnsTest extends BaseAssistantTest
    {
       ControlledProvider controlled = controlled(true);
       controlled.emitText = false;
-      RecordingTracker tracker = new RecordingTracker();
-      config.setRunTracker(tracker);
       config.setMaxTurnSeconds(1);
       RunningTurn run = api.startTurn(conversation(), Map.of("text", "wedged"));
       try
@@ -373,12 +334,10 @@ class DurableTurnsTest extends BaseAssistantTest
          assertThat(row.getCancelReason()).isEqualTo("TIMEOUT");
          assertThat(store.getMessage(EDITOR, row.getAssistantMessageId()).getPartsJson()).contains(TurnEngine.TIMEOUT_TEXT);
          assertThat(controlled.handles.getFirst().cancelled).isTrue();
-         assertThat(tracker.finishes.get()).isEqualTo(1);
          int events = run.getLog().after(0, 1).size();
          controlled.release();
          await(() -> controlled.handles.getFirst().returned);
          assertThat(run.getLog().after(0, 1)).hasSize(events);
-         assertThat(tracker.finishes.get()).isEqualTo(1);
       }
       finally
       {
@@ -576,8 +535,6 @@ class DurableTurnsTest extends BaseAssistantTest
       List<String> errors = new ArrayList<>();
       config.validate(qInstance, errors);
       assertThat(errors).contains("turnHeartbeatSeconds must be less than turnLeaseSeconds.", "defaultConcurrencyMode must be SUPERSEDE or CONCURRENT.");
-      config.withRunTracker(null);
-      assertThat(config.getRunTracker()).isSameAs(AssistantRunTracker.NOOP);
    }
 
 
@@ -621,8 +578,6 @@ class DurableTurnsTest extends BaseAssistantTest
    void rollingDeploy() throws Exception
    {
       ControlledProvider controlled = controlled(true);
-      RecordingTracker tracker = new RecordingTracker();
-      config.setRunTracker(tracker);
       Integer conversation = conversation();
       RunningTurn run = api.startTurn(conversation, Map.of("text", "wait"));
       try
@@ -634,7 +589,6 @@ class DurableTurnsTest extends BaseAssistantTest
          assertThat(row.getStatus()).isEqualTo("ERROR");
          assertThat(row.getErrorCode()).isEqualTo("INTERRUPTED");
          assertThat(store.getMessage(EDITOR, row.getAssistantMessageId()).getPartsJson()).contains(TurnEngine.RESTART_TEXT);
-         assertThat(tracker.finishes.get()).isEqualTo(1);
          int messages = store.listMessages(EDITOR, conversation, null, 100).size();
          assertThatThrownBy(() -> api.startTurn(conversation, Map.of("text", "retry")))
             .isInstanceOfSatisfying(AssistantApiException.class, e ->
@@ -664,35 +618,6 @@ class DurableTurnsTest extends BaseAssistantTest
       config.getRuntime().shutdown(Duration.ofSeconds(1));
       QContext.init(qInstance, session);
       assertThat(completed(run).getErrorCode()).isEqualTo("INTERRUPTED");
-   }
-
-
-
-   /*******************************************************************************
-    ** Tracker progress is phase-based; its Stop callback cancels the local run.
-    *******************************************************************************/
-   @Test
-   void trackerAndTrackerFailures() throws Exception
-   {
-      ControlledProvider controlled = controlled(false);
-      RecordingTracker tracker = new RecordingTracker();
-      config.setRunTracker(tracker);
-      RunningTurn run = api.startTurn(conversation(), Map.of("text", "wait"));
-      controlled.awaitCalls(1);
-      await(() -> tracker.cancel != null);
-      tracker.cancel.run();
-      assertThat(completed(run).getStatus()).isEqualTo("CANCELLED");
-      assertThat(tracker.starts.get()).isEqualTo(1);
-      assertThat(tracker.phases).containsExactly("thinking", "writing");
-      assertThat(tracker.finishes.get()).isEqualTo(1);
-      assertThat(tracker.label).isEqualTo("Assistant answer");
-      tracker.fail = true;
-      config.withModelProvider(provider);
-      config.getRuntime().getProviderService().invalidate();
-      provider.thenText("Still works");
-      RunningTurn throwing = api.startTurn(conversation(), Map.of("text", "hello"));
-      assertThat(completed(throwing).getStatus()).isEqualTo("COMPLETE");
-      assertThat(tracker.finishes.get()).isEqualTo(2);
    }
 
 
@@ -951,71 +876,6 @@ class DurableTurnsTest extends BaseAssistantTest
          returned = true;
          return (new ModelResponse().withParts(List.of(ModelPart.text("Done")))
             .withStopReason(cancelled ? ModelResponse.STOP_CANCELLED : ModelResponse.STOP_END_TURN));
-      }
-   }
-
-
-
-   /*******************************************************************************
-    ** Records the host job-tray contract and can throw from every callback.
-    *******************************************************************************/
-   private static class RecordingTracker implements AssistantRunTracker
-   {
-      private final AtomicInteger starts = new AtomicInteger();
-      private final AtomicInteger finishes = new AtomicInteger();
-      private final List<String> phases = new CopyOnWriteArrayList<>();
-      private volatile Runnable cancel;
-      private String label;
-      private boolean fail;
-
-      /*******************************************************************************
-       ** Record publication.
-       *******************************************************************************/
-      @Override
-      public String start(String userId, Integer turnId, Integer conversationId, String label)
-      {
-         starts.incrementAndGet();
-         this.label = label;
-         if(fail)
-         {
-            throw (new IllegalStateException("tracker start failed"));
-         }
-         return ("job-" + turnId);
-      }
-
-      /*******************************************************************************
-       ** Record a phase transition.
-       *******************************************************************************/
-      @Override
-      public void progress(String trackingId, String phase, String message)
-      {
-         phases.add(phase);
-         if(fail)
-         {
-            throw (new IllegalStateException("tracker progress failed"));
-         }
-      }
-
-      /*******************************************************************************
-       ** Record terminal notification exactly once.
-       *******************************************************************************/
-      @Override
-      public void finish(String trackingId, String status, String message)
-      {
-         finishes.incrementAndGet();
-         if(fail)
-         {
-            throw (new IllegalStateException("tracker finish failed"));
-         }
-      }
-
-      /*******************************************************************************
-       ** Retain the host's Stop callback.
-       *******************************************************************************/
-      @Override
-      public void onCancel(String trackingId, Runnable cancel)
-      {
-         this.cancel = cancel;
       }
    }
 }

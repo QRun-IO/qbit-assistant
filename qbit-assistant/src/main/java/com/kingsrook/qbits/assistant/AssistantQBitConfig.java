@@ -32,8 +32,6 @@ import java.util.regex.Pattern;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.kingsrook.qbits.assistant.classification.ClassificationSource;
 import com.kingsrook.qbits.assistant.classification.ConfiguredClassificationSource;
-import com.kingsrook.qbits.assistant.jobs.AssistantRunTracker;
-import com.kingsrook.qbits.assistant.jobs.JobTrackingRunTracker;
 import com.kingsrook.qbits.assistant.rag.VectorStore;
 import com.kingsrook.qbits.assistant.spi.AssistantModelProvider;
 import com.kingsrook.qbits.assistant.spi.AssistantProviderType;
@@ -107,7 +105,6 @@ public class AssistantQBitConfig implements QBitConfig
    private Integer shutdownGraceSeconds = 8;
    private String defaultConcurrencyMode = "SUPERSEDE";
    private Boolean registerShutdownHook = true;
-   private AssistantRunTracker runTracker = new JobTrackingRunTracker();
 
    private Integer               maxTurnSeconds             = 300;
    private Integer               toolCallTimeoutSeconds     = 60;
@@ -116,6 +113,7 @@ public class AssistantQBitConfig implements QBitConfig
    private Integer               maxUserMessageChars        = 8000;
    private Integer               historyMessageLimit        = 40;
    private AssistantBudgets      budgets                    = new AssistantBudgets();
+   private AssistantAttachments  attachments                = new AssistantAttachments();
    private Integer               maxTurnsPerUserPerMinute   = 10;
    private Integer               maxConcurrentTurnsPerUser  = 3;
    private Integer               conversationRetentionDays  = 90;
@@ -207,6 +205,14 @@ public class AssistantQBitConfig implements QBitConfig
       if(budgets != null)
       {
          budgets.validate(errors);
+      }
+      if(attachments == null)
+      {
+         errors.add("attachments must not be null.");
+      }
+      else
+      {
+         attachments.validate(errors);
       }
 
       if(defaultExposure == null)
@@ -903,6 +909,37 @@ public class AssistantQBitConfig implements QBitConfig
    public AssistantQBitConfig withHistoryMessageLimit(Integer historyMessageLimit)
    {
       this.historyMessageLimit = historyMessageLimit;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for attachments (limits for files attached in the panel).
+    *******************************************************************************/
+   public AssistantAttachments getAttachments()
+   {
+      return (this.attachments);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for attachments
+    *******************************************************************************/
+   public void setAttachments(AssistantAttachments attachments)
+   {
+      this.attachments = attachments;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for attachments
+    *******************************************************************************/
+   public AssistantQBitConfig withAttachments(AssistantAttachments attachments)
+   {
+      this.attachments = attachments;
       return (this);
    }
 
@@ -2318,38 +2355,6 @@ public class AssistantQBitConfig implements QBitConfig
    public AssistantQBitConfig withRegisterShutdownHook(Boolean registerShutdownHook)
    {
       this.registerShutdownHook = registerShutdownHook;
-      return (this);
-   }
-
-
-
-   /*******************************************************************************
-    ** Getter for runTracker
-    *******************************************************************************/
-   @JsonIgnore
-   public AssistantRunTracker getRunTracker()
-   {
-      return (this.runTracker == null ? AssistantRunTracker.NOOP : this.runTracker);
-   }
-
-
-
-   /*******************************************************************************
-    ** Setter for runTracker
-    *******************************************************************************/
-   public void setRunTracker(AssistantRunTracker runTracker)
-   {
-      this.runTracker = runTracker;
-   }
-
-
-
-   /*******************************************************************************
-    ** Fluent setter for runTracker
-    *******************************************************************************/
-   public AssistantQBitConfig withRunTracker(AssistantRunTracker runTracker)
-   {
-      this.runTracker = runTracker;
       return (this);
    }
 
